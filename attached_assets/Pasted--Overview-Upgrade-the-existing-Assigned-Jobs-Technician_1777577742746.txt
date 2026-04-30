@@ -1,0 +1,101 @@
+## Overview
+- Upgrade the existing "Assigned Jobs / Technician Assigned Jobs" area to a consistent DMS visual and interaction standard for both desktop web (1440px) and phone mobile (390px). The plan covers the full jobs flow: Dashboard cards, Jobs list, Job detail, clock-in/timer, and supporting app UIs (notifications, filters, export, offline).  
+- The goal is clear metadata, faster technician actions, compact mobile views, and reusable UI patterns so designers can produce pixel-accurate screens for each visual state.
+
+## Plan Details
+- App types: **WebApp (desktop 1440px)** and **MobileApp (phone 390px)**. Each screen below includes a desktop and a matching mobile variant where applicable.
+
+1) Main Jobs Dashboard (Web / Mobile)
+   - Top area
+     - App header with left navigation toggle, account/name, language, global notifications icon, and overall breadcrumb.
+     - Page title: **Dashboard / Technician Assigned Jobs** with contextual date selector and an **Export** button.
+   - KPI & Summary band
+     - Large KPI card showing **Total time tracked** and **Productivity %** with a long progress bar and a short tip panel below.
+   - Working pattern calendar block
+     - Month calendar visual showing daily work blocks and an active-day indicator. On mobile this becomes a compressed horizontal scroller with date dots.
+   - Jobs preview column
+     - Compact card list for assigned jobs (left column on desktop, main list on mobile) with thumbnail, Estimate #, vehicle, assigned hours, appointment date and quick progress bar.
+
+2) Assigned Jobs List (List + Card Grid toggle)
+   - Top controls row
+     - Search box (placeholder: "Search by estimate, plate, VIN, customer"), filters button (opens filter modal), sort dropdown, view toggle (list / grid), and export.
+   - Card layout (desktop grid)
+     - Thumbnail image, **Estimate #00095** title, meta line icons (license plate, vehicle, advisor, hours, date/time), short progress meter, and CTA button **Take Action**.
+     - Secondary controls: three-dot menu with actions (Assign, Reassign, Export, Mark complete).
+   - List layout (desktop & mobile stacked)
+     - Condensed rows with same meta and a small progress indicator; tapping a row opens Job Detail.
+
+3) Job Detail — Metadata Row + Tabs (Tasks | Notes | Inspections)
+   - Header
+     - Title **Estimate #00095**, breadcrumb, back arrow. Prominent action button group to the right: **Take Action**, **Export**, **More**.
+   - Metadata row (single horizontal band)
+     - Icon + label pairs: **License Plate**, **Vehicle**, **Service Advisor**, **Total Estimate Hours**, **Customer Notes**, **Odometer**. Values use bolded text for emphasis.
+   - Tabs area
+     - **Tasks** tab (default): Top summary with overall progress ring and assigned vs worked hours. Below are task cards.
+     - **Notes** tab: chronological notes list with author and timestamp and a quick-add input.
+     - **Inspections** tab: inspection items/cards with status, estimated hours, and result badges.
+   - Task card design
+     - Card header: Task title and short tag (Repair/Inspection), right-aligned status pill (Pending/In Progress/Done) and estimated hours.
+     - Card body: small progress ring, assigned technician avatar, short description, two inline links: "Show details" and "Show update history".
+     - Card footer: quick controls: Start/Clock-in, Add Note, Attach Photo.
+   - Pinned Clock-in CTA
+     - Floating, prominent **Clock‑in** button (desktop bottom-right, mobile sticky at bottom) that opens the clock-in confirmation modal or starts timer.
+
+4) Clock-in / Job Timer Experience (represented as separate static screens)
+   - Clock-in confirmation modal: job summary, start button, cancel.
+   - Active timer screen/state: circular timer pill in header with elapsed time, pause/break and stop controls, visible to job detail and dashboard.
+   - Clocked-in visual state: job cards show active timer badge and green status accent.
+
+5) Mobile-specific screens and adaptations
+   - Compact Jobs List
+     - Full width stacked cards, filters accessible via bottom sheet, search pinned to top.
+   - Mobile Job Detail
+     - Condensed metadata arranged in two rows, tabs become a segmented control near top, task list uses full-width cards with primary CTA pinned bottom.
+   - Mobile quick actions
+     - Swipe actions on list items (left: Take Action, right: Clock-in) and long-press to open contextual menu.
+
+6) Supporting App UIs
+   - Filter modal (multi-select): status, date range, vehicle make/model, advisor, estimated hours, assigned technician.
+   - Export modal: CSV/PDF options with date range and columns selection.
+   - Notification center screen: list of notifications with read state and quick action links.
+   - Offline / Sync indicator: small status chip in header; an offline screen/state that explains limited functionality and queued actions.
+   - Empty and Error states: friendly illustration, short message, primary action (e.g., "Create job" or "Retry").
+
+7) Visual States to include as separate static screens
+   - Base list/grid view (desktop + mobile)
+   - Card expanded → Job Detail (desktop + mobile)
+   - Clock-in confirmation modal and Active timer state
+   - Empty list / No assigned jobs
+   - Error / Sync failed
+   - Filter applied + Search results
+
+8) Content & Data fields (for each screen)
+   - Estimate #: string
+   - License Plate, Vehicle (make-model-year), Service Advisor, Odometer, Customer Notes
+   - Estimated Hours, Worked Hours, Progress %
+   - Appointment Date/Time, Status (Pending/In Progress/Completed)
+   - Attached photos/documents, Notes (author + timestamp)
+
+9) Actions & Controls (represented visually)
+   - Primary CTAs: Take Action, Clock-in, Export
+   - Secondary: Show details, Show update history, Add note, Attach photo
+   - List controls: Search, Filters (modal), Sort, View toggle, Pagination/Load more
+   - Item menu: Assign/Reassign, Mark complete, Reopen, Download report
+
+10) Styling direction & tokens (designer-ready defaults)
+   - Color: **Primary** DMS Blue (strong readable blue for CTAs), Neutral greys for surfaces, subtle card shadows, green accent for active/clocked-in, warning amber for pending.
+   - Typography: **Inter** (or system sans) with clear hierarchy — h1 (24–28px), h2 (18–20px), body (14px), small (12px).
+   - Spacing: 8px baseline grid, 16px gutters inside cards, 24–32px between major sections.
+   - Icons: round circled icon badges for metadata, thin line action icons for menus.
+
+11) Accessibility & Content guidance
+   - Use clear visible labels for all data fields and CTAs. Ensure color contrast for text over backgrounds and provide distinct focus states for keyboard navigation. Use accessible icon labels where necessary.
+
+12) Assets & Deliverables to prepare for design
+   - Logo / brand tile, avatar placeholders, vehicle thumbnail images, icon set (search, filter, clock, export, more), sample dataset (5–10 job records) with variations (active/complete/pending).
+
+13) Notes for designer handoff
+   - Provide sample JSON for the job list and one full job object (metadata, tasks, notes, inspections) so designers can populate realistic content on each artboard. Represent interactive states as separate static artboards (e.g., Job Detail — Clocked In).
+
+
+If any of the above assumptions need to change (different brand tokens, additional states, or a smaller scope), update the plan name and the requested changes will be applied before design generation.
