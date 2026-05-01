@@ -2,6 +2,18 @@ uploads = []
 outputs = []
 
 [[generated]]
+id = "kWFSPuCNHIlUd1f0SU6GB"
+uri = "file://artifacts/mobile/assets/images/icon.png"
+type = "image"
+title = "technician jobs app icon"
+
+[[generated]]
+id = "cxOT65uQikYAFQcopOIrz"
+uri = "file://artifacts/mobile/assets/images/car_placeholder.png"
+type = "image"
+title = "car workshop placeholder"
+
+[[generated]]
 id = "mzihuHAwZfZsK9C4ehc0o"
 uri = "file://artifacts/mobile/assets/images/car_hero.png"
 type = "image"
