@@ -1,10 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Animated,
-  Dimensions,
   Image,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,7 +19,6 @@ import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 const PIN_LENGTH = 4;
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 const NUMPAD = [
   ["1", "2", "3"],
@@ -34,6 +33,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { attemptPin } = useAuth();
 
+  const { width: winW, height: winH } = useWindowDimensions();
   const [pin, setPin] = useState<string[]>([]);
   const [error, setError] = useState(false);
 
@@ -54,6 +54,8 @@ export default function LoginScreen() {
       Animated.timing(errorFade, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => setError(false));
   };
+
+  const isPortrait = winH > winW;
 
   const handleKey = async (key: string) => {
     if (key === "⌫") {
@@ -96,9 +98,7 @@ export default function LoginScreen() {
     }
   };
 
-  const isPortrait = SCREEN_H > SCREEN_W;
-
-  if (!isPortrait || Platform.OS === "web") {
+  if (!isPortrait) {
     return <LandscapeLogin pin={pin} error={error} shakeAnim={shakeAnim} errorFade={errorFade} handleKey={handleKey} colors={colors} insets={insets} />;
   }
 
