@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@/context/AuthContext";
 import { useJobs } from "@/context/JobsContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -32,6 +33,7 @@ export function AppHeader({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { unreadCount } = useJobs();
+  const { userCode } = useAuth();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -72,7 +74,7 @@ export function AppHeader({
             </Pressable>
           )}
           <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <Text style={styles.avatarText}>MR</Text>
+            <Text style={styles.avatarText}>{userCode}</Text>
           </View>
         </View>
       </View>

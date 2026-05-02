@@ -170,9 +170,9 @@ export default function JobDetailScreen() {
     { key: "inspections", label: "Inspections" },
   ];
 
-  // Parts summary across all tasks
-  const totalParts = job.tasks.reduce((s, t) => s + t.parts.length, 0);
-  const pendingParts = job.tasks.reduce((s, t) => s + t.parts.filter((p) => p.status !== "received").length, 0);
+  // Parts summary across all tasks (null-safe for legacy data)
+  const totalParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).length, 0);
+  const pendingParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).filter((p) => p.status !== "received").length, 0);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -291,7 +291,7 @@ export default function JobDetailScreen() {
                 { label: "Done", value: `${job.tasks.filter((t) => t.status === "done").length}/${job.tasks.length}` },
                 { label: "Worked", value: `${job.workedHours.toFixed(1)}h` },
                 { label: "Assigned", value: `${job.totalEstimatedHours}h` },
-                { label: "Parts", value: `${job.tasks.reduce((s, t) => s + t.parts.filter((p) => p.status === "received").length, 0)}/${totalParts}` },
+                { label: "Parts", value: `${job.tasks.reduce((s, t) => s + (t.parts ?? []).filter((p) => p.status === "received").length, 0)}/${totalParts}` },
               ].map(({ label, value }, i, arr) => (
                 <React.Fragment key={label}>
                   <View style={styles.taskSummaryItem}>

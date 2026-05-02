@@ -300,8 +300,9 @@ export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) 
     ? Math.min(100, Math.round((task.workedHours / task.estimatedHours) * 100))
     : 0;
 
-  const pendingParts = task.parts.filter((p) => p.status !== "received").length;
-  const allPartsReceived = task.parts.length > 0 && pendingParts === 0;
+  const taskParts = task.parts ?? [];
+  const pendingParts = taskParts.filter((p) => p.status !== "received").length;
+  const allPartsReceived = taskParts.length > 0 && pendingParts === 0;
 
   const handleMarkDone = () => {
     if (pendingParts > 0) {
@@ -406,7 +407,7 @@ export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) 
       </Pressable>
 
       {/* Parts alert strip */}
-      {task.parts.length > 0 && !allPartsReceived && (
+      {taskParts.length > 0 && !allPartsReceived && (
         <Pressable
           onPress={() => { setExpanded(true); setShowParts(true); }}
           style={[styles.partsAlert, { backgroundColor: pendingParts > 0 ? "#fef3c7" : "#e0f2fe" }]}
@@ -459,13 +460,13 @@ export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) 
           >
             <Feather name="package" size={14} color={allPartsReceived ? colors.success : pendingParts > 0 ? "#d97706" : colors.primary} />
             <Text style={[styles.partsToggleText, { color: allPartsReceived ? colors.success : pendingParts > 0 ? "#d97706" : colors.primary }]}>
-              Parts & Materials ({task.parts.length})
+              Parts & Materials ({taskParts.length})
               {pendingParts > 0 ? ` · ${pendingParts} pending` : allPartsReceived ? " · All received ✓" : ""}
             </Text>
             <Feather name={showParts ? "chevron-up" : "chevron-down"} size={14} color={allPartsReceived ? colors.success : pendingParts > 0 ? "#d97706" : colors.primary} />
           </Pressable>
 
-          {showParts && <PartsPanel parts={task.parts} jobId={jobId} taskId={task.id} />}
+          {showParts && <PartsPanel parts={taskParts} jobId={jobId} taskId={task.id} />}
 
           {/* Note history */}
           {task.notes.length > 0 && (
@@ -559,7 +560,7 @@ export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) 
           <Text style={[styles.dot, { color: colors.mutedForeground }]}>·</Text>
           <Pressable onPress={() => { setExpanded(true); setShowParts(true); }}>
             <Text style={[styles.linkText, { color: colors.primary }]}>
-              Parts ({task.parts.filter((p) => p.status !== "received").length} pending)
+              Parts ({taskParts.filter((p) => p.status !== "received").length} pending)
             </Text>
           </Pressable>
         </View>

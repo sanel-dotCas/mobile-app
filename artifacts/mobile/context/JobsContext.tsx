@@ -439,12 +439,22 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem("jobs").then((data) => {
-      if (data) { try { dispatch({ type: "SET_JOBS", payload: JSON.parse(data) }); } catch {} }
+    AsyncStorage.getItem("jobs_v2").then((data) => {
+      if (data) {
+        try {
+          const parsed: Job[] = JSON.parse(data);
+          // Migrate: ensure every task has a parts array
+          const migrated = parsed.map((job) => ({
+            ...job,
+            tasks: job.tasks.map((t) => ({ ...t, parts: t.parts ?? [] })),
+          }));
+          dispatch({ type: "SET_JOBS", payload: migrated });
+        } catch {}
+      }
     });
   }, []);
 
-  useEffect(() => { AsyncStorage.setItem("jobs", JSON.stringify(state.jobs)); }, [state.jobs]);
+  useEffect(() => { AsyncStorage.setItem("jobs_v2", JSON.stringify(state.jobs)); }, [state.jobs]);
 
   const clockIn = useCallback((jobId: string, taskId: string) => dispatch({ type: "CLOCK_IN", payload: { jobId, taskId } }), []);
   const clockOut = useCallback((jobId: string, taskId: string) => dispatch({ type: "CLOCK_OUT", payload: { jobId, taskId } }), []);

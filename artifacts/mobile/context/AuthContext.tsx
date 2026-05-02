@@ -19,11 +19,13 @@ const CREDENTIALS: Record<string, UserRole> = {
 
 const AUTH_KEY = "igmma_authed";
 const ROLE_KEY = "igmma_role";
+const CODE_KEY = "igmma_code";
 
 interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   role: UserRole;
+  userCode: string;
   attemptLogin: (letters: string, pin: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -34,14 +36,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [role, setRole] = useState<UserRole>("technician");
+  const [userCode, setUserCode] = useState("MR");
 
   useEffect(() => {
     Promise.all([
       AsyncStorage.getItem(AUTH_KEY),
       AsyncStorage.getItem(ROLE_KEY),
-    ]).then(([auth, savedRole]) => {
+      AsyncStorage.getItem(CODE_KEY),
+    ]).then(([auth, savedRole, savedCode]) => {
       setIsAuthenticated(auth === "true");
       setRole((savedRole as UserRole) ?? "technician");
+      setUserCode(savedCode ?? "MR");
       setIsLoading(false);
     });
   }, []);
@@ -51,9 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const key = (letters + pin).toUpperCase();
       const matchedRole = CREDENTIALS[key];
       if (matchedRole) {
+        const code = letters.toUpperCase();
         await AsyncStorage.setItem(AUTH_KEY, "true");
         await AsyncStorage.setItem(ROLE_KEY, matchedRole);
+        await AsyncStorage.setItem(CODE_KEY, code);
         setRole(matchedRole);
+        setUserCode(code);
         setIsAuthenticated(true);
         return true;
       }
@@ -63,14 +71,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await AsyncStorage.multiRemove([AUTH_KEY, ROLE_KEY]);
+    await AsyncStorage.multiRemove([AUTH_KEY, ROLE_KEY, CODE_KEY]);
     setIsAuthenticated(false);
     setRole("technician");
+    setUserCode("MR");
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, isLoading, role, attemptLogin, logout }}
+      value={{ isAuthenticated, isLoading, role, userCode, attemptLogin, logout }}
     >
       {children}
     </AuthContext.Provider>
