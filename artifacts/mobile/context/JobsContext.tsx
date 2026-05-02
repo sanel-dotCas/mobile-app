@@ -7,7 +7,7 @@ import React, {
   useReducer,
 } from "react";
 
-export type JobStatus = "pending" | "in_progress" | "completed";
+export type JobStatus = "pending" | "in_progress" | "on_hold" | "completed";
 export type TaskStatus = "pending" | "in_progress" | "done";
 export type LaborType = "ELECTRICAL" | "MECHANICAL" | "BODY" | "PAINT" | "DIAGNOSTIC" | "OTHER";
 export type PartStatus = "pending" | "ordered" | "received";
@@ -75,6 +75,7 @@ export interface Technician {
   id: string; name: string; role: string; avatar: string;
   currentJobId: string | null; status: "active" | "idle" | "break" | "absent";
   totalHoursToday: number; efficiency: number;
+  weekHoursBooked: number; monthHoursBooked: number;
 }
 
 interface DashboardStats {
@@ -117,14 +118,16 @@ type Action =
   | { type: "ADVANCE_STAGE"; payload: { jobId: string; nextStageId: string; stageName: string } }
   | { type: "ADD_DELAY_NOTIFICATION"; payload: { jobId: string; estimateNumber: string; stageName: string; stageId: string; overdueHours: number } }
   | { type: "ADD_INSPECTION"; payload: { jobId: string; item: InspectionItem } }
-  | { type: "UPDATE_INSPECTION"; payload: { jobId: string; itemId: string; status: InspectionItem["status"]; notes: string } };
+  | { type: "UPDATE_INSPECTION"; payload: { jobId: string; itemId: string; status: InspectionItem["status"]; notes: string } }
+  | { type: "HOLD_JOB"; payload: { jobId: string } }
+  | { type: "UNHOLD_JOB"; payload: { jobId: string } };
 
 const INITIAL_TECHNICIANS: Technician[] = [
-  { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92 },
-  { id: "tech-002", name: "James Wilson", role: "Technician", avatar: "JW", currentJobId: "job-005", status: "active", totalHoursToday: 4.0, efficiency: 78 },
-  { id: "tech-003", name: "Carlos Mendez", role: "Junior Technician", avatar: "CM", currentJobId: null, status: "idle", totalHoursToday: 3.2, efficiency: 65 },
-  { id: "tech-004", name: "Ahmed Hassan", role: "Technician", avatar: "AH", currentJobId: "job-002", status: "break", totalHoursToday: 6.1, efficiency: 88 },
-  { id: "tech-005", name: "David Park", role: "Senior Technician", avatar: "DP", currentJobId: null, status: "absent", totalHoursToday: 0, efficiency: 0 },
+  { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128 },
+  { id: "tech-002", name: "James Wilson", role: "Technician", avatar: "JW", currentJobId: "job-005", status: "active", totalHoursToday: 4.0, efficiency: 78, weekHoursBooked: 24, monthHoursBooked: 98 },
+  { id: "tech-003", name: "Carlos Mendez", role: "Junior Technician", avatar: "CM", currentJobId: null, status: "idle", totalHoursToday: 3.2, efficiency: 65, weekHoursBooked: 18, monthHoursBooked: 72 },
+  { id: "tech-004", name: "Ahmed Hassan", role: "Technician", avatar: "AH", currentJobId: "job-002", status: "break", totalHoursToday: 6.1, efficiency: 88, weekHoursBooked: 38, monthHoursBooked: 152 },
+  { id: "tech-005", name: "David Park", role: "Senior Technician", avatar: "DP", currentJobId: null, status: "absent", totalHoursToday: 0, efficiency: 0, weekHoursBooked: 0, monthHoursBooked: 0 },
 ];
 
 // Timestamps relative to now so delay detection fires immediately for demo
@@ -316,6 +319,46 @@ const INITIAL_JOBS: Job[] = [
     ],
     notes: [], inspections: [],
   },
+  {
+    id: "job-006", estimateNumber: "#00115", licensePlate: "MNO234",
+    vehicle: "Mazda 6 (2020)", serviceAdvisor: "Rachel Green",
+    totalEstimatedHours: 2.5, workedHours: 0.5,
+    customerNotes: "Intermittent ABS warning. Also reports front-left wheel bearing noise at speed.",
+    odometer: 52300,
+    appointmentDate: "2026-05-02T10:00:00Z",
+    status: "on_hold", thumbnail: null, progress: 20, assignedTechnicianId: "tech-003",
+    currentStageId: "stage-002",
+    stageHistory: [
+      { stageId: "stage-001", enteredAt: hoursAgo(6) },
+      { stageId: "stage-002", enteredAt: hoursAgo(5) },
+    ],
+    tasks: [
+      {
+        id: "task-010", title: "ABS System Diagnosis", type: "Inspection", laborType: "ELECTRICAL",
+        status: "in_progress", estimatedHours: 1.5, workedHours: 0.5,
+        description: "OBD-II scan + ABS sensor resistance test on all four corners",
+        technician: "Carlos Mendez", notes: [], clockedIn: false, clockInStart: null, elapsedSeconds: 1800,
+        parts: [
+          { id: "part-011", name: "ABS Wheel Speed Sensor FR", partNumber: "ABS-MAZ6-FR", quantity: 1, unit: "pcs", status: "ordered", price: 65.00 },
+        ],
+      },
+      {
+        id: "task-011", title: "Wheel Bearing Inspection", type: "Inspection", laborType: "MECHANICAL",
+        status: "pending", estimatedHours: 1.0, workedHours: 0.0,
+        description: "Inspect front-left wheel bearing for play, roughness, and noise",
+        technician: "Carlos Mendez", notes: [], clockedIn: false, clockInStart: null, elapsedSeconds: 0,
+        parts: [],
+      },
+    ],
+    notes: [
+      { id: "jn-007", author: "Rachel Green", text: "Job on hold — ABS sensor on order, ETA 2 days. Customer has been notified and agreed to wait.", timestamp: "2026-05-02T10:30:00Z", subject: "On Hold — Parts Awaiting" },
+    ],
+    inspections: [
+      { id: "ins-m01", title: "ABS Sensor Visual (All 4)", status: "fail", estimatedHours: 0.25, notes: "Front right sensor corroded — replacement ordered" },
+      { id: "ins-m02", title: "Brake System General Check", status: "pass", estimatedHours: 0.25, notes: "Pads and rotors in good condition — no replacement needed" },
+      { id: "ins-m03", title: "Front Left Wheel Bearing Play", status: "pending", estimatedHours: 0.25, notes: "" },
+    ],
+  },
 ];
 
 const INITIAL_STATS: DashboardStats = {
@@ -489,6 +532,12 @@ function reducer(state: JobsState, action: Action): JobsState {
       };
     }
 
+    case "HOLD_JOB":
+      return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, status: "on_hold" as JobStatus })) };
+
+    case "UNHOLD_JOB":
+      return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, status: (j.tasks.some((t) => t.status !== "pending") ? "in_progress" : "pending") as JobStatus })) };
+
     case "ADD_INSPECTION":
       return {
         ...state,
@@ -556,6 +605,8 @@ interface JobsContextValue {
   addDelayNotification: (jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) => void;
   addInspection: (jobId: string, item: Omit<InspectionItem, "id">) => void;
   updateInspection: (jobId: string, itemId: string, status: InspectionItem["status"], notes: string) => void;
+  holdJob: (jobId: string) => void;
+  unholdJob: (jobId: string) => void;
   unreadCount: number;
 }
 
@@ -637,10 +688,13 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const updateInspection = useCallback((jobId: string, itemId: string, status: InspectionItem["status"], notes: string) =>
     dispatch({ type: "UPDATE_INSPECTION", payload: { jobId, itemId, status, notes } }), []);
 
+  const holdJob = useCallback((jobId: string) => dispatch({ type: "HOLD_JOB", payload: { jobId } }), []);
+  const unholdJob = useCallback((jobId: string) => dispatch({ type: "UNHOLD_JOB", payload: { jobId } }), []);
+
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, holdJob, unholdJob, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );

@@ -11,13 +11,14 @@ interface StatusPillProps {
 export function StatusPill({ status, size = "sm" }: StatusPillProps) {
   const colors = useColors();
 
-  const config = {
-    pending: { bg: colors.warningLight, text: colors.warning, label: "Pending" },
-    in_progress: { bg: colors.infoLight, text: colors.info, label: "In Progress" },
-    completed: { bg: colors.successLight, text: colors.success, label: "Completed" },
-    done: { bg: colors.successLight, text: colors.success, label: "Done" },
-    pass: { bg: colors.successLight, text: colors.success, label: "Pass" },
-    fail: { bg: "#fee2e2", text: colors.destructive, label: "Fail" },
+  const config: Record<string, { bg: string; text: string; label: string }> = {
+    pending:     { bg: colors.warningLight,  text: colors.warning,     label: "Pending"     },
+    in_progress: { bg: colors.infoLight,     text: colors.info,        label: "In Progress" },
+    on_hold:     { bg: "#fef3c7",            text: "#d97706",          label: "On Hold"     },
+    completed:   { bg: colors.successLight,  text: colors.success,     label: "Completed"   },
+    done:        { bg: colors.successLight,  text: colors.success,     label: "Done"        },
+    pass:        { bg: colors.successLight,  text: colors.success,     label: "Pass"        },
+    fail:        { bg: "#fee2e2",            text: colors.destructive, label: "Fail"        },
   };
 
   const { bg, text, label } = config[status] ?? config.pending;
@@ -31,11 +32,6 @@ export function StatusPill({ status, size = "sm" }: StatusPillProps) {
 }
 
 const styles = StyleSheet.create({
-  pill: {
-    borderRadius: 20,
-    alignSelf: "flex-start",
-  },
-  text: {
-    fontFamily: "Inter_600SemiBold",
-  },
+  pill: { borderRadius: 20, alignSelf: "flex-start" },
+  text: { fontFamily: "Inter_600SemiBold" },
 });
