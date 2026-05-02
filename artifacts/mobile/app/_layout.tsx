@@ -5,7 +5,6 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { Feather } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -106,7 +105,10 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    ...Feather.font,
+    // Load Feather icon font locally so Metro bundles it and Font.isLoaded('feather') returns
+    // true before the Icon component mounts — prevents the blank-icon flash on Android.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    feather: require("../assets/fonts/Feather.ttf"),
   });
 
   useEffect(() => {
