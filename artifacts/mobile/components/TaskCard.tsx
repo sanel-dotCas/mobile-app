@@ -25,6 +25,7 @@ interface TaskCardProps {
   jobId: string;
   onClockIn: () => void;
   onClockOut: () => void;
+  showClockIn?: boolean;
 }
 
 const LABOR_TYPE_CFG: Record<string, { bg: string; text: string; border: string; icon: string }> = {
@@ -284,7 +285,7 @@ function PartsPanel({ parts, jobId, taskId }: { parts: Part[]; jobId: string; ta
 }
 
 /* ─── Main TaskCard ───────────────────────────────────────── */
-export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) {
+export function TaskCard({ task, jobId, onClockIn, onClockOut, showClockIn = true }: TaskCardProps) {
   const colors = useColors();
   const { addTaskNote, markTaskDone } = useJobs();
   const [expanded, setExpanded] = useState(false);
@@ -379,7 +380,7 @@ export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) 
             {task.workedHours.toFixed(2)} Worked Hrs
           </Text>
         </View>
-        {task.status !== "done" && (
+        {task.status !== "done" && showClockIn && (
           <Pressable
             onPress={() => {
               if (task.clockedIn) { onClockOut(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }
@@ -421,7 +422,7 @@ export function TaskCard({ task, jobId, onClockIn, onClockOut }: TaskCardProps) 
       )}
 
       {/* Active timer */}
-      {task.clockedIn && (
+      {task.clockedIn && showClockIn && (
         <View style={[styles.timerBanner, { backgroundColor: colors.accent }]}>
           <View style={styles.timerLeft}>
             <View style={[styles.timerDot, { backgroundColor: colors.primary }]} />

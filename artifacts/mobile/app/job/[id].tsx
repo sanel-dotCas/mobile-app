@@ -514,6 +514,7 @@ export default function JobDetailScreen() {
               <TaskCard key={task.id} task={task} jobId={job.id}
                 onClockIn={() => handleClockIn(task.id, task.title)}
                 onClockOut={() => handleClockOut(task.id)}
+                showClockIn={role === "technician"}
               />
             ))}
           </View>

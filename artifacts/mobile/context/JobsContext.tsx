@@ -98,6 +98,8 @@ interface JobsState {
   isOffline: boolean; notifications: Notification[];
   timeRecords: TimeRecord[]; activeShift: TimeRecord | null;
   technicians: Technician[];
+  activeBreak: boolean;
+  activeNonProd: { taskType: string; elapsedSeconds: number } | null;
 }
 
 type Action =
@@ -124,7 +126,11 @@ type Action =
   | { type: "UPDATE_INSPECTION"; payload: { jobId: string; itemId: string; status: InspectionItem["status"]; notes: string } }
   | { type: "HOLD_JOB"; payload: { jobId: string } }
   | { type: "UNHOLD_JOB"; payload: { jobId: string } }
-  | { type: "LOAD_INSPECTION_TEMPLATE"; payload: { jobId: string; items: InspectionItem[] } };
+  | { type: "LOAD_INSPECTION_TEMPLATE"; payload: { jobId: string; items: InspectionItem[] } }
+  | { type: "START_BREAK" }
+  | { type: "END_BREAK" }
+  | { type: "START_NONPROD"; payload: { taskType: string } }
+  | { type: "END_NONPROD" };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128, specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"], completedJobs: 312 },
@@ -466,7 +472,8 @@ function reducer(state: JobsState, action: Action): JobsState {
       return {
         ...state,
         jobs: state.jobs.map((job) => ({ ...job, tasks: job.tasks.map((t) => !t.clockedIn ? t : { ...t, elapsedSeconds: t.elapsedSeconds + 1 }) })),
-        activeShift: state.activeShift ? { ...state.activeShift, totalSeconds: state.activeShift.totalSeconds + 1 } : null,
+        activeShift: state.activeShift && !state.activeBreak ? { ...state.activeShift, totalSeconds: state.activeShift.totalSeconds + 1 } : state.activeShift,
+        activeNonProd: state.activeNonProd ? { ...state.activeNonProd, elapsedSeconds: state.activeNonProd.elapsedSeconds + 1 } : null,
       };
 
     case "START_SHIFT": {
@@ -478,9 +485,35 @@ function reducer(state: JobsState, action: Action): JobsState {
 
     case "END_SHIFT": {
       if (!state.activeShift) return state;
-      const ended: TimeRecord = { ...state.activeShift, shiftEnd: new Date().toISOString(), status: "completed" };
-      return { ...state, activeShift: null, timeRecords: state.timeRecords.map((r) => r.id === ended.id ? ended : r) };
+      const closedBreaks = state.activeShift.breaks.map((b) =>
+        b.end === null ? { ...b, end: new Date().toISOString() } : b
+      );
+      const ended: TimeRecord = { ...state.activeShift, shiftEnd: new Date().toISOString(), status: "completed", breaks: closedBreaks };
+      return { ...state, activeShift: null, activeBreak: false, activeNonProd: null, timeRecords: state.timeRecords.map((r) => r.id === ended.id ? ended : r) };
     }
+
+    case "START_BREAK": {
+      if (!state.activeShift) return state;
+      const now = new Date().toISOString();
+      const updatedShift = { ...state.activeShift, breaks: [...state.activeShift.breaks, { start: now, end: null }] };
+      return { ...state, activeBreak: true, activeShift: updatedShift, timeRecords: state.timeRecords.map((r) => r.id === updatedShift.id ? updatedShift : r) };
+    }
+
+    case "END_BREAK": {
+      if (!state.activeShift) return state;
+      const now = new Date().toISOString();
+      const updatedBreaks = state.activeShift.breaks.map((b, i) =>
+        i === state.activeShift!.breaks.length - 1 && b.end === null ? { ...b, end: now } : b
+      );
+      const updatedShift = { ...state.activeShift, breaks: updatedBreaks };
+      return { ...state, activeBreak: false, activeShift: updatedShift, timeRecords: state.timeRecords.map((r) => r.id === updatedShift.id ? updatedShift : r) };
+    }
+
+    case "START_NONPROD":
+      return { ...state, activeNonProd: { taskType: action.payload.taskType, elapsedSeconds: 0 } };
+
+    case "END_NONPROD":
+      return { ...state, activeNonProd: null };
 
     case "ASSIGN_JOB":
       return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, assignedTechnicianId: action.payload.technicianId })) };
@@ -610,6 +643,10 @@ interface JobsContextValue {
   getJob: (id: string) => Job | undefined;
   startShift: () => void;
   endShift: () => void;
+  startBreak: () => void;
+  endBreak: () => void;
+  startNonProd: (taskType: string) => void;
+  endNonProd: () => void;
   assignJob: (jobId: string, technicianId: string) => void;
   receivePart: (jobId: string, taskId: string, partId: string) => void;
   addPart: (jobId: string, taskId: string, part: Omit<Part, "id">) => void;
@@ -631,6 +668,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     jobs: INITIAL_JOBS, stats: INITIAL_STATS, activeClockIn: null,
     isOffline: false, notifications: INITIAL_NOTIFICATIONS,
     timeRecords: [], activeShift: null, technicians: INITIAL_TECHNICIANS,
+    activeBreak: false, activeNonProd: null,
   });
 
   useEffect(() => {
@@ -677,6 +715,10 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const getJob = useCallback((id: string) => state.jobs.find((j) => j.id === id), [state.jobs]);
   const startShift = useCallback(() => dispatch({ type: "START_SHIFT" }), []);
   const endShift = useCallback(() => dispatch({ type: "END_SHIFT" }), []);
+  const startBreak = useCallback(() => dispatch({ type: "START_BREAK" }), []);
+  const endBreak = useCallback(() => dispatch({ type: "END_BREAK" }), []);
+  const startNonProd = useCallback((taskType: string) => dispatch({ type: "START_NONPROD", payload: { taskType } }), []);
+  const endNonProd = useCallback(() => dispatch({ type: "END_NONPROD" }), []);
   const assignJob = useCallback((jobId: string, technicianId: string) => dispatch({ type: "ASSIGN_JOB", payload: { jobId, technicianId } }), []);
 
   const receivePart = useCallback((jobId: string, taskId: string, partId: string) =>
@@ -736,7 +778,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );
