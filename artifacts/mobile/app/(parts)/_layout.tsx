@@ -62,10 +62,24 @@ export default function PartsLayout() {
         }}
       />
       <Tabs.Screen
+        name="sales"
+        options={{
+          title: "Sales",
+          tabBarIcon: ({ color }) => <Feather name="shopping-cart" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="orders"
         options={{
           title: "Orders",
           tabBarIcon: ({ color }) => <Feather name="inbox" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="requests"
+        options={{
+          title: "Requests",
+          tabBarIcon: ({ color }) => <Feather name="tool" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -75,13 +89,7 @@ export default function PartsLayout() {
           tabBarIcon: ({ color }) => <Feather name="clipboard" size={22} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="suggestions"
-        options={{
-          title: "Suggest",
-          tabBarIcon: ({ color }) => <Feather name="zap" size={22} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="suggestions" options={{ href: null }} />
     </Tabs>
   );
 }

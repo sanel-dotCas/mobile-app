@@ -28,7 +28,11 @@ interface DashboardStats {
   outOfStockCount: number;
   pendingOrders: number;
   inProgressCounts: number;
+  pendingRoRequests: number;
+  pendingTransfers: number;
+  todaySalesCount: number;
   lastCountDate: string | null;
+  criticalItems: Array<{ id: number; partNumber: string; name: string; binCode: string | null }>;
 }
 
 interface RecentOrder {
@@ -141,14 +145,6 @@ export default function PartsDashboard() {
                 <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Total Parts</Text>
               </View>
               <Pressable
-                style={[styles.kpiCard, { backgroundColor: stats?.lowStockCount ? "#fef3c7" : colors.card, borderColor: stats?.lowStockCount ? "#fde68a" : colors.border }]}
-                onPress={() => router.push("/(parts)/inventory?filter=lowStock")}
-              >
-                <Feather name="trending-down" size={20} color={stats?.lowStockCount ? "#d97706" : colors.mutedForeground} />
-                <Text style={[styles.kpiValue, { color: stats?.lowStockCount ? "#d97706" : colors.foreground }]}>{stats?.lowStockCount ?? 0}</Text>
-                <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Low Stock</Text>
-              </Pressable>
-              <Pressable
                 style={[styles.kpiCard, { backgroundColor: stats?.outOfStockCount ? "#fef2f2" : colors.card, borderColor: stats?.outOfStockCount ? "#fecaca" : colors.border }]}
                 onPress={() => router.push("/(parts)/inventory?filter=outOfStock")}
               >
@@ -164,30 +160,49 @@ export default function PartsDashboard() {
                 <Text style={[styles.kpiValue, { color: colors.foreground }]}>{stats?.pendingOrders ?? 0}</Text>
                 <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Pending Orders</Text>
               </Pressable>
+              <Pressable
+                style={[styles.kpiCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => router.push("/(parts)/sales")}
+              >
+                <Feather name="shopping-cart" size={20} color="#059669" />
+                <Text style={[styles.kpiValue, { color: colors.foreground }]}>{stats?.todaySalesCount ?? 0}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Sales Today</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.kpiCard, { backgroundColor: stats?.pendingRoRequests ? "#fef3c7" : colors.card, borderColor: stats?.pendingRoRequests ? "#fde68a" : colors.border }]}
+                onPress={() => router.push("/(parts)/requests")}
+              >
+                <Feather name="tool" size={20} color={stats?.pendingRoRequests ? "#d97706" : colors.mutedForeground} />
+                <Text style={[styles.kpiValue, { color: stats?.pendingRoRequests ? "#d97706" : colors.foreground }]}>{stats?.pendingRoRequests ?? 0}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>RO Requests</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.kpiCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => router.push("/(parts)/requests")}
+              >
+                <Feather name="shuffle" size={20} color="#7c3aed" />
+                <Text style={[styles.kpiValue, { color: colors.foreground }]}>{stats?.pendingTransfers ?? 0}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Transfers</Text>
+              </Pressable>
             </View>
 
             <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 20 }]}>Quick Actions</Text>
             <View style={styles.quickActions}>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "#7c3aed" }]}
-                onPress={() => router.push("/(parts)/inventory?scan=1")}
-              >
+              <Pressable style={[styles.actionBtn, { backgroundColor: "#7c3aed" }]} onPress={() => router.push("/(parts)/inventory?scan=1")}>
                 <Feather name="search" size={18} color="#fff" />
-                <Text style={styles.actionBtnText}>Scan / Look Up</Text>
+                <Text style={styles.actionBtnText}>Scan</Text>
               </Pressable>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "#1d4ed8" }]}
-                onPress={() => router.push("/(parts)/orders")}
-              >
+              <Pressable style={[styles.actionBtn, { backgroundColor: "#059669" }]} onPress={() => router.push("/(parts)/sales")}>
+                <Feather name="shopping-cart" size={18} color="#fff" />
+                <Text style={styles.actionBtnText}>New Sale</Text>
+              </Pressable>
+              <Pressable style={[styles.actionBtn, { backgroundColor: "#1d4ed8" }]} onPress={() => router.push("/(parts)/orders")}>
                 <Feather name="download" size={18} color="#fff" />
-                <Text style={styles.actionBtnText}>Receive Order</Text>
+                <Text style={styles.actionBtnText}>Receive</Text>
               </Pressable>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "#059669" }]}
-                onPress={() => router.push("/(parts)/count")}
-              >
-                <Feather name="clipboard" size={18} color="#fff" />
-                <Text style={styles.actionBtnText}>Start Count</Text>
+              <Pressable style={[styles.actionBtn, { backgroundColor: "#d97706" }]} onPress={() => router.push("/(parts)/requests")}>
+                <Feather name="tool" size={18} color="#fff" />
+                <Text style={styles.actionBtnText}>Requests</Text>
               </Pressable>
             </View>
 
