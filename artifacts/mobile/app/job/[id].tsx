@@ -747,8 +747,8 @@ export default function JobDetailScreen() {
         )}
       </ScrollView>
 
-      {/* FAB */}
-      {!activeClockedTask && job.status !== "completed" && (
+      {/* FAB — technician only */}
+      {role === "technician" && !activeClockedTask && job.status !== "completed" && (
         <View style={[styles.floatingCta, { bottom: bottomPad + 16 }]}>
           <Pressable
             onPress={() => {
