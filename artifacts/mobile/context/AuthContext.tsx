@@ -7,13 +7,24 @@ import React, {
   useState,
 } from "react";
 
-const CORRECT_PIN = "1234";
+export type UserRole = "technician" | "supervisor";
+
+// Format: 2 letters + 4 digits  e.g. "MR1234" or "SV5678"
+const CREDENTIALS: Record<string, UserRole> = {
+  "MR1234": "technician",
+  "JW1234": "technician",
+  "SV5678": "supervisor",
+  "AD0000": "supervisor",
+};
+
 const AUTH_KEY = "igmma_authed";
+const ROLE_KEY = "igmma_role";
 
 interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
-  attemptPin: (pin: string) => Promise<boolean>;
+  role: UserRole;
+  attemptLogin: (letters: string, pin: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -22,30 +33,45 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [role, setRole] = useState<UserRole>("technician");
 
   useEffect(() => {
-    AsyncStorage.getItem(AUTH_KEY).then((val) => {
-      setIsAuthenticated(val === "true");
+    Promise.all([
+      AsyncStorage.getItem(AUTH_KEY),
+      AsyncStorage.getItem(ROLE_KEY),
+    ]).then(([auth, savedRole]) => {
+      setIsAuthenticated(auth === "true");
+      setRole((savedRole as UserRole) ?? "technician");
       setIsLoading(false);
     });
   }, []);
 
-  const attemptPin = useCallback(async (pin: string): Promise<boolean> => {
-    if (pin === CORRECT_PIN) {
-      await AsyncStorage.setItem(AUTH_KEY, "true");
-      setIsAuthenticated(true);
-      return true;
-    }
-    return false;
-  }, []);
+  const attemptLogin = useCallback(
+    async (letters: string, pin: string): Promise<boolean> => {
+      const key = (letters + pin).toUpperCase();
+      const matchedRole = CREDENTIALS[key];
+      if (matchedRole) {
+        await AsyncStorage.setItem(AUTH_KEY, "true");
+        await AsyncStorage.setItem(ROLE_KEY, matchedRole);
+        setRole(matchedRole);
+        setIsAuthenticated(true);
+        return true;
+      }
+      return false;
+    },
+    []
+  );
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(AUTH_KEY);
+    await AsyncStorage.multiRemove([AUTH_KEY, ROLE_KEY]);
     setIsAuthenticated(false);
+    setRole("technician");
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, attemptPin, logout }}>
+    <AuthContext.Provider
+      value={{ isAuthenticated, isLoading, role, attemptLogin, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

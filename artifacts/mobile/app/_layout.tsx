@@ -16,21 +16,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/AuthContext";
 import { JobsProvider } from "@/context/JobsContext";
+import { LanguageProvider } from "@/context/LanguageContext";
 
 SplashScreen.preventAutoHideAsync();
-
 const queryClient = new QueryClient();
-
-function RootLayoutNav() {
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="job/[id]" options={{ headerShown: false, presentation: "card" }} />
-      <Stack.Screen name="notifications" options={{ headerShown: false, presentation: "card" }} />
-    </Stack>
-  );
-}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -41,9 +30,7 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
+    if (fontsLoaded || fontError) SplashScreen.hideAsync();
   }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) return null;
@@ -52,15 +39,23 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <JobsProvider>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
-            </JobsProvider>
-          </AuthProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <JobsProvider>
+                <GestureHandlerRootView>
+                  <KeyboardProvider>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="login" />
+                      <Stack.Screen name="(tabs)" />
+                      <Stack.Screen name="(supervisor)" />
+                      <Stack.Screen name="job/[id]" options={{ presentation: "card" }} />
+                      <Stack.Screen name="notifications" options={{ presentation: "card" }} />
+                    </Stack>
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </JobsProvider>
+            </AuthProvider>
+          </LanguageProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

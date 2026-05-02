@@ -1,9 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -15,13 +17,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import { ClockInModal } from "@/components/ClockInModal";
+import { ProgressBar } from "@/components/ProgressBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TaskCard } from "@/components/TaskCard";
-import { ProgressBar } from "@/components/ProgressBar";
+import type { InspectionItem, NoteAttachment } from "@/context/JobsContext";
 import { useJobs } from "@/context/JobsContext";
 import { useColors } from "@/hooks/useColors";
-import type { InspectionItem } from "@/context/JobsContext";
-import { ClockInModal } from "@/components/ClockInModal";
 
 type TabKey = "tasks" | "notes" | "inspections";
 
@@ -41,34 +43,11 @@ function MetaItem({ icon, label, value }: { icon: string; label: string; value: 
 }
 
 const metaStyles = StyleSheet.create({
-  item: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    width: "48%",
-    marginBottom: 12,
-  },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    marginTop: 2,
-  },
-  textBlock: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    marginBottom: 1,
-  },
-  value: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
+  item: { flexDirection: "row", alignItems: "flex-start", gap: 8, width: "48%", marginBottom: 12 },
+  iconCircle: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 },
+  textBlock: { flex: 1 },
+  label: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 1 },
+  value: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 });
 
 function InspectionCard({ item }: { item: InspectionItem }) {
@@ -79,9 +58,7 @@ function InspectionCard({ item }: { item: InspectionItem }) {
         <View style={inspStyles.left}>
           <Text style={[inspStyles.title, { color: colors.foreground }]}>{item.title}</Text>
           <Text style={[inspStyles.hours, { color: colors.mutedForeground }]}>{item.estimatedHours}h estimated</Text>
-          {item.notes ? (
-            <Text style={[inspStyles.notes, { color: colors.mutedForeground }]}>{item.notes}</Text>
-          ) : null}
+          {item.notes ? <Text style={[inspStyles.notes, { color: colors.mutedForeground }]}>{item.notes}</Text> : null}
         </View>
         <StatusPill status={item.status} size="md" />
       </View>
@@ -90,36 +67,21 @@ function InspectionCard({ item }: { item: InspectionItem }) {
 }
 
 const inspStyles = StyleSheet.create({
-  card: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    marginBottom: 8,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  left: {
-    flex: 1,
-    gap: 3,
-  },
-  title: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  hours: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-  },
-  notes: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    fontStyle: "italic",
-  },
+  card: { borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
+  row: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  left: { flex: 1, gap: 3 },
+  title: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  hours: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  notes: { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
 });
+
+function formatElapsed(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}m ${s.toString().padStart(2, "0")}s`;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -131,6 +93,9 @@ export default function JobDetailScreen() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("tasks");
   const [noteText, setNoteText] = useState("");
+  const [noteSubject, setNoteSubject] = useState("");
+  const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
+  const [attachLabel, setAttachLabel] = useState("");
   const [clockInModal, setClockInModal] = useState<{ jobId: string; taskId: string; taskTitle: string } | null>(null);
 
   const job = getJob(id ?? "");
@@ -154,11 +119,7 @@ export default function JobDetailScreen() {
 
   const handleClockIn = (taskId: string, taskTitle: string) => {
     if (activeClockedTask && activeClockedTask.id !== taskId) {
-      Alert.alert(
-        "Switch Task?",
-        `You're currently clocked into "${activeClockedTask.title}". Clock out first.`,
-        [{ text: "OK" }]
-      );
+      Alert.alert("Switch Task?", `You're currently clocked into "${activeClockedTask.title}". Clock out first.`, [{ text: "OK" }]);
       return;
     }
     setClockInModal({ jobId: job.id, taskId, taskTitle });
@@ -176,10 +137,30 @@ export default function JobDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission required", "Please allow photo library access."); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (!result.canceled && result.assets[0]) {
+      setAttachments((prev) => [...prev, { uri: result.assets[0].uri, label: attachLabel || "Photo", type: "image" }]);
+      setAttachLabel("");
+    }
+  };
+
+  const handleCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission required", "Please allow camera access."); return; }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (!result.canceled && result.assets[0]) {
+      setAttachments((prev) => [...prev, { uri: result.assets[0].uri, label: attachLabel || "Camera", type: "image" }]);
+      setAttachLabel("");
+    }
+  };
+
   const handleAddNote = () => {
     if (!noteText.trim()) return;
-    addNote(job.id, noteText.trim());
-    setNoteText("");
+    addNote(job.id, noteText.trim(), noteSubject.trim() || undefined, attachments.length > 0 ? attachments : undefined);
+    setNoteText(""); setNoteSubject(""); setAttachments([]); setAttachLabel("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -189,21 +170,29 @@ export default function JobDetailScreen() {
     { key: "inspections", label: "Inspections" },
   ];
 
+  // Parts summary across all tasks
+  const totalParts = job.tasks.reduce((s, t) => s + t.parts.length, 0);
+  const pendingParts = job.tasks.reduce((s, t) => s + t.parts.filter((p) => p.status !== "received").length, 0);
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <AppHeader
         title={`Estimate ${job.estimateNumber}`}
-        subtitle={`${job.vehicle}`}
+        subtitle={job.vehicle}
         showBack
         rightElement={
           <View style={styles.headerActions}>
+            {pendingParts > 0 && (
+              <View style={[styles.partsChip, { backgroundColor: "#fef3c7" }]}>
+                <Feather name="package" size={11} color="#d97706" />
+                <Text style={styles.partsChipText}>{pendingParts}</Text>
+              </View>
+            )}
             <Pressable
-              onPress={() => {
-                Alert.alert("Mark Complete", "Mark all tasks in this job as complete?", [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Complete", onPress: () => { markJobComplete(job.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
-                ]);
-              }}
+              onPress={() => Alert.alert("Mark Complete", "Mark all tasks in this job as complete?", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Complete", onPress: () => { markJobComplete(job.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
+              ])}
               style={[styles.headerBtn, { borderColor: colors.success }]}
             >
               <Text style={[styles.headerBtnText, { color: colors.success }]}>Complete</Text>
@@ -212,12 +201,9 @@ export default function JobDetailScreen() {
         }
       />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: bottomPad + 90 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Metadata Row */}
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingBottom: bottomPad + 90 }]} showsVerticalScrollIndicator={false}>
+
+        {/* Metadata */}
         <View style={[styles.metaCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
           <View style={styles.metaGrid}>
             <MetaItem icon="hash" label="License Plate" value={job.licensePlate} />
@@ -239,7 +225,23 @@ export default function JobDetailScreen() {
           </View>
         </View>
 
-        {/* Active Clock-in Banner */}
+        {/* Parts summary banner */}
+        {totalParts > 0 && (
+          <Pressable
+            onPress={() => setActiveTab("tasks")}
+            style={[styles.partsBanner, { backgroundColor: pendingParts > 0 ? "#fef3c7" : "#dcfce7", borderColor: pendingParts > 0 ? "#fbbf24" : "#86efac" }]}
+          >
+            <Feather name="package" size={14} color={pendingParts > 0 ? "#d97706" : "#16a34a"} />
+            <Text style={[styles.partsBannerText, { color: pendingParts > 0 ? "#92400e" : "#166534" }]}>
+              {pendingParts > 0
+                ? `${pendingParts} of ${totalParts} parts pending receipt`
+                : `All ${totalParts} parts received ✓`}
+            </Text>
+            {pendingParts > 0 && <Feather name="chevron-right" size={13} color="#d97706" />}
+          </Pressable>
+        )}
+
+        {/* Active clock-in banner */}
         {activeClockedTask && (
           <View style={[styles.activeTimerBanner, { backgroundColor: colors.primary }]}>
             <View style={styles.timerBannerLeft}>
@@ -248,15 +250,10 @@ export default function JobDetailScreen() {
               </View>
               <View>
                 <Text style={styles.timerBannerTitle}>Active: {activeClockedTask.title}</Text>
-                <Text style={styles.timerBannerTime}>
-                  {formatElapsed(activeClockedTask.elapsedSeconds)}
-                </Text>
+                <Text style={styles.timerBannerTime}>{formatElapsed(activeClockedTask.elapsedSeconds)}</Text>
               </View>
             </View>
-            <Pressable
-              onPress={() => handleClockOut(activeClockedTask.id)}
-              style={styles.stopTimerBtn}
-            >
+            <Pressable onPress={() => handleClockOut(activeClockedTask.id)} style={styles.stopTimerBtn}>
               <Feather name="square" size={14} color={colors.primary} />
               <Text style={[styles.stopTimerBtnText, { color: colors.primary }]}>Stop</Text>
             </Pressable>
@@ -269,60 +266,44 @@ export default function JobDetailScreen() {
             <Pressable
               key={key}
               onPress={() => { setActiveTab(key); Haptics.selectionAsync(); }}
-              style={[
-                styles.tabItem,
-                activeTab === key && [styles.tabItemActive, { borderBottomColor: colors.primary }],
-              ]}
+              style={[styles.tabItem, activeTab === key && [styles.tabItemActive, { borderBottomColor: colors.primary }]]}
             >
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: activeTab === key ? colors.primary : colors.mutedForeground },
-                ]}
-              >
-                {label}
-              </Text>
+              <Text style={[styles.tabLabel, { color: activeTab === key ? colors.primary : colors.mutedForeground }]}>{label}</Text>
               {key === "tasks" && (
                 <View style={[styles.tabBadge, { backgroundColor: activeTab === key ? colors.primary : colors.muted }]}>
-                  <Text style={[styles.tabBadgeText, { color: activeTab === key ? "#fff" : colors.mutedForeground }]}>
-                    {job.tasks.length}
-                  </Text>
+                  <Text style={[styles.tabBadgeText, { color: activeTab === key ? "#fff" : colors.mutedForeground }]}>{job.tasks.length}</Text>
+                </View>
+              )}
+              {key === "notes" && job.notes.length > 0 && (
+                <View style={[styles.tabBadge, { backgroundColor: activeTab === key ? colors.primary : colors.muted }]}>
+                  <Text style={[styles.tabBadgeText, { color: activeTab === key ? "#fff" : colors.mutedForeground }]}>{job.notes.length}</Text>
                 </View>
               )}
             </Pressable>
           ))}
         </View>
 
-        {/* Tasks Tab */}
+        {/* ── Tasks Tab ────────────────────────────────────── */}
         {activeTab === "tasks" && (
           <View style={styles.tabContent}>
             <View style={[styles.tasksSummary, { backgroundColor: colors.card, shadowColor: "#000" }]}>
-              <View style={styles.taskSummaryItem}>
-                <Text style={[styles.taskSummaryValue, { color: colors.foreground }]}>
-                  {job.tasks.filter((t) => t.status === "done").length}/{job.tasks.length}
-                </Text>
-                <Text style={[styles.taskSummaryLabel, { color: colors.mutedForeground }]}>Tasks Done</Text>
-              </View>
-              <View style={[styles.taskSummaryDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.taskSummaryItem}>
-                <Text style={[styles.taskSummaryValue, { color: colors.foreground }]}>
-                  {job.workedHours.toFixed(1)}h
-                </Text>
-                <Text style={[styles.taskSummaryLabel, { color: colors.mutedForeground }]}>Worked</Text>
-              </View>
-              <View style={[styles.taskSummaryDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.taskSummaryItem}>
-                <Text style={[styles.taskSummaryValue, { color: colors.foreground }]}>
-                  {job.totalEstimatedHours}h
-                </Text>
-                <Text style={[styles.taskSummaryLabel, { color: colors.mutedForeground }]}>Assigned</Text>
-              </View>
+              {[
+                { label: "Done", value: `${job.tasks.filter((t) => t.status === "done").length}/${job.tasks.length}` },
+                { label: "Worked", value: `${job.workedHours.toFixed(1)}h` },
+                { label: "Assigned", value: `${job.totalEstimatedHours}h` },
+                { label: "Parts", value: `${job.tasks.reduce((s, t) => s + t.parts.filter((p) => p.status === "received").length, 0)}/${totalParts}` },
+              ].map(({ label, value }, i, arr) => (
+                <React.Fragment key={label}>
+                  <View style={styles.taskSummaryItem}>
+                    <Text style={[styles.taskSummaryValue, { color: colors.foreground }]}>{value}</Text>
+                    <Text style={[styles.taskSummaryLabel, { color: colors.mutedForeground }]}>{label}</Text>
+                  </View>
+                  {i < arr.length - 1 && <View style={[styles.taskSummaryDivider, { backgroundColor: colors.border }]} />}
+                </React.Fragment>
+              ))}
             </View>
             {job.tasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                jobId={job.id}
+              <TaskCard key={task.id} task={task} jobId={job.id}
                 onClockIn={() => handleClockIn(task.id, task.title)}
                 onClockOut={() => handleClockOut(task.id)}
               />
@@ -330,56 +311,119 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {/* Notes Tab */}
+        {/* ── Notes Tab ────────────────────────────────────── */}
         {activeTab === "notes" && (
           <View style={styles.tabContent}>
-            <View style={[styles.noteInputCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <TextInput
-                value={noteText}
-                onChangeText={setNoteText}
-                placeholder="Add a note to this job..."
+            {/* Create Note form */}
+            <View style={[styles.noteForm, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.noteFormTitle, { color: colors.foreground }]}>Create Note</Text>
+              <TextInput value={noteSubject} onChangeText={setNoteSubject} placeholder="Subject"
                 placeholderTextColor={colors.mutedForeground}
-                style={[styles.noteInput, { color: colors.foreground }]}
-                multiline
-              />
-              <Pressable
-                onPress={handleAddNote}
-                style={[styles.addNoteBtn, { backgroundColor: colors.primary, opacity: noteText.trim() ? 1 : 0.5 }]}
-                disabled={!noteText.trim()}
-              >
-                <Feather name="send" size={14} color="#fff" />
-                <Text style={styles.addNoteBtnText}>Add Note</Text>
-              </Pressable>
+                style={[styles.noteSubjectInput, { color: colors.foreground, borderColor: colors.border }]} />
+              <TextInput value={noteText} onChangeText={setNoteText} placeholder="Notes"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.noteTextInput, { color: colors.foreground, borderColor: colors.border }]}
+                multiline textAlignVertical="top" />
+              {/* Attachment row */}
+              <View style={styles.attachRow}>
+                <Pressable onPress={handleCamera} style={[styles.attachPickerBtn, { borderColor: colors.border }]}>
+                  <Feather name="paperclip" size={16} color={colors.mutedForeground} />
+                </Pressable>
+                <TextInput value={attachLabel} onChangeText={setAttachLabel} placeholder="Attachment"
+                  placeholderTextColor={colors.mutedForeground}
+                  style={[styles.attachNameInput, { color: colors.foreground, borderColor: colors.border }]} />
+                <TextInput placeholder="Attachment Label"
+                  placeholderTextColor={colors.mutedForeground}
+                  style={[styles.attachLabelInput, { color: colors.foreground, borderColor: colors.border }]} />
+              </View>
+              {/* Attachment options */}
+              {attachLabel.length > 0 && (
+                <View style={styles.attachOptions}>
+                  <Pressable onPress={handleCamera} style={[styles.attachOptionBtn, { borderColor: colors.border }]}>
+                    <Feather name="camera" size={14} color={colors.primary} />
+                    <Text style={[styles.attachOptionText, { color: colors.primary }]}>Camera</Text>
+                  </Pressable>
+                  <Pressable onPress={handlePickImage} style={[styles.attachOptionBtn, { borderColor: colors.border }]}>
+                    <Feather name="image" size={14} color={colors.primary} />
+                    <Text style={[styles.attachOptionText, { color: colors.primary }]}>Gallery</Text>
+                  </Pressable>
+                </View>
+              )}
+              {attachments.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.attachPreviewScroll}>
+                  {attachments.map((att, i) => (
+                    <View key={i} style={styles.previewWrap}>
+                      {att.type === "image"
+                        ? <Image source={{ uri: att.uri }} style={styles.previewThumb} />
+                        : <View style={[styles.docPreview, { backgroundColor: colors.accent }]}><Feather name="file" size={18} color={colors.primary} /></View>
+                      }
+                      <Text style={[styles.previewLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{att.label}</Text>
+                      <Pressable onPress={() => setAttachments((p) => p.filter((_, j) => j !== i))} style={styles.removeAttach}>
+                        <Feather name="x" size={10} color="#fff" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              <View style={styles.noteFormActions}>
+                <Pressable
+                  onPress={() => { setNoteText(""); setNoteSubject(""); setAttachments([]); }}
+                  style={[styles.cancelNoteBtn, { borderColor: colors.border }]}
+                >
+                  <Text style={[styles.cancelNoteBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleAddNote}
+                  style={[styles.saveNoteBtn, { backgroundColor: colors.primary, opacity: noteText.trim() ? 1 : 0.5 }]}
+                  disabled={!noteText.trim()}
+                >
+                  <Text style={styles.saveNoteBtnText}>Save</Text>
+                </Pressable>
+              </View>
             </View>
+
+            {/* Note history */}
             {job.notes.length === 0 ? (
               <View style={styles.emptyNotes}>
                 <Feather name="message-square" size={36} color={colors.mutedForeground} />
                 <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No notes yet</Text>
               </View>
             ) : (
-              [...job.notes].reverse().map((note) => (
-                <View key={note.id} style={[styles.noteItem, { backgroundColor: colors.card, shadowColor: "#000" }]}>
-                  <View style={styles.noteHeader}>
-                    <View style={[styles.noteAvatar, { backgroundColor: colors.primary }]}>
-                      <Text style={styles.noteAvatarText}>
-                        {note.author.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
-                      </Text>
+              <>
+                <Text style={[styles.historyTitle, { color: colors.mutedForeground }]}>History ({job.notes.length})</Text>
+                {[...job.notes].reverse().map((note) => (
+                  <View key={note.id} style={[styles.noteItem, { backgroundColor: colors.card, borderLeftColor: colors.primary, shadowColor: "#000" }]}>
+                    <View style={styles.noteHeader}>
+                      <View style={[styles.noteAvatar, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.noteAvatarText}>{note.author.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.noteAuthor, { color: colors.foreground }]}>{note.author}</Text>
+                        <Text style={[styles.noteTime, { color: colors.mutedForeground }]}>{new Date(note.timestamp).toLocaleString()}</Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={[styles.noteAuthor, { color: colors.foreground }]}>{note.author}</Text>
-                      <Text style={[styles.noteTime, { color: colors.mutedForeground }]}>
-                        {new Date(note.timestamp).toLocaleString()}
-                      </Text>
-                    </View>
+                    {note.subject && <Text style={[styles.noteSubject, { color: colors.primary }]}>{note.subject}</Text>}
+                    <Text style={[styles.noteBody, { color: colors.foreground }]}>{note.text}</Text>
+                    {note.attachments && note.attachments.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                        {note.attachments.map((att, i) => (
+                          att.type === "image"
+                            ? <Image key={i} source={{ uri: att.uri }} style={styles.noteAttachThumb} />
+                            : <View key={i} style={[styles.noteDocAttach, { backgroundColor: colors.accent }]}>
+                                <Feather name="file" size={14} color={colors.primary} />
+                                <Text style={[styles.noteDocLabel, { color: colors.primary }]}>{att.label}</Text>
+                              </View>
+                        ))}
+                      </ScrollView>
+                    )}
                   </View>
-                  <Text style={[styles.noteBody, { color: colors.foreground }]}>{note.text}</Text>
-                </View>
-              ))
+                ))}
+              </>
             )}
           </View>
         )}
 
-        {/* Inspections Tab */}
+        {/* ── Inspections Tab ──────────────────────────────── */}
         {activeTab === "inspections" && (
           <View style={styles.tabContent}>
             {job.inspections.length === 0 ? (
@@ -388,15 +432,13 @@ export default function JobDetailScreen() {
                 <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No inspections recorded</Text>
               </View>
             ) : (
-              job.inspections.map((item) => (
-                <InspectionCard key={item.id} item={item} />
-              ))
+              job.inspections.map((item) => <InspectionCard key={item.id} item={item} />)
             )}
           </View>
         )}
       </ScrollView>
 
-      {/* Floating Clock-in CTA */}
+      {/* FAB */}
       {!activeClockedTask && job.status !== "completed" && (
         <View style={[styles.floatingCta, { bottom: bottomPad + 16 }]}>
           <Pressable
@@ -414,310 +456,95 @@ export default function JobDetailScreen() {
       )}
 
       {clockInModal && (
-        <ClockInModal
-          visible={!!clockInModal}
-          job={job}
-          taskTitle={clockInModal.taskTitle}
-          onConfirm={confirmClockIn}
-          onCancel={() => setClockInModal(null)}
-        />
+        <ClockInModal visible={!!clockInModal} job={job} taskTitle={clockInModal.taskTitle}
+          onConfirm={confirmClockIn} onCancel={() => setClockInModal(null)} />
       )}
     </View>
   );
 }
 
-function formatElapsed(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}m ${s.toString().padStart(2, "0")}s`;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
-
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    gap: 14,
-  },
-  headerActions: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1.5,
-  },
-  headerBtnText: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-  },
-  metaCard: {
-    borderRadius: 14,
-    padding: 16,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  metaGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  metaDivider: {
-    height: 1,
-    marginVertical: 12,
-  },
-  metaFooter: {
-    gap: 10,
-  },
-  metaStatusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  metaAppt: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-  },
-  activeTimerBanner: {
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  timerBannerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  timerPulse: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  timerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  timerBannerTitle: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  timerBannerTime: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 18,
-    fontFamily: "Inter_700Bold",
-  },
-  stopTimerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#fff",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  stopTimerBtnText: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  tabBar: {
-    flexDirection: "row",
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  tabItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingVertical: 12,
-    borderBottomWidth: 2.5,
-    borderBottomColor: "transparent",
-  },
+  screen: { flex: 1 },
+  scroll: { flex: 1 },
+  content: { padding: 16, gap: 14 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  partsChip: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 10 },
+  partsChipText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#d97706" },
+  headerBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1.5 },
+  headerBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  metaCard: { borderRadius: 14, padding: 16, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  metaGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  metaDivider: { height: 1, marginVertical: 12 },
+  metaFooter: { gap: 10 },
+  metaStatusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  metaAppt: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  partsBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1.5 },
+  partsBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  activeTimerBanner: { borderRadius: 12, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  timerBannerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  timerPulse: { width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  timerDot: { width: 10, height: 10, borderRadius: 5 },
+  timerBannerTitle: { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  timerBannerTime: { color: "rgba(255,255,255,0.9)", fontSize: 18, fontFamily: "Inter_700Bold" },
+  stopTimerBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#fff", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  stopTimerBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  tabBar: { flexDirection: "row", borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  tabItem: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 12, borderBottomWidth: 2.5, borderBottomColor: "transparent" },
   tabItemActive: {},
-  tabLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  tabBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  tabBadgeText: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-  },
-  tabContent: {
-    gap: 0,
-  },
-  tasksSummary: {
-    flexDirection: "row",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  taskSummaryItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-  },
-  taskSummaryDivider: {
-    width: 1,
-    alignSelf: "stretch",
-  },
-  taskSummaryValue: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-  },
-  taskSummaryLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-  },
-  noteInputCard: {
-    borderRadius: 12,
-    borderWidth: 1.5,
-    overflow: "hidden",
-    marginBottom: 14,
-  },
-  noteInput: {
-    padding: 14,
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    minHeight: 72,
-    textAlignVertical: "top",
-  },
-  addNoteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    margin: 10,
-    marginTop: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 9,
-    alignSelf: "flex-end",
-  },
-  addNoteBtnText: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  emptyNotes: {
-    alignItems: "center",
-    paddingVertical: 40,
-    gap: 8,
-  },
-  emptyNotesText: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-  },
-  noteItem: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    gap: 10,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  noteHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  noteAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  noteAvatarText: {
-    color: "#fff",
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-  },
-  noteAuthor: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  noteTime: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-  },
-  noteBody: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
-  },
-  floatingCta: {
-    position: "absolute",
-    right: 16,
-    left: 16,
-    alignItems: "center",
-  },
-  clockInFab: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 50,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  clockInFabText: {
-    color: "#fff",
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-  },
-  notFound: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 14,
-  },
-  notFoundText: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-  },
-  backButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  backButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  tabLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  tabBadge: { minWidth: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  tabBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  tabContent: { gap: 0 },
+  tasksSummary: { flexDirection: "row", borderRadius: 12, padding: 14, marginBottom: 12, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  taskSummaryItem: { flex: 1, alignItems: "center", gap: 2 },
+  taskSummaryDivider: { width: 1, alignSelf: "stretch" },
+  taskSummaryValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  taskSummaryLabel: { fontSize: 10, fontFamily: "Inter_400Regular" },
+
+  /* Notes form */
+  noteForm: { borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 10, marginBottom: 14 },
+  noteFormTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  noteSubjectInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },
+  noteTextInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 90 },
+  attachRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  attachPickerBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  attachNameInput: { flex: 1, height: 40, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, fontSize: 13, fontFamily: "Inter_400Regular" },
+  attachLabelInput: { flex: 1, height: 40, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, fontSize: 13, fontFamily: "Inter_400Regular" },
+  attachOptions: { flexDirection: "row", gap: 8 },
+  attachOptionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5 },
+  attachOptionText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  attachPreviewScroll: { marginTop: 4 },
+  previewWrap: { marginRight: 10, alignItems: "center", position: "relative" },
+  previewThumb: { width: 64, height: 64, borderRadius: 10 },
+  docPreview: { width: 64, height: 64, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  previewLabel: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 3, maxWidth: 64, textAlign: "center" },
+  removeAttach: { position: "absolute", top: -4, right: -4, backgroundColor: "#ef4444", borderRadius: 8, width: 18, height: 18, alignItems: "center", justifyContent: "center" },
+  noteFormActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  cancelNoteBtn: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 10, borderWidth: 1.5 },
+  cancelNoteBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  saveNoteBtn: { flex: 2, alignItems: "center", paddingVertical: 11, borderRadius: 10 },
+  saveNoteBtnText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+
+  historyTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  emptyNotes: { alignItems: "center", paddingVertical: 40, gap: 8 },
+  emptyNotesText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  noteItem: { borderRadius: 12, padding: 14, marginBottom: 10, gap: 8, borderLeftWidth: 3, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  noteHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  noteAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  noteAvatarText: { color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
+  noteAuthor: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  noteTime: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  noteSubject: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  noteBody: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  noteAttachThumb: { width: 72, height: 72, borderRadius: 10, marginRight: 8 },
+  noteDocAttach: { flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, marginRight: 8 },
+  noteDocLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+
+  floatingCta: { position: "absolute", right: 16, left: 16, alignItems: "center" },
+  clockInFab: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 50, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
+  clockInFabText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+  notFound: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
+  notFoundText: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
+  backButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+  backButtonText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });

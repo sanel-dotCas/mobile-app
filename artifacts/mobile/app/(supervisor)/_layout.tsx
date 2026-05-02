@@ -1,33 +1,20 @@
 import { BlurView } from "expo-blur";
 import { Feather } from "@expo/vector-icons";
-import { Redirect, Tabs, useRouter } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import React, { useEffect } from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  View,
-  useColorScheme,
-} from "react-native";
+import React from "react";
+import { ActivityIndicator, Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
-export default function TabLayout() {
+export default function SupervisorLayout() {
   const { isAuthenticated, isLoading, role } = useAuth();
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isLoading && isAuthenticated && role === "supervisor") {
-      router.replace("/(supervisor)");
-    }
-  }, [isLoading, isAuthenticated, role]);
 
   if (isLoading) {
     return (
@@ -37,7 +24,7 @@ export default function TabLayout() {
     );
   }
   if (!isAuthenticated) return <Redirect href="/login" />;
-  if (role === "supervisor") return null;
+  if (role !== "supervisor") return <Redirect href="/(tabs)" />;
 
   return (
     <Tabs
@@ -64,9 +51,17 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Dashboard",
+          title: "Live",
           tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="house" tintColor={color} size={24} /> : <Feather name="home" size={22} color={color} />,
+            isIOS ? <SymbolView name="waveform" tintColor={color} size={24} /> : <Feather name="activity" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="technicians"
+        options={{
+          title: "Technicians",
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="person.2" tintColor={color} size={24} /> : <Feather name="users" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -74,15 +69,15 @@ export default function TabLayout() {
         options={{
           title: "Jobs",
           tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="briefcase" tintColor={color} size={24} /> : <Feather name="briefcase" size={22} color={color} />,
+            isIOS ? <SymbolView name="wrench" tintColor={color} size={24} /> : <Feather name="briefcase" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="timerecord"
+        name="workshop"
         options={{
-          title: "Time Record",
+          title: "Workshop",
           tabBarIcon: ({ color }) =>
-            isIOS ? <SymbolView name="clock" tintColor={color} size={24} /> : <Feather name="clock" size={22} color={color} />,
+            isIOS ? <SymbolView name="building.2" tintColor={color} size={24} /> : <Feather name="grid" size={22} color={color} />,
         }}
       />
     </Tabs>
