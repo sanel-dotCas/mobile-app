@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 
-export type UserRole = "technician" | "supervisor" | "estimator";
+export type UserRole = "technician" | "supervisor" | "estimator" | "parts";
 
 // Format: 2 letters + 4 digits  e.g. "MR1234" or "SV5678"
 const CREDENTIALS: Record<string, UserRole> = {
@@ -17,6 +17,8 @@ const CREDENTIALS: Record<string, UserRole> = {
   "AD0000": "supervisor",
   "ET1234": "estimator",
   "ET5678": "estimator",
+  "PT1234": "parts",
+  "PD1234": "parts",
 };
 
 const AUTH_KEY = "igmma_authed";

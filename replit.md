@@ -31,7 +31,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Preview path**: `/` (expo-domain router)
 - **Port**: 18115
 - **Purpose**: IGMMA DMS mobile app for technicians, supervisors, estimators
-- **Login codes**: MR+1234/JW+1234=technician, SV+5678/AD+0000=supervisor, ET+1234/ET+5678=estimator
+- **Login codes**: MR+1234/JW+1234=technician, SV+5678/AD+0000=supervisor, ET+1234/ET+5678=estimator, PT+1234/PD+1234=parts
 - **Icons**: Uses Feather icon font from `assets/fonts/Feather.ttf` (family name: lowercase "feather")
 - **Stack**: Expo Router, @expo/vector-icons v15, DMS Blue #1d4ed8
 
@@ -70,6 +70,7 @@ Role-based access control is derived from user role (no separate DB table).
 - `supervisor`: view_pricing, view_yard, create_inspections
 - `technician`: view_yard, create_inspections only (NO pricing)
 - `estimator`: view_yard only
+- `parts`: parts inventory, orders, counts, suggestions (separate tab group)
 
 Permissions utility: `useYardPermissions()` hook in `artifacts/yard/src/hooks/use-auth.tsx`
 API endpoint: `GET /api/yard/permissions?role=yard_manager` or `?dmsRole=technician`
@@ -102,6 +103,40 @@ Recorded in `yard_movements` table for:
 - Vehicle location transfers (via `/api/yard/vehicles/:id` PATCH)
 - New vehicle arrivals (via POST `/api/yard/vehicles`)
 - Auto-PDI creation events
+
+## Parts Department Module
+
+**Role**: `parts` — separate (parts) route group in Expo Router, purple accent (#7c3aed)
+**Login**: PT+1234 or PD+1234
+
+**5 Bottom Tabs:**
+1. **Dashboard** — KPI cards (Total Parts, Low Stock, Out of Stock, Pending Orders), quick actions, alert banner for critical stock, recent orders preview
+2. **Inventory** — Full parts catalog with search, filter chips (All/Low Stock/Out of Stock), category filter (Filters/Lubricants/Tyres/Batteries/Brakes/Electrical/Materials/Other). Scan button opens modal for part number lookup. Color-coded left-border cards (red=out, amber=low, green=ok). Tap → `parts/item.tsx` detail screen.
+3. **Orders** — Incoming orders list with Pending / All tabs. Per-order: show line items, qty ordered/received/remaining. "Receive now" quantity controls per item. Submit receives → updates stock in DB, recalculates order status (ordered → partial → received).
+4. **Count** — Cycle count sessions. Start a new count → scan/enter part numbers → enter counted qty (with +/- controls) → compare vs expected → Complete applies counted qtys to live inventory and records `lastCountedAt`.
+5. **Suggestions** — Smart reorder analysis: critical (0 stock), urgent (<50% min), warning (below min), info (not counted in 30+ days). Sorted by priority. Summary cards filter the list.
+
+**Detail screen** (`parts/item.tsx`): big qty display, stock level grid (on-hand/reserved/available/min/max/to-reorder), bin code display & edit, quantity adjustment, save changes.
+
+**API routes** (`/api/parts/*`):
+- `GET /parts/dashboard` — aggregated KPIs
+- `GET /parts/items` — list with ?search=&category=&lowStock=&outOfStock=&limit=
+- `GET /parts/items/by-number/:partNumber` — scan lookup by part number
+- `GET/PATCH /parts/items/:id` — get/update individual item
+- `POST /parts/items` — create item
+- `GET/POST /parts/orders` — list/create orders
+- `GET /parts/orders/:id` — get order with line items
+- `PATCH /parts/orders/:id` — update status/notes
+- `POST /parts/orders/:id/receive` — receive items → updates qtyOnHand in parts_items
+- `GET/POST /parts/count-sessions` — list/start count sessions
+- `GET /parts/count-sessions/:id` — get session with items
+- `POST /parts/count-sessions/:id/items` — add/update counted item
+- `PATCH /parts/count-sessions/:id/complete` — complete count, apply to inventory
+- `GET /parts/suggestions` — smart reorder suggestions
+
+**DB Tables**: `parts_items`, `parts_orders`, `parts_order_items`, `parts_count_sessions`, `parts_count_items`
+
+**Seed data**: 36 realistic parts across 8 categories (Filters, Lubricants, Tyres, Batteries, Brakes, Electrical, Materials), 3 seeded orders (PO-2026-001 ordered, PO-2026-002 partial, PO-2026-003 received)
 
 ## Technician PDI Assignment & Notifications
 
