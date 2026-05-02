@@ -115,7 +115,9 @@ type Action =
   | { type: "ADD_PART"; payload: { jobId: string; taskId: string; part: Part } }
   | { type: "UPDATE_PART_STATUS"; payload: { jobId: string; taskId: string; partId: string; status: PartStatus } }
   | { type: "ADVANCE_STAGE"; payload: { jobId: string; nextStageId: string; stageName: string } }
-  | { type: "ADD_DELAY_NOTIFICATION"; payload: { jobId: string; estimateNumber: string; stageName: string; stageId: string; overdueHours: number } };
+  | { type: "ADD_DELAY_NOTIFICATION"; payload: { jobId: string; estimateNumber: string; stageName: string; stageId: string; overdueHours: number } }
+  | { type: "ADD_INSPECTION"; payload: { jobId: string; item: InspectionItem } }
+  | { type: "UPDATE_INSPECTION"; payload: { jobId: string; itemId: string; status: InspectionItem["status"]; notes: string } };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92 },
@@ -179,9 +181,14 @@ const INITIAL_JOBS: Job[] = [
       { id: "jn-002", author: "Mike Rodriguez", text: "Vehicle checked in. Starting with oil change.", timestamp: "2026-04-30T09:15:00Z", subject: "Work Started" },
     ],
     inspections: [
-      { id: "ins-001", title: "Tire Tread Depth", status: "pass", estimatedHours: 0.2, notes: "All tires within spec" },
-      { id: "ins-002", title: "Fluid Levels", status: "fail", estimatedHours: 0.3, notes: "Coolant low - requires top up" },
-      { id: "ins-003", title: "Battery Test", status: "pending", estimatedHours: 0.2, notes: "" },
+      { id: "ins-001", title: "Tire Tread Depth", status: "pass", estimatedHours: 0.2, notes: "All tires within spec — 5mm+ remaining" },
+      { id: "ins-002", title: "Fluid Levels", status: "fail", estimatedHours: 0.3, notes: "Coolant low — requires top-up. Power steering fluid also low." },
+      { id: "ins-003", title: "Battery Load Test", status: "pending", estimatedHours: 0.2, notes: "" },
+      { id: "ins-004", title: "Engine Belt Condition", status: "pass", estimatedHours: 0.25, notes: "No cracking or glazing observed" },
+      { id: "ins-005", title: "Brake Line Visual Check", status: "pending", estimatedHours: 0.3, notes: "" },
+      { id: "ins-006", title: "Suspension & Steering Play", status: "pass", estimatedHours: 0.25, notes: "No excessive play detected" },
+      { id: "ins-007", title: "Wiper Blade Condition", status: "fail", estimatedHours: 0.1, notes: "Both blades streaking — recommend replacement" },
+      { id: "ins-008", title: "Exhaust System Visual", status: "pending", estimatedHours: 0.2, notes: "" },
     ],
   },
   {
@@ -274,7 +281,15 @@ const INITIAL_JOBS: Job[] = [
         ],
       },
     ],
-    notes: [], inspections: [],
+    notes: [],
+    inspections: [
+      { id: "ins-f01", title: "OBD-II Fault Code Analysis", status: "pending", estimatedHours: 0.5, notes: "P0301 misfire cylinder 1 — correlates with rough idle complaint" },
+      { id: "ins-f02", title: "Air Filter Condition", status: "fail", estimatedHours: 0.1, notes: "Heavily soiled — recommend replacement" },
+      { id: "ins-f03", title: "Spark Plug Visual (all 8)", status: "pending", estimatedHours: 0.5, notes: "Will inspect once plugs removed during replacement" },
+      { id: "ins-f04", title: "Throttle Body Inspection", status: "pending", estimatedHours: 0.25, notes: "" },
+      { id: "ins-f05", title: "Fuel Injector Spray Pattern", status: "pending", estimatedHours: 0.5, notes: "" },
+      { id: "ins-f06", title: "Ignition Coil Resistance Test", status: "pending", estimatedHours: 0.5, notes: "Test all 8 coils — suspected coil on cyl 1" },
+    ],
   },
   {
     id: "job-005", estimateNumber: "#00098", licensePlate: "GHI012",
@@ -474,6 +489,28 @@ function reducer(state: JobsState, action: Action): JobsState {
       };
     }
 
+    case "ADD_INSPECTION":
+      return {
+        ...state,
+        jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({
+          ...j,
+          inspections: [...j.inspections, action.payload.item],
+        })),
+      };
+
+    case "UPDATE_INSPECTION":
+      return {
+        ...state,
+        jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({
+          ...j,
+          inspections: j.inspections.map((ins) =>
+            ins.id === action.payload.itemId
+              ? { ...ins, status: action.payload.status, notes: action.payload.notes }
+              : ins
+          ),
+        })),
+      };
+
     case "ADD_DELAY_NOTIFICATION": {
       const { jobId, estimateNumber, stageName, stageId, overdueHours } = action.payload;
       const alreadyExists = state.notifications.some(
@@ -517,6 +554,8 @@ interface JobsContextValue {
   updatePartStatus: (jobId: string, taskId: string, partId: string, status: PartStatus) => void;
   advanceStage: (jobId: string, nextStageId: string, stageName: string) => void;
   addDelayNotification: (jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) => void;
+  addInspection: (jobId: string, item: Omit<InspectionItem, "id">) => void;
+  updateInspection: (jobId: string, itemId: string, status: InspectionItem["status"], notes: string) => void;
   unreadCount: number;
 }
 
@@ -590,10 +629,18 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const addDelayNotification = useCallback((jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) =>
     dispatch({ type: "ADD_DELAY_NOTIFICATION", payload: { jobId, estimateNumber, stageName, stageId, overdueHours } }), []);
 
+  const addInspection = useCallback((jobId: string, item: Omit<InspectionItem, "id">) => {
+    const newItem: InspectionItem = { ...item, id: `ins-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` };
+    dispatch({ type: "ADD_INSPECTION", payload: { jobId, item: newItem } });
+  }, []);
+
+  const updateInspection = useCallback((jobId: string, itemId: string, status: InspectionItem["status"], notes: string) =>
+    dispatch({ type: "UPDATE_INSPECTION", payload: { jobId, itemId, status, notes } }), []);
+
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );

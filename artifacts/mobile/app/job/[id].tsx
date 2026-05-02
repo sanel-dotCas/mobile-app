@@ -21,12 +21,12 @@ import { ClockInModal } from "@/components/ClockInModal";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TaskCard } from "@/components/TaskCard";
-import type { InspectionItem, NoteAttachment } from "@/context/JobsContext";
+import type { InspectionItem, NoteAttachment, Part, PartStatus } from "@/context/JobsContext";
 import { useJobs } from "@/context/JobsContext";
 import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
 
-type TabKey = "tasks" | "notes" | "inspections";
+type TabKey = "tasks" | "parts" | "inspections" | "notes";
 
 function MetaItem({ icon, label, value }: { icon: string; label: string; value: string }) {
   const colors = useColors();
@@ -86,7 +86,7 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage } = useJobs();
+  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, addInspection, updateInspection, receivePart, updatePartStatus } = useJobs();
   const { sortedStages, getStage } = useStages();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -99,6 +99,10 @@ export default function JobDetailScreen() {
   const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
   const [attachLabel, setAttachLabel] = useState("");
   const [clockInModal, setClockInModal] = useState<{ jobId: string; taskId: string; taskTitle: string } | null>(null);
+  const [inspTitle, setInspTitle] = useState("");
+  const [inspStatus, setInspStatus] = useState<InspectionItem["status"]>("pending");
+  const [inspHours, setInspHours] = useState("");
+  const [inspNotes, setInspNotes] = useState("");
 
   const job = getJob(id ?? "");
 
@@ -196,6 +200,18 @@ export default function JobDetailScreen() {
     }
   };
 
+  const handleAddInspection = () => {
+    if (!inspTitle.trim()) { Alert.alert("Required", "Please enter an inspection title."); return; }
+    addInspection(job.id, {
+      title: inspTitle.trim(),
+      status: inspStatus,
+      estimatedHours: parseFloat(inspHours) || 0,
+      notes: inspNotes.trim(),
+    });
+    setInspTitle(""); setInspStatus("pending"); setInspHours(""); setInspNotes("");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   const handleAddNote = () => {
     if (!noteText.trim()) return;
     addNote(job.id, noteText.trim(), noteSubject.trim() || undefined, attachments.length > 0 ? attachments : undefined);
@@ -203,10 +219,11 @@ export default function JobDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const TABS: Array<{ key: TabKey; label: string }> = [
-    { key: "tasks", label: "Tasks" },
-    { key: "notes", label: "Notes" },
-    { key: "inspections", label: "Inspections" },
+  const TABS: Array<{ key: TabKey; label: string; icon: string }> = [
+    { key: "tasks", label: "Tasks", icon: "tool" },
+    { key: "parts", label: "Parts", icon: "package" },
+    { key: "inspections", label: "Inspect", icon: "clipboard" },
+    { key: "notes", label: "Notes", icon: "message-square" },
   ];
 
   const totalParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).length, 0);
@@ -386,7 +403,7 @@ export default function JobDetailScreen() {
         {/* Parts summary banner */}
         {totalParts > 0 && (
           <Pressable
-            onPress={() => setActiveTab("tasks")}
+            onPress={() => setActiveTab("parts")}
             style={[styles.partsBanner, { backgroundColor: pendingParts > 0 ? "#fef3c7" : "#dcfce7", borderColor: pendingParts > 0 ? "#fbbf24" : "#86efac" }]}
           >
             <Feather name="package" size={14} color={pendingParts > 0 ? "#d97706" : "#16a34a"} />
@@ -420,7 +437,7 @@ export default function JobDetailScreen() {
 
         {/* Tabs */}
         <View style={[styles.tabBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {TABS.map(({ key, label }) => (
+          {TABS.map(({ key, label, icon }) => (
             <Pressable
               key={key}
               onPress={() => { setActiveTab(key); Haptics.selectionAsync(); }}
@@ -430,6 +447,16 @@ export default function JobDetailScreen() {
               {key === "tasks" && (
                 <View style={[styles.tabBadge, { backgroundColor: activeTab === key ? colors.primary : colors.muted }]}>
                   <Text style={[styles.tabBadgeText, { color: activeTab === key ? "#fff" : colors.mutedForeground }]}>{job.tasks.length}</Text>
+                </View>
+              )}
+              {key === "parts" && totalParts > 0 && (
+                <View style={[styles.tabBadge, { backgroundColor: pendingParts > 0 ? "#d97706" : (activeTab === key ? colors.primary : colors.muted) }]}>
+                  <Text style={[styles.tabBadgeText, { color: pendingParts > 0 ? "#fff" : (activeTab === key ? "#fff" : colors.mutedForeground) }]}>{totalParts}</Text>
+                </View>
+              )}
+              {key === "inspections" && job.inspections.length > 0 && (
+                <View style={[styles.tabBadge, { backgroundColor: activeTab === key ? colors.primary : colors.muted }]}>
+                  <Text style={[styles.tabBadgeText, { color: activeTab === key ? "#fff" : colors.mutedForeground }]}>{job.inspections.length}</Text>
                 </View>
               )}
               {key === "notes" && job.notes.length > 0 && (
@@ -466,6 +493,117 @@ export default function JobDetailScreen() {
                 onClockOut={() => handleClockOut(task.id)}
               />
             ))}
+          </View>
+        )}
+
+        {/* ── Parts Tab ────────────────────────────────────── */}
+        {activeTab === "parts" && (
+          <View style={styles.tabContent}>
+            {/* Summary bar */}
+            {totalParts > 0 && (
+              <View style={[styles.partsSummaryCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
+                {[
+                  { label: "Total", value: `${totalParts}` },
+                  { label: "Received", value: `${totalParts - pendingParts}`, color: "#16a34a" },
+                  { label: "Pending", value: `${pendingParts}`, color: pendingParts > 0 ? "#d97706" : colors.mutedForeground },
+                  { label: "Cost", value: `$${job.tasks.reduce((s, t) => s + (t.parts ?? []).reduce((ps, p) => ps + (p.price ?? 0) * p.quantity, 0), 0).toFixed(0)}` },
+                ].map(({ label, value, color }, i, arr) => (
+                  <React.Fragment key={label}>
+                    <View style={styles.taskSummaryItem}>
+                      <Text style={[styles.taskSummaryValue, { color: color ?? colors.foreground }]}>{value}</Text>
+                      <Text style={[styles.taskSummaryLabel, { color: colors.mutedForeground }]}>{label}</Text>
+                    </View>
+                    {i < arr.length - 1 && <View style={[styles.taskSummaryDivider, { backgroundColor: colors.border }]} />}
+                  </React.Fragment>
+                ))}
+              </View>
+            )}
+            {/* Per-task grouped parts list */}
+            {totalParts === 0 ? (
+              <View style={styles.emptyNotes}>
+                <Feather name="package" size={36} color={colors.mutedForeground} />
+                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No parts on this job</Text>
+                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground, fontSize: 12 }]}>Request parts from inside a task card</Text>
+              </View>
+            ) : (
+              job.tasks.filter((t) => (t.parts ?? []).length > 0).map((task) => (
+                <View key={task.id} style={[styles.partsGroupCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: "#000" }]}>
+                  {/* Task header */}
+                  <View style={[styles.partsGroupHeader, { borderBottomColor: colors.border }]}>
+                    <View style={[styles.partsGroupIconWrap, { backgroundColor: colors.accent }]}>
+                      <Feather name="tool" size={13} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.partsGroupTitle, { color: colors.foreground }]}>{task.title}</Text>
+                      <Text style={[styles.partsGroupSub, { color: colors.mutedForeground }]}>
+                        {(task.parts ?? []).filter((p) => p.status === "received").length}/{(task.parts ?? []).length} received
+                      </Text>
+                    </View>
+                    <StatusPill status={task.status} size="sm" />
+                  </View>
+                  {/* Parts list */}
+                  {(task.parts ?? []).map((part: Part, pIdx: number) => {
+                    const PART_CFG: Record<PartStatus, { label: string; color: string; bg: string; icon: string }> = {
+                      pending:  { label: "Pending",  color: "#d97706", bg: "#fef3c7", icon: "clock" },
+                      ordered:  { label: "Ordered",  color: "#0284c7", bg: "#e0f2fe", icon: "truck" },
+                      received: { label: "Received", color: "#16a34a", bg: "#dcfce7", icon: "check-circle" },
+                    };
+                    const cfg = PART_CFG[part.status];
+                    return (
+                      <View key={part.id} style={[styles.partsRowItem, { borderTopColor: colors.border, borderTopWidth: pIdx === 0 ? 0 : 1 }]}>
+                        <View style={[styles.partsRowIcon, { backgroundColor: cfg.bg }]}>
+                          <Feather name={cfg.icon as any} size={12} color={cfg.color} />
+                        </View>
+                        <View style={styles.partsRowInfo}>
+                          <Text style={[styles.partsRowName, { color: colors.foreground }]} numberOfLines={1}>{part.name}</Text>
+                          <View style={styles.partsRowMeta}>
+                            {part.partNumber ? <Text style={[styles.partsRowMetaText, { color: colors.mutedForeground }]}>#{part.partNumber}</Text> : null}
+                            <Text style={[styles.partsRowMetaText, { color: colors.mutedForeground }]}>×{part.quantity} {part.unit}</Text>
+                            {part.price !== undefined && (
+                              <Text style={[styles.partsRowMetaText, { color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }]}>
+                                ${(part.price * part.quantity).toFixed(2)}
+                              </Text>
+                            )}
+                          </View>
+                          {part.receivedAt && (
+                            <Text style={[styles.partsRowReceived, { color: colors.success }]}>
+                              Received {new Date(part.receivedAt).toLocaleDateString()}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.partsRowActions}>
+                          <Pressable
+                            onPress={() => {
+                              if (part.status === "received") return;
+                              const next: PartStatus = part.status === "pending" ? "ordered" : "received";
+                              Alert.alert("Update Status", `Move "${part.name}" to ${next}?`, [
+                                { text: "Cancel", style: "cancel" },
+                                { text: "Update", onPress: () => { if (next === "received") receivePart(job.id, task.id, part.id); else updatePartStatus(job.id, task.id, part.id, next); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } },
+                              ]);
+                            }}
+                            style={[styles.partsStatusPill, { backgroundColor: cfg.bg }]}
+                          >
+                            <Text style={[styles.partsStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                          </Pressable>
+                          {part.status !== "received" && (
+                            <Pressable
+                              onPress={() => Alert.alert("Receive Part", `Mark "${part.name}" as received?`, [
+                                { text: "Cancel", style: "cancel" },
+                                { text: "Mark Received", onPress: () => { receivePart(job.id, task.id, part.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
+                              ])}
+                              style={[styles.partsReceiveBtn, { backgroundColor: colors.success }]}
+                            >
+                              <Feather name="check" size={11} color="#fff" />
+                              <Text style={styles.partsReceiveBtnText}>Receive</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))
+            )}
           </View>
         )}
 
@@ -580,13 +718,95 @@ export default function JobDetailScreen() {
         {/* ── Inspections Tab ──────────────────────────────── */}
         {activeTab === "inspections" && (
           <View style={styles.tabContent}>
+            {/* Create Inspection Form */}
+            <View style={[styles.inspForm, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.inspFormHeader}>
+                <Feather name="clipboard" size={15} color={colors.primary} />
+                <Text style={[styles.inspFormTitle, { color: colors.foreground }]}>Add Inspection</Text>
+              </View>
+              <TextInput
+                value={inspTitle}
+                onChangeText={setInspTitle}
+                placeholder="Inspection item (e.g. Brake Line Visual Check)"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.inspTitleInput, { color: colors.foreground, borderColor: colors.border }]}
+              />
+              {/* Status selector */}
+              <View style={styles.inspStatusRow}>
+                <Text style={[styles.inspStatusLabel, { color: colors.mutedForeground }]}>Result:</Text>
+                {(["pass", "fail", "pending"] as const).map((s) => {
+                  const cfg = { pass: { label: "Pass", color: "#16a34a", bg: "#dcfce7", activeBg: "#16a34a" }, fail: { label: "Fail", color: "#dc2626", bg: "#fee2e2", activeBg: "#dc2626" }, pending: { label: "Pending", color: "#d97706", bg: "#fef3c7", activeBg: "#d97706" } }[s];
+                  const active = inspStatus === s;
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => { setInspStatus(s); Haptics.selectionAsync(); }}
+                      style={[styles.inspStatusBtn, { backgroundColor: active ? cfg.activeBg : cfg.bg, borderColor: active ? cfg.activeBg : cfg.bg }]}
+                    >
+                      <Text style={[styles.inspStatusBtnText, { color: active ? "#fff" : cfg.color }]}>{cfg.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={styles.inspRow2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.inspFieldLabel, { color: colors.mutedForeground }]}>Est. Hours</Text>
+                  <TextInput
+                    value={inspHours}
+                    onChangeText={setInspHours}
+                    placeholder="0.5"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="decimal-pad"
+                    style={[styles.inspSmallInput, { color: colors.foreground, borderColor: colors.border }]}
+                  />
+                </View>
+                <View style={{ flex: 2.5 }}>
+                  <Text style={[styles.inspFieldLabel, { color: colors.mutedForeground }]}>Notes</Text>
+                  <TextInput
+                    value={inspNotes}
+                    onChangeText={setInspNotes}
+                    placeholder="Findings / observations..."
+                    placeholderTextColor={colors.mutedForeground}
+                    style={[styles.inspSmallInput, { color: colors.foreground, borderColor: colors.border }]}
+                  />
+                </View>
+              </View>
+              <Pressable
+                onPress={handleAddInspection}
+                style={[styles.inspSubmitBtn, { backgroundColor: colors.primary, opacity: inspTitle.trim() ? 1 : 0.5 }]}
+                disabled={!inspTitle.trim()}
+              >
+                <Feather name="plus" size={15} color="#fff" />
+                <Text style={styles.inspSubmitBtnText}>Add Inspection</Text>
+              </Pressable>
+            </View>
+
+            {/* Inspection list */}
             {job.inspections.length === 0 ? (
               <View style={styles.emptyNotes}>
                 <Feather name="clipboard" size={36} color={colors.mutedForeground} />
-                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No inspections recorded</Text>
+                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No inspections recorded yet</Text>
               </View>
             ) : (
-              job.inspections.map((item) => <InspectionCard key={item.id} item={item} />)
+              <>
+                <Text style={[styles.historyTitle, { color: colors.mutedForeground }]}>
+                  Recorded ({job.inspections.length}) · {job.inspections.filter((i) => i.status === "pass").length} pass · {job.inspections.filter((i) => i.status === "fail").length} fail · {job.inspections.filter((i) => i.status === "pending").length} pending
+                </Text>
+                {job.inspections.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => {
+                      const nextStatus: InspectionItem["status"] = item.status === "pending" ? "pass" : item.status === "pass" ? "fail" : "pending";
+                      Alert.alert("Update Result", `Change "${item.title}" to "${nextStatus}"?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Update", onPress: () => { updateInspection(job.id, item.id, nextStatus, item.notes); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } },
+                      ]);
+                    }}
+                  >
+                    <InspectionCard key={item.id} item={item} />
+                  </Pressable>
+                ))}
+              </>
             )}
           </View>
         )}
@@ -719,6 +939,41 @@ const styles = StyleSheet.create({
   noteAttachThumb: { width: 72, height: 72, borderRadius: 10, marginRight: 8 },
   noteDocAttach: { flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, marginRight: 8 },
   noteDocLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+
+  /* Parts Tab */
+  partsSummaryCard: { flexDirection: "row", borderRadius: 12, padding: 14, marginBottom: 12, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  partsGroupCard: { borderRadius: 14, borderWidth: 1, marginBottom: 12, overflow: "hidden", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  partsGroupHeader: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderBottomWidth: 1 },
+  partsGroupIconWrap: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  partsGroupTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  partsGroupSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  partsRowItem: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12 },
+  partsRowIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 },
+  partsRowInfo: { flex: 1, gap: 2 },
+  partsRowName: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  partsRowMeta: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  partsRowMetaText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  partsRowReceived: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  partsRowActions: { alignItems: "flex-end", gap: 5 },
+  partsStatusPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10 },
+  partsStatusText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  partsReceiveBtn: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
+  partsReceiveBtnText: { color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold" },
+
+  /* Inspection Form */
+  inspForm: { borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 10, marginBottom: 14 },
+  inspFormHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
+  inspFormTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  inspTitleInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },
+  inspStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  inspStatusLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  inspStatusBtn: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 10, borderWidth: 1.5 },
+  inspStatusBtnText: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  inspRow2: { flexDirection: "row", gap: 10 },
+  inspFieldLabel: { fontSize: 11, fontFamily: "Inter_500Medium", marginBottom: 4 },
+  inspSmallInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_400Regular" },
+  inspSubmitBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
+  inspSubmitBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
 
   floatingCta: { position: "absolute", right: 16, left: 16, alignItems: "center" },
   clockInFab: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 50, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
