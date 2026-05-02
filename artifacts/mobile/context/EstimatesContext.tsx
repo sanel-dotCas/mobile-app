@@ -15,16 +15,20 @@ export type EstimateStatus =
   | "submitted";
 
 export type EstimateLineType = "labor" | "part" | "material";
+export type LaborCategory = "body" | "refinish" | "mechanical" | "frame" | "glass" | "electrical" | "trim" | "other";
 
 export interface EstimateLine {
   id: string;
   type: EstimateLineType;
+  laborCategory?: LaborCategory;
   description: string;
   hours?: number;
   quantity?: number;
   unitPrice: number;
   total: number;
   aiGenerated?: boolean;
+  isPackage?: boolean;
+  packageName?: string;
 }
 
 export interface EstimatePhoto {
@@ -115,10 +119,10 @@ const SEED: Estimate[] = [
     odometer: "22,100 km",
     damageNotes: "Rear-end shunt at low speed. Boot lid won't close properly, rear bumper cracked, possible chassis rail damage.",
     lines: [
-      { id: "l1", type: "labor", description: "Structural assessment & alignment check", hours: 2.0, unitPrice: 95, total: 190, aiGenerated: true },
-      { id: "l2", type: "part", description: "Rear bumper assembly", quantity: 1, unitPrice: 420, total: 420, aiGenerated: true },
-      { id: "l3", type: "part", description: "Boot lid (OEM replacement)", quantity: 1, unitPrice: 870, total: 870, aiGenerated: true },
-      { id: "l4", type: "labor", description: "Panel removal & refitting", hours: 3.5, unitPrice: 95, total: 332.50, aiGenerated: true },
+      { id: "l1", type: "labor", laborCategory: "frame",    description: "Structural assessment & alignment check", hours: 2.0, unitPrice: 95, total: 190, aiGenerated: true },
+      { id: "l2", type: "part",  description: "Rear bumper assembly", quantity: 1, unitPrice: 420, total: 420, aiGenerated: true },
+      { id: "l3", type: "part",  description: "Boot lid (OEM replacement)", quantity: 1, unitPrice: 870, total: 870, aiGenerated: true },
+      { id: "l4", type: "labor", laborCategory: "body",     description: "Panel removal & refitting", hours: 3.5, unitPrice: 95, total: 332.50, aiGenerated: true },
       { id: "l5", type: "material", description: "Paint & primer — rear section", quantity: 1, unitPrice: 185, total: 185, aiGenerated: true },
     ],
     photos: [],

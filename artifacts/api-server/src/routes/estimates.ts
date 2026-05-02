@@ -14,6 +14,34 @@ interface AnalyzeRequestBody {
   imageBase64?: string;
 }
 
+const SCHEMA_DESCRIPTION = `Return a JSON array of repair estimate lines. Each element must follow this exact shape:
+{
+  "type": "labor" | "part" | "material",
+  "laborCategory": "body" | "refinish" | "mechanical" | "frame" | "glass" | "electrical" | "trim" | "other",  // REQUIRED when type is "labor"
+  "description": "string — specific operation name",
+  "hours": number,      // labor only — use industry flat-rate hours
+  "quantity": number,   // parts/materials only
+  "unitPrice": number,
+  "total": number
+}
+
+Labor category definitions:
+- "body"       — Panel repair, straightening, dent removal, sectioning
+- "refinish"   — Painting, primer, clear coat, blending, prep
+- "mechanical" — Engine, suspension, brakes, drivetrain, cooling
+- "frame"      — Structural/chassis repair, rail straightening, alignment
+- "glass"      — Windshield, windows, ADAS camera recalibration
+- "electrical" — Wiring, sensors, ECU, lighting electronics
+- "trim"       — Interior/exterior plastic trim, mouldings, badges
+- "other"      — Anything that does not fit the above
+
+Include:
+- All labour operations grouped by their correct category with realistic flat-rate hours
+- All required OEM replacement parts with current market pricing
+- All paint materials, consumables, and sundries
+
+Return ONLY the JSON array — no markdown, no commentary.`;
+
 router.post("/estimates/analyze", async (req, res) => {
   const { vehicleInfo, damageNotes, imageBase64 } = req.body as AnalyzeRequestBody;
 
@@ -34,10 +62,10 @@ Always respond with ONLY a valid JSON array of estimate lines. No preamble, no e
         },
         {
           type: "text",
-          text: `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nAnalyse the damage in the photo and the notes above. Return a JSON array of repair estimate lines. Each element must follow this exact shape:\n{\n  "type": "labor" | "part" | "material",\n  "description": "string",\n  "hours": number,      // labor only, omit for others\n  "quantity": number,  // parts/materials only, omit for labor\n  "unitPrice": number,\n  "total": number\n}\n\nInclude:\n- All labour operations with realistic flat-rate hours specific to this vehicle\n- All required OEM replacement parts with current market pricing\n- All paint materials, consumables, and sundries\n\nReturn ONLY the JSON array.`,
+          text: `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nAnalyse the damage visible in the photo combined with the notes above.\n\n${SCHEMA_DESCRIPTION}`,
         },
       ]
-    : `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nBased on the damage description, generate a detailed repair estimate. Return ONLY a JSON array of estimate lines:\n[{"type":"labor"|"part"|"material","description":"...","hours":number,"quantity":number,"unitPrice":number,"total":number}]`;
+    : `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nBased on the damage description, generate a detailed repair estimate.\n\n${SCHEMA_DESCRIPTION}`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -55,9 +83,14 @@ Always respond with ONLY a valid JSON array of estimate lines. No preamble, no e
     const jsonStr = jsonMatch ? jsonMatch[0] : "[]";
     const lines: unknown[] = JSON.parse(jsonStr);
 
+    const VALID_CATEGORIES = ["body","refinish","mechanical","frame","glass","electrical","trim","other"];
+
     const validated = (lines as Array<Record<string, unknown>>).map((l, i) => ({
       id: `ai-${Date.now()}-${i}`,
       type: l.type ?? "labor",
+      laborCategory: l.type === "labor"
+        ? (VALID_CATEGORIES.includes(String(l.laborCategory)) ? l.laborCategory : "other")
+        : undefined,
       description: String(l.description ?? ""),
       hours: typeof l.hours === "number" ? l.hours : undefined,
       quantity: typeof l.quantity === "number" ? l.quantity : undefined,
