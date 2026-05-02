@@ -138,6 +138,9 @@ export default function RootLayout() {
                           <Stack.Screen name="job/[id]" options={{ presentation: "card" }} />
                           <Stack.Screen name="estimate/[id]" options={{ presentation: "card" }} />
                           <Stack.Screen name="notifications" options={{ presentation: "card" }} />
+                          <Stack.Screen name="yard/vehicle" options={{ presentation: "card" }} />
+                          <Stack.Screen name="yard/inspection" options={{ presentation: "card" }} />
+                          <Stack.Screen name="yard/new-inspection" options={{ presentation: "card" }} />
                         </Stack>
                       </KeyboardProvider>
                     </GestureHandlerRootView>

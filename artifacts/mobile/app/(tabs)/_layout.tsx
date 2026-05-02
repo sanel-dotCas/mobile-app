@@ -91,6 +91,14 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="yard"
+        options={{
+          title: "Yard",
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="car.2" tintColor={color} size={24} /> : <Feather name="map" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: t.profile,
