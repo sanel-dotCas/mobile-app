@@ -103,11 +103,37 @@ Recorded in `yard_movements` table for:
 - New vehicle arrivals (via POST `/api/yard/vehicles`)
 - Auto-PDI creation events
 
+## Technician PDI Assignment & Notifications
+
+**DB**: `yard_inspections` now has `assigned_to` text (DMS user code e.g. "MR") and `assigned_at` timestamp.
+
+**API**: `PATCH /api/yard/inspections/:id` accepts `{assignedTo: "MR"}` to assign a tech. `GET /api/yard/inspections?assignedTo=MR&status=queued` filters by assigned tech.
+
+**Supervisor UI** (`app/(supervisor)/yard.tsx`):
+- Inspections list shows "Unassigned" badge on queued PDIs with no tech
+- Blue left-border accent on unassigned inspection cards
+- "Unassigned PDIs" count banner when on Inspections tab
+- Tap any inspection → Inspection detail has "Assign Tech" button → bottom-sheet modal lists technicians
+
+**Inspection Detail** (`app/yard/inspection.tsx`):
+- Shows "Assigned Technician" card with avatar, name, assigned date
+- Supervisors see "Assign Tech" / "Reassign Tech" / "Remove" buttons (not shown for finished inspections)
+- Completed inspections show a green "Inspection Complete" summary card with completion date
+- Loads single inspection via `GET /api/yard/inspections/:id` (not batch fetch)
+- Timeline card includes "Assigned" date row when `assignedAt` is set
+
+**Notification System** (`_layout.tsx` + `JobsContext.tsx`):
+- `YardPDIChecker` component polls every 60 seconds for `assignedTo={userCode}&status=queued` inspections
+- New assignments are de-duplicated via AsyncStorage (`yard_pdi_notified_ids`)
+- New assignments → `ADD_YARD_NOTIFICATION` action → appears in bell notification center
+- Bell notifications show "New PDI Assignment: You've been assigned to inspect [Vehicle] — PDI #XXXXX"
+
 ## Database Schema (lib/db/src/schema/yard.ts)
 
 Key tables: `yard_users`, `yard_locations`, `yard_zones`, `yard_spots`, `yard_vehicles`, `yard_inspections`, `yard_movements`
 
 `yard_vehicles` has `inspection_interval_days` integer column (default 30).
+`yard_inspections` has `assigned_to` text and `assigned_at` timestamp columns.
 
 Seed data: 8 locations, 12 vehicles, 6 inspections, 10 movement entries, ~55 spots across 7 zones.
 

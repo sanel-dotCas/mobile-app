@@ -139,6 +139,8 @@ export const yardInspectionsTable = pgTable("yard_inspections", {
   notes: text("notes"),
   bodyDamage: text("body_damage"),
   fuelPercentage: integer("fuel_percentage"),
+  assignedTo: text("assigned_to"),
+  assignedAt: timestamp("assigned_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });

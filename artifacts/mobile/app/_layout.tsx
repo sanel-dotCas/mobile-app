@@ -5,6 +5,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -12,9 +13,10 @@ import React, { useEffect, useRef } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Platform } from "react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { EstimatesProvider } from "@/context/EstimatesContext";
 import { useJobs, JobsProvider } from "@/context/JobsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
@@ -22,6 +24,12 @@ import { useStages, StagesProvider } from "@/context/StagesContext";
 
 SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
+
+const BASE = Platform.OS === "web"
+  ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+  : "/api";
+
+const NOTIFIED_KEY = "yard_pdi_notified_ids";
 
 function DelayChecker() {
   const { sortedStages } = useStages();
@@ -99,14 +107,55 @@ function StageAutoAdvancer() {
   return null;
 }
 
+function YardPDIChecker() {
+  const { role, userCode, isAuthenticated } = useAuth();
+  const { addYardNotification } = useJobs();
+  const addYardRef = useRef(addYardNotification);
+  addYardRef.current = addYardNotification;
+
+  useEffect(() => {
+    if (!isAuthenticated || role !== "technician") return;
+
+    const check = async () => {
+      try {
+        const res = await fetch(`${BASE}/yard/inspections?assignedTo=${userCode}&status=queued&limit=20`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const inspections: Array<{ id: number; inspectionNumber: string; vehicleName: string }> =
+          data.inspections ?? [];
+        if (inspections.length === 0) return;
+
+        const stored = await AsyncStorage.getItem(NOTIFIED_KEY);
+        const notifiedIds: number[] = stored ? JSON.parse(stored) : [];
+        const newOnes = inspections.filter((i) => !notifiedIds.includes(i.id));
+
+        for (const insp of newOnes) {
+          addYardRef.current(insp.id, insp.inspectionNumber, insp.vehicleName);
+        }
+
+        if (newOnes.length > 0) {
+          const updatedIds = [...notifiedIds, ...newOnes.map((i) => i.id)];
+          await AsyncStorage.setItem(NOTIFIED_KEY, JSON.stringify(updatedIds));
+        }
+      } catch {
+        // non-critical
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, role, userCode]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    // Load Feather icon font locally so Metro bundles it and Font.isLoaded('feather') returns
-    // true before the Icon component mounts — prevents the blank-icon flash on Android.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     feather: require("../assets/fonts/Feather.ttf"),
   });
@@ -130,6 +179,7 @@ export default function RootLayout() {
                       <KeyboardProvider>
                         <DelayChecker />
                         <StageAutoAdvancer />
+                        <YardPDIChecker />
                         <Stack screenOptions={{ headerShown: false }}>
                           <Stack.Screen name="login" />
                           <Stack.Screen name="(tabs)" />

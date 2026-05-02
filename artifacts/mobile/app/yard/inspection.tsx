@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
 
 const BASE = Platform.OS === "web"
   ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
@@ -33,6 +35,8 @@ interface Inspection {
   notes?: string;
   bodyDamage?: string;
   fuelPercentage?: number;
+  assignedTo?: string | null;
+  assignedAt?: string | null;
   createdAt: string;
   completedAt?: string;
 }
@@ -59,27 +63,43 @@ const TYPE_LABEL: Record<string, string> = {
   "final-quality": "Final Quality Check",
 };
 
+const TECHNICIANS = [
+  { code: "MR", name: "Mike Rodriguez" },
+  { code: "JW", name: "James Wilson" },
+  { code: "CM", name: "Carlos Mendez" },
+  { code: "AH", name: "Ahmed Hassan" },
+];
+
 export default function InspectionDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { role } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+
+  const isSupervisor = role === "supervisor";
 
   const load = () => {
     if (!id) return;
-    fetch(`${BASE}/yard/inspections?limit=50`)
-      .then((r) => r.json())
+    fetch(`${BASE}/yard/inspections/${id}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
       .then((data) => {
-        const found = (data.inspections ?? []).find((i: Inspection) => String(i.id) === id);
-        setInspection(found ?? null);
+        setInspection(data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setLoading(false);
+      });
   };
 
   useEffect(() => { load(); }, [id]);
@@ -102,6 +122,59 @@ export default function InspectionDetailScreen() {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const assignTech = async (techCode: string) => {
+    if (!inspection) return;
+    setAssigning(true);
+    setShowAssignModal(false);
+    try {
+      const res = await fetch(`${BASE}/yard/inspections/${inspection.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedTo: techCode }),
+      });
+      if (!res.ok) throw new Error("Assign failed");
+      const updated = await res.json();
+      setInspection(updated);
+      const tech = TECHNICIANS.find((t) => t.code === techCode);
+      Alert.alert(
+        "Technician Assigned",
+        `${tech?.name ?? techCode} has been assigned to this PDI. They will be notified on their next login.`,
+      );
+    } catch {
+      Alert.alert("Error", "Failed to assign technician.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const unassignTech = async () => {
+    if (!inspection) return;
+    Alert.alert("Remove Assignment", "Remove the current technician assignment?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          setAssigning(true);
+          try {
+            const res = await fetch(`${BASE}/yard/inspections/${inspection.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ assignedTo: "" }),
+            });
+            if (!res.ok) throw new Error();
+            const updated = await res.json();
+            setInspection(updated);
+          } catch {
+            Alert.alert("Error", "Failed to remove assignment.");
+          } finally {
+            setAssigning(false);
+          }
+        },
+      },
+    ]);
   };
 
   if (loading) {
@@ -128,6 +201,8 @@ export default function InspectionDetailScreen() {
   const failedLines = inspection.bodyDamage
     ? inspection.bodyDamage.replace("Failed items:\n", "").split("\n").filter(Boolean)
     : [];
+
+  const assignedTech = TECHNICIANS.find((t) => t.code === inspection.assignedTo);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -163,6 +238,68 @@ export default function InspectionDetailScreen() {
           )}
         </View>
 
+        {/* Assignment card */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Assigned Technician</Text>
+
+          {inspection.assignedTo ? (
+            <View style={styles.assignedRow}>
+              <View style={[styles.techAvatar, { backgroundColor: colors.primary }]}>
+                <Text style={styles.techAvatarText}>{inspection.assignedTo}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.techName, { color: colors.foreground }]}>
+                  {assignedTech?.name ?? inspection.assignedTo}
+                </Text>
+                {inspection.assignedAt && (
+                  <Text style={[styles.stockVin, { color: colors.mutedForeground }]}>
+                    Assigned {new Date(inspection.assignedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                  </Text>
+                )}
+              </View>
+              {isSupervisor && inspection.status !== "finished" && (
+                <Pressable
+                  onPress={unassignTech}
+                  style={[styles.smallBtn, { borderColor: "#ef4444" }]}
+                  disabled={assigning}
+                >
+                  <Text style={{ color: "#ef4444", fontSize: 11, fontFamily: "Inter_500Medium" }}>Remove</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <View style={styles.unassignedRow}>
+              <Feather name="user-x" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.stockVin, { color: colors.mutedForeground, flex: 1 }]}>
+                No technician assigned yet
+              </Text>
+              {isSupervisor && inspection.status !== "finished" && (
+                <Pressable
+                  style={[styles.smallBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  onPress={() => setShowAssignModal(true)}
+                  disabled={assigning}
+                >
+                  {assigning
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={{ color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" }}>Assign Tech</Text>
+                  }
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          {isSupervisor && inspection.assignedTo && inspection.status !== "finished" && (
+            <Pressable
+              style={[styles.reassignBtn, { borderColor: colors.primary }]}
+              onPress={() => setShowAssignModal(true)}
+              disabled={assigning}
+            >
+              <Feather name="user-check" size={13} color={colors.primary} />
+              <Text style={[styles.reassignText, { color: colors.primary }]}>Reassign Tech</Text>
+            </Pressable>
+          )}
+        </View>
+
         {/* Checklist summary */}
         {inspection.notes && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -188,6 +325,27 @@ export default function InspectionDetailScreen() {
                 <Text style={[styles.failLineText, { color: "#991b1b" }]}>{line}</Text>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Completed summary banner */}
+        {inspection.status === "finished" && (
+          <View style={[styles.card, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
+            <View style={styles.sectionHeader}>
+              <Feather name="check-circle" size={14} color="#16a34a" />
+              <Text style={[styles.sectionTitle, { color: "#16a34a", marginBottom: 0 }]}>
+                Inspection Complete
+              </Text>
+            </View>
+            <Text style={[styles.noteLine, { color: "#166534" }]}>
+              This inspection was completed on{" "}
+              {inspection.completedAt
+                ? new Date(inspection.completedAt).toLocaleDateString("en-GB", {
+                    weekday: "long", day: "numeric", month: "long", year: "numeric",
+                  })
+                : "—"}
+              {failedLines.length === 0 ? " with no failed items." : ` with ${failedLines.length} failed item${failedLines.length !== 1 ? "s" : ""} noted.`}
+            </Text>
           </View>
         )}
 
@@ -224,6 +382,14 @@ export default function InspectionDetailScreen() {
               {new Date(inspection.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
             </Text>
           </View>
+          {inspection.assignedAt && (
+            <View style={styles.dateRow}>
+              <Text style={[styles.dateLabel, { color: colors.mutedForeground }]}>Assigned</Text>
+              <Text style={[styles.dateValue, { color: colors.foreground }]}>
+                {new Date(inspection.assignedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </Text>
+            </View>
+          )}
           {inspection.completedAt && (
             <View style={styles.dateRow}>
               <Text style={[styles.dateLabel, { color: colors.mutedForeground }]}>Completed</Text>
@@ -234,7 +400,7 @@ export default function InspectionDetailScreen() {
           )}
         </View>
 
-        {/* Actions */}
+        {/* Actions for technicians / supervisors */}
         {inspection.status !== "finished" && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Actions</Text>
@@ -271,6 +437,52 @@ export default function InspectionDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Assign Tech Modal */}
+      <Modal
+        visible={showAssignModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAssignModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowAssignModal(false)}
+        >
+          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Assign Technician</Text>
+            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+              The assigned tech will be notified on their next login
+            </Text>
+            {TECHNICIANS.map((tech) => (
+              <Pressable
+                key={tech.code}
+                style={[
+                  styles.techRow,
+                  { borderColor: colors.border },
+                  inspection.assignedTo === tech.code && { backgroundColor: "#eff6ff", borderColor: "#1d4ed8" },
+                ]}
+                onPress={() => assignTech(tech.code)}
+              >
+                <View style={[styles.techAvatar, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.techAvatarText}>{tech.code}</Text>
+                </View>
+                <Text style={[styles.techName, { color: colors.foreground, flex: 1 }]}>{tech.name}</Text>
+                {inspection.assignedTo === tech.code && (
+                  <Feather name="check" size={16} color="#1d4ed8" />
+                )}
+              </Pressable>
+            ))}
+            <Pressable
+              style={[styles.cancelBtn, { borderColor: colors.border }]}
+              onPress={() => setShowAssignModal(false)}
+            >
+              <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -321,6 +533,55 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginTop: 2,
+  },
+  assignedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  unassignedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  techAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  techAvatarText: {
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+  },
+  techName: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  smallBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  reassignBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  reassignText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
   },
   noteLine: {
     fontSize: 13,
@@ -381,5 +642,54 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingTop: 12,
+    gap: 12,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#e2e8f0",
+    alignSelf: "center",
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+  },
+  modalSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: -4,
+    marginBottom: 4,
+  },
+  techRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  cancelBtn: {
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  cancelText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
   },
 });

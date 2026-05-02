@@ -122,6 +122,7 @@ type Action =
   | { type: "UPDATE_PART_STATUS"; payload: { jobId: string; taskId: string; partId: string; status: PartStatus } }
   | { type: "ADVANCE_STAGE"; payload: { jobId: string; nextStageId: string; stageName: string } }
   | { type: "ADD_DELAY_NOTIFICATION"; payload: { jobId: string; estimateNumber: string; stageName: string; stageId: string; overdueHours: number } }
+  | { type: "ADD_YARD_NOTIFICATION"; payload: { inspectionId: number; inspectionNumber: string; vehicleName: string } }
   | { type: "ADD_INSPECTION"; payload: { jobId: string; item: InspectionItem } }
   | { type: "UPDATE_INSPECTION"; payload: { jobId: string; itemId: string; status: InspectionItem["status"]; notes: string } }
   | { type: "HOLD_JOB"; payload: { jobId: string } }
@@ -626,6 +627,21 @@ function reducer(state: JobsState, action: Action): JobsState {
       return { ...state, notifications: [notification, ...state.notifications] };
     }
 
+    case "ADD_YARD_NOTIFICATION": {
+      const { inspectionId, inspectionNumber, vehicleName } = action.payload;
+      const notifId = `notif-yard-${inspectionId}`;
+      if (state.notifications.some((n) => n.id === notifId)) return state;
+      const notification: Notification = {
+        id: notifId,
+        title: "New PDI Assignment",
+        message: `You've been assigned to inspect ${vehicleName} — PDI #${inspectionNumber}. Tap to view.`,
+        read: false,
+        timestamp: new Date().toISOString(),
+        type: "success",
+      };
+      return { ...state, notifications: [notification, ...state.notifications] };
+    }
+
     default: return state;
   }
 }
@@ -653,6 +669,7 @@ interface JobsContextValue {
   updatePartStatus: (jobId: string, taskId: string, partId: string, status: PartStatus) => void;
   advanceStage: (jobId: string, nextStageId: string, stageName: string) => void;
   addDelayNotification: (jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) => void;
+  addYardNotification: (inspectionId: number, inspectionNumber: string, vehicleName: string) => void;
   addInspection: (jobId: string, item: Omit<InspectionItem, "id">) => void;
   updateInspection: (jobId: string, itemId: string, status: InspectionItem["status"], notes: string) => void;
   loadInspectionTemplate: (jobId: string) => void;
@@ -736,6 +753,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const addDelayNotification = useCallback((jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) =>
     dispatch({ type: "ADD_DELAY_NOTIFICATION", payload: { jobId, estimateNumber, stageName, stageId, overdueHours } }), []);
 
+  const addYardNotification = useCallback((inspectionId: number, inspectionNumber: string, vehicleName: string) =>
+    dispatch({ type: "ADD_YARD_NOTIFICATION", payload: { inspectionId, inspectionNumber, vehicleName } }), []);
+
   const addInspection = useCallback((jobId: string, item: Omit<InspectionItem, "id">) => {
     const newItem: InspectionItem = { ...item, id: `ins-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` };
     dispatch({ type: "ADD_INSPECTION", payload: { jobId, item: newItem } });
@@ -778,7 +798,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );

@@ -484,7 +484,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#fecaca",
   },
   alertText: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
   tabBar: {

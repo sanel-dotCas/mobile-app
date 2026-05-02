@@ -24,6 +24,7 @@ const BASE = Platform.OS === "web"
 
 type VehicleStatus = "available" | "in_transit" | "pdi_pending" | "sold";
 type InspectionStatus = "queued" | "in-progress" | "finished";
+type Urgency = "overdue" | "due-soon" | "ok";
 
 interface YardVehicle {
   id: number;
@@ -37,6 +38,8 @@ interface YardVehicle {
   locationName?: string;
   spotCode?: string;
   mileage?: number;
+  price?: number | null;
+  inspectionIntervalDays?: number;
 }
 
 interface YardInspection {
@@ -49,6 +52,15 @@ interface YardInspection {
   locationName?: string;
   createdAt: string;
   completedAt?: string;
+  assignedTo?: string | null;
+}
+
+interface InspectionRec {
+  vehicleId: number;
+  urgency: Urgency;
+  daysRemaining: number;
+  aiRecommendation: string;
+  nextDueDate: string;
 }
 
 type Tab = "vehicles" | "inspections";
@@ -88,13 +100,44 @@ const INSP_BG: Record<InspectionStatus, string> = {
   finished: "#dcfce7",
 };
 
+const URGENCY_COLOR: Record<Urgency, string> = {
+  overdue: "#dc2626",
+  "due-soon": "#d97706",
+  ok: "#16a34a",
+};
+const URGENCY_BG: Record<Urgency, string> = {
+  overdue: "#fef2f2",
+  "due-soon": "#fef3c7",
+  ok: "#dcfce7",
+};
+
 async function fetchJson(path: string) {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-export default function YardScreen() {
+function InspectionBadge({ rec }: { rec: InspectionRec }) {
+  const label =
+    rec.urgency === "overdue"
+      ? `Overdue ${Math.abs(rec.daysRemaining)}d`
+      : rec.urgency === "due-soon"
+      ? `Due in ${rec.daysRemaining}d`
+      : `PDI in ${rec.daysRemaining}d`;
+
+  return (
+    <View style={[styles.inspBadge, { backgroundColor: URGENCY_BG[rec.urgency] }]}>
+      <Feather
+        name={rec.urgency === "overdue" ? "alert-circle" : rec.urgency === "due-soon" ? "clock" : "check-circle"}
+        size={10}
+        color={URGENCY_COLOR[rec.urgency]}
+      />
+      <Text style={[styles.inspBadgeText, { color: URGENCY_COLOR[rec.urgency] }]}>{label}</Text>
+    </View>
+  );
+}
+
+export default function SupervisorYardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -103,6 +146,7 @@ export default function YardScreen() {
   const [tab, setTab] = useState<Tab>("vehicles");
   const [vehicles, setVehicles] = useState<YardVehicle[]>([]);
   const [inspections, setInspections] = useState<YardInspection[]>([]);
+  const [recommendations, setRecommendations] = useState<Record<number, InspectionRec>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -121,6 +165,19 @@ export default function YardScreen() {
     }
   }, [search, statusFilter]);
 
+  const loadRecommendations = useCallback(async () => {
+    try {
+      const data = await fetchJson("/yard/inspection-recommendations");
+      const map: Record<number, InspectionRec> = {};
+      for (const r of data.recommendations ?? []) {
+        map[r.vehicleId] = r;
+      }
+      setRecommendations(map);
+    } catch {
+      // non-critical
+    }
+  }, []);
+
   const loadInspections = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -135,10 +192,10 @@ export default function YardScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
-    await Promise.all([loadVehicles(), loadInspections()]);
+    await Promise.all([loadVehicles(), loadInspections(), loadRecommendations()]);
     setLoading(false);
     setRefreshing(false);
-  }, [loadVehicles, loadInspections]);
+  }, [loadVehicles, loadInspections, loadRecommendations]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -177,9 +234,46 @@ export default function YardScreen() {
     return true;
   });
 
+  const overdueCount = Object.values(recommendations).filter((r) => r.urgency === "overdue").length;
+  const dueSoonCount = Object.values(recommendations).filter((r) => r.urgency === "due-soon").length;
+
+  const pendingAssignment = inspections.filter(
+    (i) => i.status === "queued" && !i.assignedTo,
+  ).length;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader title="Yard" subtitle="Vehicle Yard Management" showNotifications={false} />
+      <AppHeader title="Yard" subtitle="Supervisor View" showNotifications={false} />
+
+      {/* Inspection alert banner */}
+      {(overdueCount > 0 || dueSoonCount > 0) && (
+        <View style={[
+          styles.alertBanner,
+          { backgroundColor: overdueCount > 0 ? "#fef2f2" : "#fef3c7",
+            borderBottomColor: overdueCount > 0 ? "#fca5a5" : "#fde68a" },
+        ]}>
+          <Feather
+            name="alert-triangle"
+            size={14}
+            color={overdueCount > 0 ? "#dc2626" : "#d97706"}
+          />
+          <Text style={[styles.alertText, { color: overdueCount > 0 ? "#dc2626" : "#d97706" }]}>
+            {overdueCount > 0
+              ? `${overdueCount} vehicle${overdueCount !== 1 ? "s" : ""} overdue for inspection${dueSoonCount > 0 ? `, ${dueSoonCount} due soon` : ""}`
+              : `${dueSoonCount} vehicle${dueSoonCount !== 1 ? "s" : ""} due for inspection soon`}
+          </Text>
+        </View>
+      )}
+
+      {/* Unassigned PDI banner for supervisor */}
+      {pendingAssignment > 0 && tab === "inspections" && (
+        <View style={[styles.alertBanner, { backgroundColor: "#eff6ff", borderBottomColor: "#bfdbfe" }]}>
+          <Feather name="user-x" size={14} color="#1d4ed8" />
+          <Text style={[styles.alertText, { color: "#1d4ed8" }]}>
+            {pendingAssignment} queued PDI{pendingAssignment !== 1 ? "s" : ""} not yet assigned to a technician
+          </Text>
+        </View>
+      )}
 
       {/* Tab switcher */}
       <View style={[styles.tabBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
@@ -259,47 +353,58 @@ export default function YardScreen() {
                 <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No vehicles found</Text>
               </View>
             }
-            renderItem={({ item: v }) => (
-              <Pressable
-                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => router.push({ pathname: "/yard/vehicle", params: { id: String(v.id) } })}
-              >
-                <View style={styles.cardRow}>
-                  <View style={styles.cardLeft}>
-                    <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                      {v.year} {v.make} {v.model}
-                    </Text>
-                    <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
-                      Stock #{v.stockNumber} · {v.color}
-                    </Text>
-                    <Text style={[styles.cardVin, { color: colors.mutedForeground }]} numberOfLines={1}>
-                      VIN: {v.vin}
-                    </Text>
-                    {v.locationName && (
-                      <View style={styles.locationRow}>
-                        <Feather name="map-pin" size={11} color={colors.mutedForeground} />
-                        <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
-                          {v.locationName}{v.spotCode ? ` · ${v.spotCode}` : ""}
+            renderItem={({ item: v }) => {
+              const rec = recommendations[v.id];
+              return (
+                <Pressable
+                  style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/yard/vehicle", params: { id: String(v.id) } })}
+                >
+                  <View style={styles.cardRow}>
+                    <View style={styles.cardLeft}>
+                      <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                        {v.year} {v.make} {v.model}
+                      </Text>
+                      <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
+                        Stock #{v.stockNumber} · {v.color}
+                      </Text>
+                      <Text style={[styles.cardVin, { color: colors.mutedForeground }]} numberOfLines={1}>
+                        VIN: {v.vin}
+                      </Text>
+                      {v.locationName && (
+                        <View style={styles.locationRow}>
+                          <Feather name="map-pin" size={11} color={colors.mutedForeground} />
+                          <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
+                            {v.locationName}{v.spotCode ? ` · ${v.spotCode}` : ""}
+                          </Text>
+                        </View>
+                      )}
+                      {/* Price — always visible to supervisors */}
+                      {v.price != null && (
+                        <Text style={[styles.priceText, { color: colors.primary }]}>
+                          QAR {Number(v.price).toLocaleString()}
+                        </Text>
+                      )}
+                      {/* Inspection recommendation badge */}
+                      {rec && v.status !== "sold" && <InspectionBadge rec={rec} />}
+                    </View>
+                    <View style={styles.cardRight}>
+                      <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[v.status] }]}>
+                        <Text style={[styles.statusText, { color: STATUS_COLOR[v.status] }]}>
+                          {STATUS_LABEL[v.status]}
                         </Text>
                       </View>
-                    )}
-                  </View>
-                  <View style={styles.cardRight}>
-                    <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[v.status] }]}>
-                      <Text style={[styles.statusText, { color: STATUS_COLOR[v.status] }]}>
-                        {STATUS_LABEL[v.status]}
-                      </Text>
+                      <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginTop: 8 }} />
                     </View>
-                    <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginTop: 8 }} />
                   </View>
-                </View>
-              </Pressable>
-            )}
+                </Pressable>
+              );
+            }}
           />
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-          {/* Inspection filters */}
+          {/* Inspection filters + New PDI button */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -346,7 +451,11 @@ export default function YardScreen() {
             }
             renderItem={({ item: insp }) => (
               <Pressable
-                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  insp.status === "queued" && !insp.assignedTo && styles.unassignedCard,
+                ]}
                 onPress={() => router.push({ pathname: "/yard/inspection", params: { id: String(insp.id) } })}
               >
                 <View style={styles.cardRow}>
@@ -358,9 +467,20 @@ export default function YardScreen() {
                           {INSP_LABEL[insp.status]}
                         </Text>
                       </View>
+                      {insp.status === "queued" && !insp.assignedTo && (
+                        <View style={[styles.statusBadge, { backgroundColor: "#eff6ff" }]}>
+                          <Text style={[styles.statusText, { color: "#1d4ed8" }]}>Unassigned</Text>
+                        </View>
+                      )}
                     </View>
                     <Text style={[styles.cardTitle, { color: colors.foreground }]}>{insp.vehicleName}</Text>
                     <Text style={[styles.cardSub, { color: colors.mutedForeground }]} numberOfLines={1}>{insp.stockVin}</Text>
+                    {insp.assignedTo && (
+                      <View style={styles.assignedRow}>
+                        <Feather name="user" size={11} color="#16a34a" />
+                        <Text style={[styles.cardSub, { color: "#16a34a" }]}>Tech: {insp.assignedTo}</Text>
+                      </View>
+                    )}
                     {insp.locationName && (
                       <View style={styles.locationRow}>
                         <Feather name="map-pin" size={11} color={colors.mutedForeground} />
@@ -369,6 +489,7 @@ export default function YardScreen() {
                     )}
                     <Text style={[styles.cardDate, { color: colors.mutedForeground }]}>
                       {new Date(insp.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      {insp.completedAt ? ` · Done ${new Date(insp.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}
                     </Text>
                   </View>
                   <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
@@ -385,6 +506,15 @@ export default function YardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  alertBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  alertText: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
   tabBar: {
     flexDirection: "row",
     borderBottomWidth: 1,
@@ -455,6 +585,10 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 2,
   },
+  unassignedCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#1d4ed8",
+  },
   cardRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -485,6 +619,31 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 1,
   },
+  assignedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 1,
+  },
+  priceText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 2,
+  },
+  inspBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  inspBadgeText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -497,8 +656,9 @@ const styles = StyleSheet.create({
   inspTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     marginBottom: 2,
+    flexWrap: "wrap",
   },
   inspNum: {
     fontSize: 13,
