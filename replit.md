@@ -54,14 +54,62 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Type**: Express 5 API
 - **Preview path**: `/api`
 - **Port**: 8080
-- **Routes**: `/api/healthz`, `/api/estimates/analyze`, `/api/yard/auth/*`, `/api/yard/dashboard/*`, `/api/yard/locations/*`, `/api/yard/spots/*`, `/api/yard/vehicles/*`, `/api/yard/inspections/*`
+- **Routes**: `/api/healthz`, `/api/estimates/analyze`, `/api/yard/auth/*`, `/api/yard/dashboard/*`, `/api/yard/locations/*`, `/api/yard/spots/*`, `/api/yard/vehicles/*`, `/api/yard/inspections/*`, `/api/yard/inspection-recommendations`, `/api/yard/permissions`
 - **Yard auth note**: No session cookies — frontend sends `x-yard-user-id` header (or uses localStorage-based state). Login endpoint returns user object directly.
+
+## Permissions System
+
+Role-based access control is derived from user role (no separate DB table).
+
+**Web Yard App roles:**
+- `admin`: view_pricing, move_vehicles, create_inspections, manage_users, view_reports, configure_settings
+- `yard_manager`: view_pricing, move_vehicles, create_inspections, view_reports
+- `yard_operator`: move_vehicles, create_inspections only (NO pricing)
+
+**Mobile DMS roles (for Yard tab):**
+- `supervisor`: view_pricing, view_yard, create_inspections
+- `technician`: view_yard, create_inspections only (NO pricing)
+- `estimator`: view_yard only
+
+Permissions utility: `useYardPermissions()` hook in `artifacts/yard/src/hooks/use-auth.tsx`
+API endpoint: `GET /api/yard/permissions?role=yard_manager` or `?dmsRole=technician`
+
+## Inspection Recommendation Engine
+
+**Route**: `GET /api/yard/inspection-recommendations` (in `yard-recommendations.ts`)
+
+Logic:
+- Each vehicle has `inspectionIntervalDays` (default 30, stored in DB column)
+- `nextDueDate = lastFinishedInspection.completedAt + intervalDays` (or `arrivedAt + intervalDays` if never inspected)
+- `daysRemaining = nextDueDate - now`
+- `urgency`: overdue (< 0 days), due-soon (0–7 days), ok (> 7 days)
+- Returns `aiRecommendation` text describing urgency and action needed
+- Summary: `{ overdue, dueSoon, ok, total }`
+
+## Auto PDI on Sold
+
+When PATCH `/api/yard/vehicles/:id` receives `{status: "sold"}`:
+1. Auto-creates a `yard_inspection` record of type `final-quality`, status `queued`
+2. Notes: "Auto-created: Final quality PDI for [vehicle] — marked sold by [actor]"
+3. Records movement entry in `yard_movements`
+4. Response includes `autoPdiInspection: { id, inspectionNumber }` or null
+
+## Movement Recording
+
+Recorded in `yard_movements` table for:
+- Spot assignment/release (via `/api/yard/spots/:spotId` PATCH)
+- Vehicle status changes (via `/api/yard/vehicles/:id` PATCH)
+- Vehicle location transfers (via `/api/yard/vehicles/:id` PATCH)
+- New vehicle arrivals (via POST `/api/yard/vehicles`)
+- Auto-PDI creation events
 
 ## Database Schema (lib/db/src/schema/yard.ts)
 
 Key tables: `yard_users`, `yard_locations`, `yard_zones`, `yard_spots`, `yard_vehicles`, `yard_inspections`, `yard_movements`
 
-Seed data: 8 locations (Al Khor, Sana Signal SWR, Mawater Showroom, Education City, Beni Hal, North Annex, Service Center, Offsite Storage), 12 vehicles, 6 inspections, 10 movement entries, ~55 spots across 7 zones.
+`yard_vehicles` has `inspection_interval_days` integer column (default 30).
+
+Seed data: 8 locations, 12 vehicles, 6 inspections, 10 movement entries, ~55 spots across 7 zones.
 
 ## OpenAPI / Codegen
 

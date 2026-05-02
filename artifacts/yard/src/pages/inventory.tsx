@@ -7,8 +7,9 @@ import {
   getListYardLocationsQueryKey,
   useCreateYardVehicle,
 } from "@workspace/api-client-react";
-import { Search, Plus, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Search, Plus, ChevronDown, ChevronUp, X, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 type VehicleStatus = "all" | "available" | "in_transit" | "pdi_pending" | "sold";
 
@@ -150,7 +151,7 @@ function AddVehicleModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   );
 }
 
-function VehicleRow({ vehicle }: { vehicle: Vehicle }) {
+function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice: boolean }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -207,7 +208,13 @@ function VehicleRow({ vehicle }: { vehicle: Vehicle }) {
               </div>
               <div>
                 <p className="text-muted-foreground mb-0.5">Price</p>
-                <p className="text-foreground">{vehicle.price != null ? `QAR ${vehicle.price.toLocaleString()}` : "—"}</p>
+                {canViewPrice ? (
+                  <p className="text-foreground font-medium">{vehicle.price != null ? `QAR ${Number(vehicle.price).toLocaleString()}` : "—"}</p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground italic">
+                    <Lock className="w-3 h-3" /> Management only
+                  </span>
+                )}
               </div>
               <div>
                 <p className="text-muted-foreground mb-0.5">Arrived</p>
@@ -228,6 +235,10 @@ export default function InventoryPage() {
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  // Pricing visible only to yard_manager and admin roles
+  const canViewPrice = user?.role === "yard_manager" || user?.role === "admin";
 
   const params = { q: debouncedSearch || undefined, status: status === "all" ? undefined : status, page, limit: 15 };
   const { data, isLoading } = useListYardVehicles(params, {
@@ -250,14 +261,25 @@ export default function InventoryPage() {
           <h1 className="text-lg font-semibold text-foreground">Vehicle Inventory</h1>
           <p className="text-muted-foreground text-sm">{data?.total ?? 0} vehicles</p>
         </div>
-        <button
-          data-testid="button-add-vehicle"
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Add Vehicle
-        </button>
+        {/* Only managers can add vehicles */}
+        {canViewPrice && (
+          <button
+            data-testid="button-add-vehicle"
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add Vehicle
+          </button>
+        )}
       </div>
+
+      {/* Role indicator */}
+      {!canViewPrice && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+          <Lock className="w-3 h-3" />
+          <span>Operator view — pricing and financial data is restricted to management.</span>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -317,7 +339,7 @@ export default function InventoryPage() {
                   <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">No vehicles found</td>
                 </tr>
               ) : (
-                (data?.vehicles ?? []).map((v) => <VehicleRow key={v.id} vehicle={v as Vehicle} />)
+                (data?.vehicles ?? []).map((v) => <VehicleRow key={v.id} vehicle={v as Vehicle} canViewPrice={canViewPrice} />)
               )}
             </tbody>
           </table>

@@ -125,6 +125,7 @@ export const yardVehiclesTable = pgTable("yard_vehicles", {
   price: numeric("price", { precision: 10, scale: 2 }),
   imageUrl: text("image_url"),
   arrivedAt: timestamp("arrived_at"),
+  inspectionIntervalDays: integer("inspection_interval_days").notNull().default(30),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

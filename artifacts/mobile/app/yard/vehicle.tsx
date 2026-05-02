@@ -15,12 +15,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
 
 const BASE = Platform.OS === "web"
   ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
   : "/api";
 
 type VehicleStatus = "available" | "in_transit" | "pdi_pending" | "sold";
+type Urgency = "overdue" | "due-soon" | "ok";
 
 interface VehicleDetail {
   id: number;
@@ -32,11 +34,23 @@ interface VehicleDetail {
   vin: string;
   status: VehicleStatus;
   mileage?: number;
-  price?: number;
+  price?: number | null;
   condition: string;
   locationName?: string;
   spotCode?: string;
   arrivedAt?: string;
+  inspectionIntervalDays?: number;
+}
+
+interface InspectionRec {
+  vehicleId: number;
+  urgency: Urgency;
+  daysRemaining: number;
+  nextDueDate: string;
+  lastInspectedAt: string | null;
+  aiRecommendation: string;
+  daysSinceArrival: number;
+  inspectionIntervalDays: number;
 }
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
@@ -57,6 +71,16 @@ const STATUS_BG: Record<VehicleStatus, string> = {
   pdi_pending: "#dbeafe",
   sold: "#f1f5f9",
 };
+const URGENCY_COLOR: Record<Urgency, string> = {
+  overdue: "#dc2626",
+  "due-soon": "#d97706",
+  ok: "#16a34a",
+};
+const URGENCY_BG: Record<Urgency, string> = {
+  overdue: "#fef2f2",
+  "due-soon": "#fffbeb",
+  ok: "#f0fdf4",
+};
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   const colors = useColors();
@@ -73,19 +97,30 @@ export default function VehicleDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { role } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  // Permissions
+  const canViewPrice = role === "supervisor";
+
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
+  const [rec, setRec] = useState<InspectionRec | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    fetch(`${BASE}/yard/vehicles/${id}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setVehicle(data);
+    Promise.all([
+      fetch(`${BASE}/yard/vehicles/${id}`).then((r) => r.json()),
+      fetch(`${BASE}/yard/inspection-recommendations`).then((r) => r.json()),
+    ])
+      .then(([vehicleData, recData]) => {
+        setVehicle(vehicleData);
+        const found = (recData.recommendations ?? []).find(
+          (r: InspectionRec) => r.vehicleId === Number(id)
+        );
+        setRec(found ?? null);
         setLoading(false);
       })
       .catch(() => {
@@ -137,6 +172,40 @@ export default function VehicleDetailScreen() {
           </Text>
         </View>
 
+        {/* AI Inspection Recommendation card */}
+        {rec && vehicle.status !== "sold" && (
+          <View style={[styles.recCard, { backgroundColor: URGENCY_BG[rec.urgency], borderColor: URGENCY_COLOR[rec.urgency] + "40" }]}>
+            <View style={styles.recHeader}>
+              <Feather
+                name={rec.urgency === "overdue" ? "alert-circle" : rec.urgency === "due-soon" ? "clock" : "check-circle"}
+                size={16}
+                color={URGENCY_COLOR[rec.urgency]}
+              />
+              <Text style={[styles.recTitle, { color: URGENCY_COLOR[rec.urgency] }]}>
+                {rec.urgency === "overdue"
+                  ? `Inspection Overdue by ${Math.abs(rec.daysRemaining)} day${Math.abs(rec.daysRemaining) !== 1 ? "s" : ""}`
+                  : rec.urgency === "due-soon"
+                  ? `Inspection Due in ${rec.daysRemaining} day${rec.daysRemaining !== 1 ? "s" : ""}`
+                  : `Next Inspection in ${rec.daysRemaining} days`}
+              </Text>
+            </View>
+            <Text style={[styles.recText, { color: URGENCY_COLOR[rec.urgency] }]}>{rec.aiRecommendation}</Text>
+            <View style={styles.recMeta}>
+              <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
+                Cycle: every {rec.inspectionIntervalDays} days
+              </Text>
+              {rec.lastInspectedAt && (
+                <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
+                  Last: {new Date(rec.lastInspectedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </Text>
+              )}
+              <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
+                Due: {new Date(rec.nextDueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Vehicle details card */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Vehicle Details</Text>
@@ -144,7 +213,7 @@ export default function VehicleDetailScreen() {
           <InfoRow label="Model" value={vehicle.model} />
           <InfoRow label="Year" value={vehicle.year} />
           <InfoRow label="Color" value={vehicle.color} />
-          <InfoRow label="Condition" value={vehicle.condition.charAt(0).toUpperCase() + vehicle.condition.slice(1)} />
+          <InfoRow label="Condition" value={vehicle.condition ? vehicle.condition.charAt(0).toUpperCase() + vehicle.condition.slice(1) : undefined} />
           <InfoRow label="Mileage" value={vehicle.mileage !== undefined ? `${vehicle.mileage.toLocaleString()} km` : undefined} />
         </View>
 
@@ -156,7 +225,19 @@ export default function VehicleDetailScreen() {
           <InfoRow label="Location" value={vehicle.locationName} />
           <InfoRow label="Spot" value={vehicle.spotCode} />
           <InfoRow label="Arrived" value={vehicle.arrivedAt ? new Date(vehicle.arrivedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : undefined} />
-          {vehicle.price && <InfoRow label="Price" value={`QAR ${Number(vehicle.price).toLocaleString()}`} />}
+          {/* Price only shown to supervisors */}
+          {canViewPrice && vehicle.price != null && (
+            <InfoRow label="Price" value={`QAR ${Number(vehicle.price).toLocaleString()}`} />
+          )}
+          {!canViewPrice && vehicle.price != null && (
+            <View style={styles.infoRow}>
+              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Price</Text>
+              <View style={styles.restrictedBadge}>
+                <Feather name="lock" size={10} color={colors.mutedForeground} />
+                <Text style={[styles.restrictedText, { color: colors.mutedForeground }]}>Management only</Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Actions */}
@@ -204,6 +285,37 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  recCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 14,
+    gap: 6,
+  },
+  recHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  recTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    flex: 1,
+  },
+  recText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+  },
+  recMeta: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 2,
+  },
+  recMetaText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
   card: {
     borderRadius: 12,
     borderWidth: 1,
@@ -218,6 +330,7 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#e2e8f0",
@@ -232,6 +345,16 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     flex: 2,
     textAlign: "right",
+  },
+  restrictedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  restrictedText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    fontStyle: "italic",
   },
   actionBtn: {
     flexDirection: "row",

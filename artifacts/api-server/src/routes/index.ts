@@ -7,6 +7,7 @@ import yardSpotsRouter from "./yard-spots";
 import yardVehiclesRouter from "./yard-vehicles";
 import yardInspectionsRouter from "./yard-inspections";
 import yardDashboardRouter from "./yard-dashboard";
+import yardRecommendationsRouter from "./yard-recommendations";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(yardSpotsRouter);
 router.use(yardVehiclesRouter);
 router.use(yardInspectionsRouter);
 router.use(yardDashboardRouter);
+router.use(yardRecommendationsRouter);
 
 export default router;

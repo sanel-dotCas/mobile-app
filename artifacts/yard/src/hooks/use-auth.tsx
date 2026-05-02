@@ -48,3 +48,26 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+// Derive permissions from yard user role
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: ["view_pricing", "move_vehicles", "create_inspections", "manage_users", "view_reports", "configure_settings"],
+  yard_manager: ["view_pricing", "move_vehicles", "create_inspections", "view_reports"],
+  yard_operator: ["move_vehicles", "create_inspections"],
+};
+
+export function useYardPermissions() {
+  const { user } = useAuth();
+  const role = user?.role ?? "yard_operator";
+  const permissions = ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS["yard_operator"];
+  return {
+    canViewPricing: permissions.includes("view_pricing"),
+    canMoveVehicles: permissions.includes("move_vehicles"),
+    canCreateInspections: permissions.includes("create_inspections"),
+    canManageUsers: permissions.includes("manage_users"),
+    canViewReports: permissions.includes("view_reports"),
+    canConfigureSettings: permissions.includes("configure_settings"),
+    role,
+    permissions,
+  };
+}

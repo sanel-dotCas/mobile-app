@@ -5,6 +5,8 @@ import {
   yardLocationsTable,
   yardSpotsTable,
   yardZonesTable,
+  yardInspectionsTable,
+  yardMovementsTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, SQL, desc } from "drizzle-orm";
 
@@ -55,175 +57,120 @@ router.get("/yard/vehicles", async (req, res) => {
       let zoneName: string | null = null;
 
       if (v.locationId) {
-        const [loc] = await db
-          .select()
-          .from(yardLocationsTable)
-          .where(eq(yardLocationsTable.id, v.locationId))
-          .limit(1);
+        const [loc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, v.locationId)).limit(1);
         locationName = loc?.name ?? null;
       }
       if (v.spotId) {
-        const [spot] = await db
-          .select()
-          .from(yardSpotsTable)
-          .where(eq(yardSpotsTable.id, v.spotId))
-          .limit(1);
+        const [spot] = await db.select().from(yardSpotsTable).where(eq(yardSpotsTable.id, v.spotId)).limit(1);
         spotCode = spot?.code ?? null;
         if (spot) {
-          const [zone] = await db
-            .select()
-            .from(yardZonesTable)
-            .where(eq(yardZonesTable.id, spot.zoneId))
-            .limit(1);
+          const [zone] = await db.select().from(yardZonesTable).where(eq(yardZonesTable.id, spot.zoneId)).limit(1);
           zoneName = zone?.name ?? null;
         }
       }
 
       return {
-        id: v.id,
-        vin: v.vin,
-        stockNumber: v.stockNumber,
-        make: v.make,
-        model: v.model,
-        year: v.year,
-        color: v.color ?? null,
-        mileage: v.mileage ?? null,
-        condition: v.condition ?? null,
-        status: v.status,
-        locationId: v.locationId ?? null,
-        locationName,
-        spotId: v.spotId ?? null,
-        spotCode,
-        zoneName,
+        id: v.id, vin: v.vin, stockNumber: v.stockNumber, make: v.make, model: v.model,
+        year: v.year, color: v.color ?? null, mileage: v.mileage ?? null,
+        condition: v.condition ?? null, status: v.status,
+        locationId: v.locationId ?? null, locationName,
+        spotId: v.spotId ?? null, spotCode, zoneName,
         price: v.price ? Number(v.price) : null,
         imageUrl: v.imageUrl ?? null,
         arrivedAt: v.arrivedAt?.toISOString() ?? null,
+        inspectionIntervalDays: v.inspectionIntervalDays ?? 30,
       };
     })
   );
 
   const total = Number(count);
-  res.json({
-    vehicles: vehiclesWithDetails,
-    total,
-    page: pageNum,
-    totalPages: Math.ceil(total / limitNum),
-  });
+  res.json({ vehicles: vehiclesWithDetails, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
 });
 
 router.post("/yard/vehicles", async (req, res) => {
-  const {
-    vin, stockNumber, make, model, year, color, mileage,
-    condition, status, locationId, price,
-  } = req.body;
+  const { vin, stockNumber, make, model, year, color, mileage, condition, status, locationId, price } = req.body;
 
-  const [vehicle] = await db
-    .insert(yardVehiclesTable)
-    .values({
-      vin,
-      stockNumber,
-      make,
-      model,
-      year: Number(year),
-      color,
-      mileage: mileage ? Number(mileage) : null,
-      condition,
-      status: status || "available",
-      locationId: locationId ? Number(locationId) : null,
-      price: price ? String(price) : null,
-      arrivedAt: new Date(),
-    })
-    .returning();
+  const [vehicle] = await db.insert(yardVehiclesTable).values({
+    vin, stockNumber, make, model,
+    year: Number(year), color,
+    mileage: mileage ? Number(mileage) : null,
+    condition, status: status || "available",
+    locationId: locationId ? Number(locationId) : null,
+    price: price ? String(price) : null,
+    arrivedAt: new Date(),
+  }).returning();
+
+  // Record arrival movement
+  if (vehicle.locationId) {
+    const [loc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, vehicle.locationId)).limit(1);
+    if (loc) {
+      await db.insert(yardMovementsTable).values({
+        locationId: loc.id,
+        vehicleId: vehicle.id,
+        vehicleName: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        action: `New vehicle arrived: ${vehicle.year} ${vehicle.make} ${vehicle.model} (Stock #${vehicle.stockNumber})`,
+        actor: "DMS",
+      });
+    }
+  }
 
   res.status(201).json({
-    id: vehicle.id,
-    vin: vehicle.vin,
-    stockNumber: vehicle.stockNumber,
-    make: vehicle.make,
-    model: vehicle.model,
-    year: vehicle.year,
-    color: vehicle.color ?? null,
-    mileage: vehicle.mileage ?? null,
-    condition: vehicle.condition ?? null,
-    status: vehicle.status,
-    locationId: vehicle.locationId ?? null,
-    locationName: null,
-    spotId: null,
-    spotCode: null,
-    zoneName: null,
+    id: vehicle.id, vin: vehicle.vin, stockNumber: vehicle.stockNumber,
+    make: vehicle.make, model: vehicle.model, year: vehicle.year,
+    color: vehicle.color ?? null, mileage: vehicle.mileage ?? null,
+    condition: vehicle.condition ?? null, status: vehicle.status,
+    locationId: vehicle.locationId ?? null, locationName: null,
+    spotId: null, spotCode: null, zoneName: null,
     price: vehicle.price ? Number(vehicle.price) : null,
     imageUrl: vehicle.imageUrl ?? null,
     arrivedAt: vehicle.arrivedAt?.toISOString() ?? null,
+    inspectionIntervalDays: vehicle.inspectionIntervalDays ?? 30,
   });
 });
 
 router.get("/yard/vehicles/:vehicleId", async (req, res) => {
   const vehicleId = Number(req.params.vehicleId);
-  const [v] = await db
-    .select()
-    .from(yardVehiclesTable)
-    .where(eq(yardVehiclesTable.id, vehicleId))
-    .limit(1);
+  const [v] = await db.select().from(yardVehiclesTable).where(eq(yardVehiclesTable.id, vehicleId)).limit(1);
 
-  if (!v) {
-    res.status(404).json({ error: "Vehicle not found" });
-    return;
-  }
+  if (!v) { res.status(404).json({ error: "Vehicle not found" }); return; }
 
   let locationName: string | null = null;
   let spotCode: string | null = null;
   let zoneName: string | null = null;
 
   if (v.locationId) {
-    const [loc] = await db
-      .select()
-      .from(yardLocationsTable)
-      .where(eq(yardLocationsTable.id, v.locationId))
-      .limit(1);
+    const [loc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, v.locationId)).limit(1);
     locationName = loc?.name ?? null;
   }
   if (v.spotId) {
-    const [spot] = await db
-      .select()
-      .from(yardSpotsTable)
-      .where(eq(yardSpotsTable.id, v.spotId))
-      .limit(1);
+    const [spot] = await db.select().from(yardSpotsTable).where(eq(yardSpotsTable.id, v.spotId)).limit(1);
     spotCode = spot?.code ?? null;
     if (spot) {
-      const [zone] = await db
-        .select()
-        .from(yardZonesTable)
-        .where(eq(yardZonesTable.id, spot.zoneId))
-        .limit(1);
+      const [zone] = await db.select().from(yardZonesTable).where(eq(yardZonesTable.id, spot.zoneId)).limit(1);
       zoneName = zone?.name ?? null;
     }
   }
 
   res.json({
-    id: v.id,
-    vin: v.vin,
-    stockNumber: v.stockNumber,
-    make: v.make,
-    model: v.model,
-    year: v.year,
-    color: v.color ?? null,
-    mileage: v.mileage ?? null,
-    condition: v.condition ?? null,
-    status: v.status,
-    locationId: v.locationId ?? null,
-    locationName,
-    spotId: v.spotId ?? null,
-    spotCode,
-    zoneName,
+    id: v.id, vin: v.vin, stockNumber: v.stockNumber, make: v.make, model: v.model,
+    year: v.year, color: v.color ?? null, mileage: v.mileage ?? null,
+    condition: v.condition ?? null, status: v.status,
+    locationId: v.locationId ?? null, locationName,
+    spotId: v.spotId ?? null, spotCode, zoneName,
     price: v.price ? Number(v.price) : null,
     imageUrl: v.imageUrl ?? null,
     arrivedAt: v.arrivedAt?.toISOString() ?? null,
+    inspectionIntervalDays: v.inspectionIntervalDays ?? 30,
   });
 });
 
 router.patch("/yard/vehicles/:vehicleId", async (req, res) => {
   const vehicleId = Number(req.params.vehicleId);
-  const { status, locationId, spotId, color, price } = req.body;
+  const { status, locationId, spotId, color, price, actor } = req.body;
+
+  // Fetch current vehicle before update
+  const [current] = await db.select().from(yardVehiclesTable).where(eq(yardVehiclesTable.id, vehicleId)).limit(1);
+  if (!current) { res.status(404).json({ error: "Vehicle not found" }); return; }
 
   const updates: Record<string, unknown> = {};
   if (status !== undefined) updates.status = status;
@@ -232,36 +179,96 @@ router.patch("/yard/vehicles/:vehicleId", async (req, res) => {
   if (color !== undefined) updates.color = color;
   if (price !== undefined) updates.price = String(price);
 
-  const [updated] = await db
-    .update(yardVehiclesTable)
-    .set(updates)
-    .where(eq(yardVehiclesTable.id, vehicleId))
-    .returning();
+  const [updated] = await db.update(yardVehiclesTable).set(updates).where(eq(yardVehiclesTable.id, vehicleId)).returning();
 
-  if (!updated) {
-    res.status(404).json({ error: "Vehicle not found" });
-    return;
+  // Resolve location for movement recording
+  const effectiveLocationId = updated.locationId ?? current.locationId;
+  let locationName: string | null = null;
+  if (effectiveLocationId) {
+    const [loc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, effectiveLocationId)).limit(1);
+    locationName = loc?.name ?? null;
+  }
+
+  const vehicleName = `${updated.year} ${updated.make} ${updated.model}`;
+  const actorName = actor ?? "DMS";
+
+  // Record movement on status change
+  if (status && status !== current.status && effectiveLocationId) {
+    const statusLabels: Record<string, string> = {
+      available: "marked Available",
+      in_transit: "moved In Transit",
+      pdi_pending: "queued for PDI",
+      sold: "marked as Sold",
+    };
+    await db.insert(yardMovementsTable).values({
+      locationId: effectiveLocationId,
+      vehicleId: updated.id,
+      vehicleName,
+      action: `${vehicleName} ${statusLabels[status] ?? `status → ${status}`}`,
+      actor: actorName,
+    });
+  }
+
+  // Record movement on location change
+  if (locationId && locationId !== current.locationId && locationId) {
+    const [newLoc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, Number(locationId))).limit(1);
+    if (newLoc) {
+      await db.insert(yardMovementsTable).values({
+        locationId: Number(locationId),
+        vehicleId: updated.id,
+        vehicleName,
+        action: `${vehicleName} transferred to ${newLoc.name}`,
+        actor: actorName,
+      });
+    }
+  }
+
+  // Auto-create final PDI inspection when vehicle is sold
+  let autoPdiInspection: { id: number; inspectionNumber: string } | null = null;
+  if (status === "sold" && current.status !== "sold") {
+    const [lastInsp] = await db
+      .select()
+      .from(yardInspectionsTable)
+      .orderBy(desc(yardInspectionsTable.id))
+      .limit(1);
+    const nextNum = lastInsp
+      ? String(Number(lastInsp.inspectionNumber) + 1).padStart(5, "0")
+      : "00001";
+
+    const [pdi] = await db.insert(yardInspectionsTable).values({
+      inspectionNumber: nextNum,
+      vehicleId: updated.id,
+      locationId: effectiveLocationId ?? null,
+      type: "final-quality",
+      status: "queued",
+      notes: `Auto-created: Final quality PDI for ${vehicleName} (Stock #${updated.stockNumber}) — marked sold by ${actorName}`,
+    }).returning();
+    autoPdiInspection = { id: pdi.id, inspectionNumber: pdi.inspectionNumber };
+
+    // Record the auto-PDI creation in movement feed
+    if (effectiveLocationId) {
+      await db.insert(yardMovementsTable).values({
+        locationId: effectiveLocationId,
+        vehicleId: updated.id,
+        vehicleName,
+        action: `Auto-PDI created: Final quality inspection #${nextNum} queued for ${vehicleName}`,
+        actor: "System",
+      });
+    }
   }
 
   res.json({
-    id: updated.id,
-    vin: updated.vin,
-    stockNumber: updated.stockNumber,
-    make: updated.make,
-    model: updated.model,
-    year: updated.year,
-    color: updated.color ?? null,
-    mileage: updated.mileage ?? null,
-    condition: updated.condition ?? null,
-    status: updated.status,
-    locationId: updated.locationId ?? null,
-    locationName: null,
-    spotId: updated.spotId ?? null,
-    spotCode: null,
-    zoneName: null,
+    id: updated.id, vin: updated.vin, stockNumber: updated.stockNumber,
+    make: updated.make, model: updated.model, year: updated.year,
+    color: updated.color ?? null, mileage: updated.mileage ?? null,
+    condition: updated.condition ?? null, status: updated.status,
+    locationId: updated.locationId ?? null, locationName,
+    spotId: updated.spotId ?? null, spotCode: null, zoneName: null,
     price: updated.price ? Number(updated.price) : null,
     imageUrl: updated.imageUrl ?? null,
     arrivedAt: updated.arrivedAt?.toISOString() ?? null,
+    inspectionIntervalDays: updated.inspectionIntervalDays ?? 30,
+    autoPdiInspection,
   });
 });
 
