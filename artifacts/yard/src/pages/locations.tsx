@@ -45,11 +45,12 @@ export default function LocationsPage() {
             : 0;
 
           return (
-            <Link key={loc.id} href={`/locations/${loc.id}`}>
-              <a
-                data-testid={`card-location-${loc.id}`}
-                className="block bg-card border border-card-border rounded-lg p-4 hover:border-[hsl(221,83%,53%)] transition-colors group"
-              >
+            <Link
+              key={loc.id}
+              href={`/locations/${loc.id}`}
+              data-testid={`card-location-${loc.id}`}
+              className="block bg-card border border-card-border rounded-lg p-4 hover:border-[hsl(221,83%,53%)] transition-colors group"
+            >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -97,7 +98,6 @@ export default function LocationsPage() {
                     }}
                   />
                 </div>
-              </a>
             </Link>
           );
         })}

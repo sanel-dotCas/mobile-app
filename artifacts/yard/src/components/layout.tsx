@@ -48,18 +48,19 @@ export default function Layout({ children }: { children: ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           {NAV.map(({ href, icon: Icon, label }) => (
-            <Link key={href} href={href} onClick={() => setMobileOpen(false)}>
-              <a
-                data-testid={`nav-${label.toLowerCase()}`}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded text-sm transition-colors ${
-                  isActive(href)
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                    : "text-[hsl(215,20%,65%)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                {label}
-              </a>
+            <Link
+              key={href}
+              href={href}
+              onClick={() => setMobileOpen(false)}
+              data-testid={`nav-${label.toLowerCase()}`}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded text-sm transition-colors ${
+                isActive(href)
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                  : "text-[hsl(215,20%,65%)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              }`}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {label}
             </Link>
           ))}
         </nav>

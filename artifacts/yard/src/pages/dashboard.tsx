@@ -71,10 +71,8 @@ export default function DashboardPage() {
           <h1 className="text-lg font-semibold text-foreground">Operations Dashboard</h1>
           <p className="text-muted-foreground text-sm">Real-time yard overview</p>
         </div>
-        <Link href="/locations">
-          <a className="flex items-center gap-1.5 text-sm text-[hsl(221,83%,53%)] hover:text-[hsl(221,83%,45%)] transition-colors">
-            View locations <ArrowRight className="w-3.5 h-3.5" />
-          </a>
+        <Link href="/locations" className="flex items-center gap-1.5 text-sm text-[hsl(221,83%,53%)] hover:text-[hsl(221,83%,45%)] transition-colors">
+          View locations <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
 
@@ -130,32 +128,26 @@ export default function DashboardPage() {
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Link href="/locations">
-          <a data-testid="link-locations" className="flex items-center gap-3 bg-card border border-card-border rounded-lg px-4 py-3 hover:border-[hsl(221,83%,53%)] transition-colors group">
-            <MapPin className="w-5 h-5 text-[hsl(221,83%,53%)]" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Manage Locations</p>
-              <p className="text-xs text-muted-foreground">View spot grids</p>
-            </div>
-          </a>
+        <Link href="/locations" data-testid="link-locations" className="flex items-center gap-3 bg-card border border-card-border rounded-lg px-4 py-3 hover:border-[hsl(221,83%,53%)] transition-colors group">
+          <MapPin className="w-5 h-5 text-[hsl(221,83%,53%)]" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Manage Locations</p>
+            <p className="text-xs text-muted-foreground">View spot grids</p>
+          </div>
         </Link>
-        <Link href="/inventory">
-          <a data-testid="link-inventory" className="flex items-center gap-3 bg-card border border-card-border rounded-lg px-4 py-3 hover:border-[hsl(221,83%,53%)] transition-colors">
-            <Car className="w-5 h-5 text-[hsl(221,83%,53%)]" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Vehicle Inventory</p>
-              <p className="text-xs text-muted-foreground">{stats ? stats.totalOccupied + stats.expectedInbound : 0} vehicles tracked</p>
-            </div>
-          </a>
+        <Link href="/inventory" data-testid="link-inventory" className="flex items-center gap-3 bg-card border border-card-border rounded-lg px-4 py-3 hover:border-[hsl(221,83%,53%)] transition-colors">
+          <Car className="w-5 h-5 text-[hsl(221,83%,53%)]" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Vehicle Inventory</p>
+            <p className="text-xs text-muted-foreground">{stats ? stats.totalOccupied + stats.expectedInbound : 0} vehicles tracked</p>
+          </div>
         </Link>
-        <Link href="/inspections">
-          <a data-testid="link-inspections" className="flex items-center gap-3 bg-card border border-card-border rounded-lg px-4 py-3 hover:border-[hsl(221,83%,53%)] transition-colors">
-            <ClipboardCheck className="w-5 h-5 text-[hsl(221,83%,53%)]" />
-            <div>
-              <p className="text-sm font-medium text-foreground">PDI Inspections</p>
-              <p className="text-xs text-muted-foreground">{stats?.readyForPDI ?? 0} pending</p>
-            </div>
-          </a>
+        <Link href="/inspections" data-testid="link-inspections" className="flex items-center gap-3 bg-card border border-card-border rounded-lg px-4 py-3 hover:border-[hsl(221,83%,53%)] transition-colors">
+          <ClipboardCheck className="w-5 h-5 text-[hsl(221,83%,53%)]" />
+          <div>
+            <p className="text-sm font-medium text-foreground">PDI Inspections</p>
+            <p className="text-xs text-muted-foreground">{stats?.readyForPDI ?? 0} pending</p>
+          </div>
         </Link>
       </div>
 
