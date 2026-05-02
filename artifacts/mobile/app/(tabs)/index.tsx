@@ -14,6 +14,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { JobCard } from "@/components/JobCard";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { ProgressBar } from "@/components/ProgressBar";
+import { useAuth } from "@/context/AuthContext";
 import { useJobs } from "@/context/JobsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
@@ -34,6 +35,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { state } = useJobs();
   const { t } = useLang();
+  const { logout, userCode } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const today = new Date("2026-04-30");
@@ -64,6 +66,13 @@ export default function DashboardScreen() {
             <Pressable style={[styles.exportBtn, { borderColor: colors.border }]}>
               <Feather name="download" size={14} color={colors.foreground} />
               <Text style={[styles.exportBtnText, { color: colors.foreground }]}>{t.export}</Text>
+            </Pressable>
+            <Pressable
+              onPress={logout}
+              style={[styles.logoutBtn, { borderColor: colors.border }]}
+              hitSlop={8}
+            >
+              <Feather name="log-out" size={15} color={colors.mutedForeground} />
             </Pressable>
           </View>
         }
@@ -211,6 +220,14 @@ const styles = StyleSheet.create({
   exportBtnText: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
+  },
+  logoutBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
   },
   kpiCard: {
     borderRadius: 14,
