@@ -90,6 +90,14 @@ export default function SupervisorLayout() {
             isIOS ? <SymbolView name="slider.horizontal.3" tintColor={color} size={24} /> : <Feather name="layers" size={22} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t.profile,
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="person.circle" tintColor={color} size={24} /> : <Feather name="user" size={22} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
