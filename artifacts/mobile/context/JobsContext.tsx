@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { VEHICLE_CHECKLIST } from "@/constants/inspectionChecklist";
 import React, {
   createContext,
   useCallback,
@@ -45,8 +46,9 @@ export interface JobNote {
 }
 
 export interface InspectionItem {
-  id: string; title: string; status: "pass" | "fail" | "pending";
+  id: string; title: string; status: "pass" | "fail" | "attention" | "pending";
   estimatedHours: number; notes: string;
+  templateId?: string; section?: string;
 }
 
 export interface StageEntry {
@@ -76,6 +78,7 @@ export interface Technician {
   currentJobId: string | null; status: "active" | "idle" | "break" | "absent";
   totalHoursToday: number; efficiency: number;
   weekHoursBooked: number; monthHoursBooked: number;
+  specializations: LaborType[]; completedJobs: number;
 }
 
 interface DashboardStats {
@@ -120,14 +123,15 @@ type Action =
   | { type: "ADD_INSPECTION"; payload: { jobId: string; item: InspectionItem } }
   | { type: "UPDATE_INSPECTION"; payload: { jobId: string; itemId: string; status: InspectionItem["status"]; notes: string } }
   | { type: "HOLD_JOB"; payload: { jobId: string } }
-  | { type: "UNHOLD_JOB"; payload: { jobId: string } };
+  | { type: "UNHOLD_JOB"; payload: { jobId: string } }
+  | { type: "LOAD_INSPECTION_TEMPLATE"; payload: { jobId: string; items: InspectionItem[] } };
 
 const INITIAL_TECHNICIANS: Technician[] = [
-  { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128 },
-  { id: "tech-002", name: "James Wilson", role: "Technician", avatar: "JW", currentJobId: "job-005", status: "active", totalHoursToday: 4.0, efficiency: 78, weekHoursBooked: 24, monthHoursBooked: 98 },
-  { id: "tech-003", name: "Carlos Mendez", role: "Junior Technician", avatar: "CM", currentJobId: null, status: "idle", totalHoursToday: 3.2, efficiency: 65, weekHoursBooked: 18, monthHoursBooked: 72 },
-  { id: "tech-004", name: "Ahmed Hassan", role: "Technician", avatar: "AH", currentJobId: "job-002", status: "break", totalHoursToday: 6.1, efficiency: 88, weekHoursBooked: 38, monthHoursBooked: 152 },
-  { id: "tech-005", name: "David Park", role: "Senior Technician", avatar: "DP", currentJobId: null, status: "absent", totalHoursToday: 0, efficiency: 0, weekHoursBooked: 0, monthHoursBooked: 0 },
+  { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128, specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"], completedJobs: 312 },
+  { id: "tech-002", name: "James Wilson",   role: "Technician",        avatar: "JW", currentJobId: "job-005", status: "active", totalHoursToday: 4.0, efficiency: 78, weekHoursBooked: 24, monthHoursBooked: 98,  specializations: ["ELECTRICAL", "DIAGNOSTIC"],              completedJobs: 187 },
+  { id: "tech-003", name: "Carlos Mendez",  role: "Junior Technician", avatar: "CM", currentJobId: null,      status: "idle",   totalHoursToday: 3.2, efficiency: 65, weekHoursBooked: 18, monthHoursBooked: 72,  specializations: ["MECHANICAL"],                            completedJobs: 95  },
+  { id: "tech-004", name: "Ahmed Hassan",   role: "Technician",        avatar: "AH", currentJobId: "job-002", status: "break",  totalHoursToday: 6.1, efficiency: 88, weekHoursBooked: 38, monthHoursBooked: 152, specializations: ["MECHANICAL", "BODY", "PAINT"],            completedJobs: 241 },
+  { id: "tech-005", name: "David Park",     role: "Senior Technician", avatar: "DP", currentJobId: null,      status: "absent", totalHoursToday: 0,   efficiency: 0,  weekHoursBooked: 0,  monthHoursBooked: 0,   specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC", "BODY"], completedJobs: 289 },
 ];
 
 // Timestamps relative to now so delay detection fires immediately for demo
@@ -538,6 +542,15 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "UNHOLD_JOB":
       return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, status: (j.tasks.some((t) => t.status !== "pending") ? "in_progress" : "pending") as JobStatus })) };
 
+    case "LOAD_INSPECTION_TEMPLATE":
+      return {
+        ...state,
+        jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({
+          ...j,
+          inspections: [...j.inspections, ...action.payload.items],
+        })),
+      };
+
     case "ADD_INSPECTION":
       return {
         ...state,
@@ -605,6 +618,7 @@ interface JobsContextValue {
   addDelayNotification: (jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) => void;
   addInspection: (jobId: string, item: Omit<InspectionItem, "id">) => void;
   updateInspection: (jobId: string, itemId: string, status: InspectionItem["status"], notes: string) => void;
+  loadInspectionTemplate: (jobId: string) => void;
   holdJob: (jobId: string) => void;
   unholdJob: (jobId: string) => void;
   unreadCount: number;
@@ -688,13 +702,41 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const updateInspection = useCallback((jobId: string, itemId: string, status: InspectionItem["status"], notes: string) =>
     dispatch({ type: "UPDATE_INSPECTION", payload: { jobId, itemId, status, notes } }), []);
 
+  const loadInspectionTemplate = useCallback((jobId: string) => {
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const existingTemplateIds = new Set(
+      job.inspections.filter((i) => i.templateId).map((i) => i.templateId),
+    );
+    const newItems: InspectionItem[] = [];
+    const ts = Date.now();
+    VEHICLE_CHECKLIST.forEach((section) => {
+      section.items.forEach((item, idx) => {
+        if (!existingTemplateIds.has(item.id)) {
+          newItems.push({
+            id: `ins-tpl-${item.id}-${ts}-${idx}`,
+            title: item.title,
+            status: "pending",
+            estimatedHours: item.defaultHours,
+            notes: "",
+            templateId: item.id,
+            section: section.id,
+          });
+        }
+      });
+    });
+    if (newItems.length > 0) {
+      dispatch({ type: "LOAD_INSPECTION_TEMPLATE", payload: { jobId, items: newItems } });
+    }
+  }, [state.jobs]);
+
   const holdJob = useCallback((jobId: string) => dispatch({ type: "HOLD_JOB", payload: { jobId } }), []);
   const unholdJob = useCallback((jobId: string) => dispatch({ type: "UNHOLD_JOB", payload: { jobId } }), []);
 
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, holdJob, unholdJob, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );

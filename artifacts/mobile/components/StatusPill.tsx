@@ -4,7 +4,7 @@ import { useColors } from "@/hooks/useColors";
 import type { JobStatus, TaskStatus } from "@/context/JobsContext";
 
 interface StatusPillProps {
-  status: JobStatus | TaskStatus | "pass" | "fail";
+  status: JobStatus | TaskStatus | "pass" | "fail" | "attention" | "pending";
   size?: "sm" | "md";
 }
 
@@ -18,6 +18,7 @@ export function StatusPill({ status, size = "sm" }: StatusPillProps) {
     completed:   { bg: colors.successLight,  text: colors.success,     label: "Completed"   },
     done:        { bg: colors.successLight,  text: colors.success,     label: "Done"        },
     pass:        { bg: colors.successLight,  text: colors.success,     label: "Pass"        },
+    attention:   { bg: "#fef3c7",           text: "#d97706",          label: "Attention"   },
     fail:        { bg: "#fee2e2",            text: colors.destructive, label: "Fail"        },
   };
 

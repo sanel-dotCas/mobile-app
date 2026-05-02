@@ -18,11 +18,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { ClockInModal } from "@/components/ClockInModal";
+import { InspectionChecklist } from "@/components/InspectionChecklist";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TaskCard } from "@/components/TaskCard";
 import { useAuth } from "@/context/AuthContext";
-import type { InspectionItem, NoteAttachment, Part, PartStatus } from "@/context/JobsContext";
+import type { NoteAttachment, Part, PartStatus } from "@/context/JobsContext";
 import { useJobs } from "@/context/JobsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useStages } from "@/context/StagesContext";
@@ -53,30 +54,6 @@ const metaStyles = StyleSheet.create({
   value: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 });
 
-function InspectionCard({ item }: { item: InspectionItem }) {
-  const colors = useColors();
-  return (
-    <View style={[inspStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={inspStyles.row}>
-        <View style={inspStyles.left}>
-          <Text style={[inspStyles.title, { color: colors.foreground }]}>{item.title}</Text>
-          <Text style={[inspStyles.hours, { color: colors.mutedForeground }]}>{item.estimatedHours}h estimated</Text>
-          {item.notes ? <Text style={[inspStyles.notes, { color: colors.mutedForeground }]}>{item.notes}</Text> : null}
-        </View>
-        <StatusPill status={item.status} size="md" />
-      </View>
-    </View>
-  );
-}
-
-const inspStyles = StyleSheet.create({
-  card: { borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8 },
-  row: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
-  left: { flex: 1, gap: 3 },
-  title: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  hours: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  notes: { fontSize: 12, fontFamily: "Inter_400Regular", fontStyle: "italic" },
-});
 
 function formatElapsed(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -88,7 +65,7 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, addInspection, updateInspection, receivePart, updatePartStatus } = useJobs();
+  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus } = useJobs();
   const { sortedStages, getStage } = useStages();
   const { role } = useAuth();
   const { t } = useLang();
@@ -103,10 +80,6 @@ export default function JobDetailScreen() {
   const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
   const [attachLabel, setAttachLabel] = useState("");
   const [clockInModal, setClockInModal] = useState<{ jobId: string; taskId: string; taskTitle: string } | null>(null);
-  const [inspTitle, setInspTitle] = useState("");
-  const [inspStatus, setInspStatus] = useState<InspectionItem["status"]>("pending");
-  const [inspHours, setInspHours] = useState("");
-  const [inspNotes, setInspNotes] = useState("");
 
   const job = getJob(id ?? "");
 
@@ -203,18 +176,6 @@ export default function JobDetailScreen() {
       setAttachments((prev) => [...prev, { uri: result.assets[0].uri, label: attachLabel || "Camera", type: "image" }]);
       setAttachLabel("");
     }
-  };
-
-  const handleAddInspection = () => {
-    if (!inspTitle.trim()) { Alert.alert("Required", "Please enter an inspection title."); return; }
-    addInspection(job.id, {
-      title: inspTitle.trim(),
-      status: inspStatus,
-      estimatedHours: parseFloat(inspHours) || 0,
-      notes: inspNotes.trim(),
-    });
-    setInspTitle(""); setInspStatus("pending"); setInspHours(""); setInspNotes("");
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const handleAddNote = () => {
@@ -755,96 +716,7 @@ export default function JobDetailScreen() {
         {/* ── Inspections Tab ──────────────────────────────── */}
         {activeTab === "inspections" && (
           <View style={styles.tabContent}>
-            {/* Create Inspection Form */}
-            <View style={[styles.inspForm, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.inspFormHeader}>
-                <Feather name="clipboard" size={15} color={colors.primary} />
-                <Text style={[styles.inspFormTitle, { color: colors.foreground }]}>Add Inspection</Text>
-              </View>
-              <TextInput
-                value={inspTitle}
-                onChangeText={setInspTitle}
-                placeholder="Inspection item (e.g. Brake Line Visual Check)"
-                placeholderTextColor={colors.mutedForeground}
-                style={[styles.inspTitleInput, { color: colors.foreground, borderColor: colors.border }]}
-              />
-              {/* Status selector */}
-              <View style={styles.inspStatusRow}>
-                <Text style={[styles.inspStatusLabel, { color: colors.mutedForeground }]}>Result:</Text>
-                {(["pass", "fail", "pending"] as const).map((s) => {
-                  const cfg = { pass: { label: "Pass", color: "#16a34a", bg: "#dcfce7", activeBg: "#16a34a" }, fail: { label: "Fail", color: "#dc2626", bg: "#fee2e2", activeBg: "#dc2626" }, pending: { label: "Pending", color: "#d97706", bg: "#fef3c7", activeBg: "#d97706" } }[s];
-                  const active = inspStatus === s;
-                  return (
-                    <Pressable
-                      key={s}
-                      onPress={() => { setInspStatus(s); Haptics.selectionAsync(); }}
-                      style={[styles.inspStatusBtn, { backgroundColor: active ? cfg.activeBg : cfg.bg, borderColor: active ? cfg.activeBg : cfg.bg }]}
-                    >
-                      <Text style={[styles.inspStatusBtnText, { color: active ? "#fff" : cfg.color }]}>{cfg.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <View style={styles.inspRow2}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inspFieldLabel, { color: colors.mutedForeground }]}>Est. Hours</Text>
-                  <TextInput
-                    value={inspHours}
-                    onChangeText={setInspHours}
-                    placeholder="0.5"
-                    placeholderTextColor={colors.mutedForeground}
-                    keyboardType="decimal-pad"
-                    style={[styles.inspSmallInput, { color: colors.foreground, borderColor: colors.border }]}
-                  />
-                </View>
-                <View style={{ flex: 2.5 }}>
-                  <Text style={[styles.inspFieldLabel, { color: colors.mutedForeground }]}>Notes</Text>
-                  <TextInput
-                    value={inspNotes}
-                    onChangeText={setInspNotes}
-                    placeholder="Findings / observations..."
-                    placeholderTextColor={colors.mutedForeground}
-                    style={[styles.inspSmallInput, { color: colors.foreground, borderColor: colors.border }]}
-                  />
-                </View>
-              </View>
-              <Pressable
-                onPress={handleAddInspection}
-                style={[styles.inspSubmitBtn, { backgroundColor: colors.primary, opacity: inspTitle.trim() ? 1 : 0.5 }]}
-                disabled={!inspTitle.trim()}
-              >
-                <Feather name="plus" size={15} color="#fff" />
-                <Text style={styles.inspSubmitBtnText}>Add Inspection</Text>
-              </Pressable>
-            </View>
-
-            {/* Inspection list */}
-            {job.inspections.length === 0 ? (
-              <View style={styles.emptyNotes}>
-                <Feather name="clipboard" size={36} color={colors.mutedForeground} />
-                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No inspections recorded yet</Text>
-              </View>
-            ) : (
-              <>
-                <Text style={[styles.historyTitle, { color: colors.mutedForeground }]}>
-                  Recorded ({job.inspections.length}) · {job.inspections.filter((i) => i.status === "pass").length} pass · {job.inspections.filter((i) => i.status === "fail").length} fail · {job.inspections.filter((i) => i.status === "pending").length} pending
-                </Text>
-                {job.inspections.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    onPress={() => {
-                      const nextStatus: InspectionItem["status"] = item.status === "pending" ? "pass" : item.status === "pass" ? "fail" : "pending";
-                      Alert.alert("Update Result", `Change "${item.title}" to "${nextStatus}"?`, [
-                        { text: "Cancel", style: "cancel" },
-                        { text: "Update", onPress: () => { updateInspection(job.id, item.id, nextStatus, item.notes); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } },
-                      ]);
-                    }}
-                  >
-                    <InspectionCard key={item.id} item={item} />
-                  </Pressable>
-                ))}
-              </>
-            )}
+            <InspectionChecklist jobId={job.id} />
           </View>
         )}
       </ScrollView>
@@ -1002,21 +874,6 @@ const styles = StyleSheet.create({
   partsStatusText: { fontSize: 10, fontFamily: "Inter_700Bold" },
   partsReceiveBtn: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
   partsReceiveBtnText: { color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold" },
-
-  /* Inspection Form */
-  inspForm: { borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 10, marginBottom: 14 },
-  inspFormHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
-  inspFormTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  inspTitleInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },
-  inspStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  inspStatusLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
-  inspStatusBtn: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 10, borderWidth: 1.5 },
-  inspStatusBtnText: { fontSize: 12, fontFamily: "Inter_700Bold" },
-  inspRow2: { flexDirection: "row", gap: 10 },
-  inspFieldLabel: { fontSize: 11, fontFamily: "Inter_500Medium", marginBottom: 4 },
-  inspSmallInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_400Regular" },
-  inspSubmitBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
-  inspSubmitBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
 
   floatingCta: { position: "absolute", right: 16, left: 16, alignItems: "center" },
   clockInFab: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 50, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },

@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatusPill } from "@/components/StatusPill";
-import type { Job, JobStatus } from "@/context/JobsContext";
+import type { Job, JobStatus, LaborType, Technician } from "@/context/JobsContext";
 import { useJobs } from "@/context/JobsContext";
 import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
@@ -31,6 +31,47 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: "on_hold",     label: "On Hold"     },
   { key: "completed",   label: "Done"        },
 ];
+
+interface SmartScore {
+  score: number;
+  reasons: string[];
+}
+
+function computeSmartScore(tech: Technician, job: Job): SmartScore {
+  if (tech.status === "absent") return { score: 0, reasons: ["Not on shift today"] };
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (tech.status === "active") { score += 28; reasons.push("Active on the floor"); }
+  else if (tech.status === "idle") { score += 25; reasons.push("Available — ready to start"); }
+  else if (tech.status === "break") { score += 10; reasons.push("Currently on break"); }
+
+  const loadPct = Math.min(tech.totalHoursToday / 8, 1);
+  score += Math.round((1 - loadPct) * 30);
+  const hoursLeft = Math.max(0, 8 - tech.totalHoursToday).toFixed(1);
+  if (loadPct < 0.4) reasons.push(`Light workload — ${hoursLeft}h available today`);
+  else if (loadPct < 0.75) reasons.push(`${tech.totalHoursToday}h worked · ${hoursLeft}h remaining`);
+  else reasons.push(`Heavy load (${tech.totalHoursToday}h / 8h today)`);
+
+  score += Math.round((tech.efficiency / 100) * 22);
+  if (tech.efficiency >= 85) reasons.push(`Excellent efficiency: ${tech.efficiency}%`);
+  else if (tech.efficiency >= 70) reasons.push(`Efficiency: ${tech.efficiency}%`);
+
+  const jobLabors: LaborType[] = [...new Set(job.tasks.map((t) => t.laborType))];
+  const matched = jobLabors.filter((lt) => (tech.specializations ?? []).includes(lt));
+  if (matched.length > 0) {
+    score += Math.round((matched.length / Math.max(jobLabors.length, 1)) * 20);
+    reasons.push(`Specialises in: ${matched.join(", ")}`);
+  }
+
+  if (tech.completedJobs >= 200) {
+    score += 5;
+    reasons.push(`${tech.completedJobs} completed jobs`);
+  }
+
+  return { score: Math.min(100, score), reasons };
+}
 
 function computeDelay(job: Job, getStage: ReturnType<typeof useStages>["getStage"]) {
   const stage = getStage(job.currentStageId);
@@ -51,6 +92,7 @@ export default function SupervisorJobsScreen() {
 
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [assignModal, setAssignModal] = useState<{ jobId: string } | null>(null);
+  const [smartSuggestion, setSmartSuggestion] = useState<{ tech: Technician; score: number; reasons: string[] } | null>(null);
 
   const filteredJobs = activeFilter === "all"
     ? state.jobs
@@ -73,7 +115,30 @@ export default function SupervisorJobsScreen() {
   const handleAssign = (jobId: string, techId: string) => {
     assignJob(jobId, techId);
     setAssignModal(null);
+    setSmartSuggestion(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleSmartSuggest = (jobId: string) => {
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const available = state.technicians.filter((t) => t.status !== "absent");
+    if (available.length === 0) return;
+    const scored = available.map((t) => ({ tech: t, ...computeSmartScore(t, job) }));
+    const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
+    setSmartSuggestion(best);
+    Haptics.selectionAsync();
+  };
+
+  const handleAutoAssign = (jobId: string) => {
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const available = state.technicians.filter((t) => t.status !== "absent");
+    if (available.length === 0) { return; }
+    const best = available.reduce((a, b) => {
+      return computeSmartScore(b, job).score > computeSmartScore(a, job).score ? b : a;
+    });
+    handleAssign(jobId, best.id);
   };
 
   const handleHoldToggle = (job: Job) => {
@@ -315,45 +380,146 @@ export default function SupervisorJobsScreen() {
       </ScrollView>
 
       {/* Assign technician modal */}
-      {assignModal && (
-        <Modal visible transparent animationType="slide" onRequestClose={() => setAssignModal(null)}>
-          <Pressable style={styles.modalOverlay} onPress={() => setAssignModal(null)}>
-            <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Assign Technician</Text>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {state.technicians.filter((t) => t.status !== "absent").map((tech) => {
-                  const loadPct = (tech.totalHoursToday / 8) * 100;
-                  const loadColor = loadPct >= 90 ? "#ef4444" : loadPct >= 70 ? "#d97706" : "#16a34a";
-                  return (
-                    <Pressable
-                      key={tech.id}
-                      onPress={() => handleAssign(assignModal.jobId, tech.id)}
-                      style={({ pressed }) => [styles.techOption, { borderBottomColor: colors.border, opacity: pressed ? 0.8 : 1 }]}
-                    >
-                      <View style={[styles.techAvatar, { backgroundColor: colors.primary }]}>
-                        <Text style={styles.techAvatarText}>{tech.avatar}</Text>
-                      </View>
-                      <View style={styles.techOptionInfo}>
-                        <Text style={[styles.techName, { color: colors.foreground }]}>{tech.name}</Text>
-                        <Text style={[styles.techRoleText, { color: colors.mutedForeground }]}>
-                          {tech.role} · {tech.efficiency}% eff · {tech.totalHoursToday}h today
-                        </Text>
-                        <View style={[styles.miniLoadTrack, { backgroundColor: colors.secondary }]}>
-                          <View style={[styles.miniLoadFill, { width: `${Math.min(loadPct, 100)}%` as `${number}%`, backgroundColor: loadColor }]} />
+      {assignModal && (() => {
+        const modalJob = state.jobs.find((j) => j.id === assignModal.jobId);
+        const available = state.technicians.filter((t) => t.status !== "absent");
+        const scoredTechs = modalJob
+          ? available.map((t) => ({ tech: t, ...computeSmartScore(t, modalJob) })).sort((a, b) => b.score - a.score)
+          : available.map((t) => ({ tech: t, score: 0, reasons: [] as string[] }));
+
+        return (
+          <Modal visible transparent animationType="slide" onRequestClose={() => { setAssignModal(null); setSmartSuggestion(null); }}>
+            <Pressable style={styles.modalOverlay} onPress={() => { setAssignModal(null); setSmartSuggestion(null); }}>
+              <Pressable style={[styles.modalSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation?.()}>
+                <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Assign Technician</Text>
+                  {modalJob && (
+                    <Text style={[styles.modalJobLabel, { color: colors.mutedForeground }]}>
+                      {modalJob.estimateNumber} · {modalJob.vehicle}
+                    </Text>
+                  )}
+                </View>
+
+                {/* AI Action buttons */}
+                <View style={styles.aiActionRow}>
+                  <Pressable
+                    onPress={() => handleAutoAssign(assignModal.jobId)}
+                    style={[styles.aiBtn, styles.aiBtnAuto]}
+                  >
+                    <Feather name="zap" size={13} color="#fff" />
+                    <Text style={styles.aiBtnText}>Auto-Assign</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleSmartSuggest(assignModal.jobId)}
+                    style={[styles.aiBtn, styles.aiBtnSuggest, { borderColor: colors.primary }]}
+                  >
+                    <Feather name="cpu" size={13} color={colors.primary} />
+                    <Text style={[styles.aiBtnSuggestText, { color: colors.primary }]}>Smart Suggest</Text>
+                  </Pressable>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: "75%" }}>
+                  {/* Smart suggestion card */}
+                  {smartSuggestion && (
+                    <View style={[styles.suggestionCard, { backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }]}>
+                      <View style={styles.suggestionHeader}>
+                        <View style={styles.suggestionBadge}>
+                          <Feather name="cpu" size={10} color="#1d4ed8" />
+                          <Text style={styles.suggestionBadgeText}>Smart Recommendation</Text>
+                        </View>
+                        <View style={styles.scoreChip}>
+                          <Text style={styles.scoreChipText}>{smartSuggestion.score}/100</Text>
                         </View>
                       </View>
-                      <View style={[styles.statusDot, {
-                        backgroundColor: tech.status === "active" ? "#16a34a" : tech.status === "idle" ? "#64748b" : "#d97706",
-                      }]} />
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          </Pressable>
-        </Modal>
-      )}
+                      <View style={styles.suggestionBody}>
+                        <View style={[styles.techAvatar, { backgroundColor: colors.primary }]}>
+                          <Text style={styles.techAvatarText}>{smartSuggestion.tech.avatar}</Text>
+                        </View>
+                        <View style={styles.suggestionInfo}>
+                          <Text style={[styles.techName, { color: "#1e3a8a" }]}>{smartSuggestion.tech.name}</Text>
+                          <Text style={[styles.techRoleText, { color: "#3b82f6" }]}>{smartSuggestion.tech.role}</Text>
+                          {smartSuggestion.reasons.map((r, i) => (
+                            <View key={i} style={styles.reasonRow}>
+                              <Feather name="check-circle" size={10} color="#16a34a" />
+                              <Text style={styles.reasonText}>{r}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                      {/* Score bar */}
+                      <View style={[styles.miniLoadTrack, { backgroundColor: "#bfdbfe", marginTop: 10 }]}>
+                        <View style={[styles.miniLoadFill, { width: `${smartSuggestion.score}%` as `${number}%`, backgroundColor: "#1d4ed8" }]} />
+                      </View>
+                      <Pressable
+                        onPress={() => handleAssign(assignModal.jobId, smartSuggestion.tech.id)}
+                        style={styles.confirmSuggestBtn}
+                      >
+                        <Feather name="user-check" size={13} color="#fff" />
+                        <Text style={styles.confirmSuggestText}>Confirm — Assign {smartSuggestion.tech.name.split(" ")[0]}</Text>
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {/* Tech list with scores */}
+                  <Text style={[styles.listSectionLabel, { color: colors.mutedForeground }]}>
+                    {smartSuggestion ? "All Technicians (ranked)" : "Select Technician"}
+                  </Text>
+                  {scoredTechs.map(({ tech, score }) => {
+                    const loadPct = (tech.totalHoursToday / 8) * 100;
+                    const loadColor = loadPct >= 90 ? "#ef4444" : loadPct >= 70 ? "#d97706" : "#16a34a";
+                    const isSuggested = smartSuggestion?.tech.id === tech.id;
+                    return (
+                      <Pressable
+                        key={tech.id}
+                        onPress={() => handleAssign(assignModal.jobId, tech.id)}
+                        style={({ pressed }) => [
+                          styles.techOption,
+                          { borderBottomColor: colors.border, opacity: pressed ? 0.8 : 1 },
+                          isSuggested && { backgroundColor: "#eff6ff" },
+                        ]}
+                      >
+                        <View style={[styles.techAvatar, { backgroundColor: isSuggested ? "#1d4ed8" : colors.primary }]}>
+                          <Text style={styles.techAvatarText}>{tech.avatar}</Text>
+                        </View>
+                        <View style={styles.techOptionInfo}>
+                          <View style={styles.techNameRow}>
+                            <Text style={[styles.techName, { color: colors.foreground }]}>{tech.name}</Text>
+                            {isSuggested && (
+                              <View style={styles.bestBadge}>
+                                <Text style={styles.bestBadgeText}>Best Match</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={[styles.techRoleText, { color: colors.mutedForeground }]}>
+                            {tech.role} · {tech.efficiency}% eff · {tech.totalHoursToday}h today
+                          </Text>
+                          <View style={[styles.miniLoadTrack, { backgroundColor: colors.secondary, marginTop: 4 }]}>
+                            <View style={[styles.miniLoadFill, { width: `${Math.min(loadPct, 100)}%` as `${number}%`, backgroundColor: loadColor }]} />
+                          </View>
+                          {smartSuggestion && (
+                            <View style={styles.scoreBarRow}>
+                              <View style={[styles.scoreTrack, { backgroundColor: colors.border }]}>
+                                <View style={[styles.scoreBar, { width: `${score}%` as `${number}%`, backgroundColor: score >= 70 ? "#16a34a" : score >= 45 ? "#d97706" : "#94a3b8" }]} />
+                              </View>
+                              <Text style={[styles.scorePct, { color: colors.mutedForeground }]}>{score}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={[styles.statusDot, {
+                          backgroundColor: tech.status === "active" ? "#16a34a" : tech.status === "idle" ? "#64748b" : "#d97706",
+                        }]} />
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        );
+      })()}
     </View>
   );
 }
@@ -418,12 +584,44 @@ const styles = StyleSheet.create({
   assignBtnText:      { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
 
   modalOverlay:       { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  modalSheet:         { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: "70%", paddingBottom: 40 },
-  modalHandle:        { width: 40, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
-  modalTitle:         { fontSize: 18, fontFamily: "Inter_700Bold", marginBottom: 16 },
-  techOption:         { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, borderBottomWidth: 1 },
-  techOptionInfo:     { flex: 1, gap: 4 },
-  miniLoadTrack:      { height: 4, borderRadius: 2, overflow: "hidden", marginTop: 2 },
+  modalSheet:         { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  modalHandle:        { width: 40, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 12 },
+  modalHeader:        { marginBottom: 14 },
+  modalTitle:         { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modalJobLabel:      { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+
+  aiActionRow:        { flexDirection: "row", gap: 10, marginBottom: 16 },
+  aiBtn:              { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
+  aiBtnAuto:          { backgroundColor: "#1d4ed8" },
+  aiBtnSuggest:       { backgroundColor: "transparent", borderWidth: 1.5 },
+  aiBtnText:          { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  aiBtnSuggestText:   { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
+  suggestionCard:     { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 16 },
+  suggestionHeader:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  suggestionBadge:    { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#dbeafe", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  suggestionBadgeText:{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#1d4ed8" },
+  scoreChip:          { backgroundColor: "#1d4ed8", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  scoreChipText:      { fontSize: 12, fontFamily: "Inter_700Bold", color: "#fff" },
+  suggestionBody:     { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+  suggestionInfo:     { flex: 1, gap: 4 },
+  reasonRow:          { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  reasonText:         { fontSize: 11, fontFamily: "Inter_400Regular", color: "#374151", flex: 1 },
+  confirmSuggestBtn:  { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 12, backgroundColor: "#1d4ed8", borderRadius: 10, paddingVertical: 10 },
+  confirmSuggestText: { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
+  listSectionLabel:   { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4, marginTop: 4 },
+  techNameRow:        { flexDirection: "row", alignItems: "center", gap: 6 },
+  bestBadge:          { backgroundColor: "#dbeafe", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5 },
+  bestBadgeText:      { fontSize: 9, fontFamily: "Inter_700Bold", color: "#1d4ed8" },
+  scoreBarRow:        { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 },
+  scoreTrack:         { flex: 1, height: 4, borderRadius: 2, overflow: "hidden" },
+  scoreBar:           { height: "100%", borderRadius: 2 },
+  scorePct:           { fontSize: 10, fontFamily: "Inter_700Bold", minWidth: 22, textAlign: "right" },
+
+  techOption:         { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderBottomWidth: 1, paddingHorizontal: 2 },
+  techOptionInfo:     { flex: 1, gap: 3 },
+  miniLoadTrack:      { height: 4, borderRadius: 2, overflow: "hidden" },
   miniLoadFill:       { height: "100%", borderRadius: 2 },
   statusDot:          { width: 10, height: 10, borderRadius: 5 },
 });
