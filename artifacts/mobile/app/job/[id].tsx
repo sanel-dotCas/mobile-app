@@ -21,8 +21,10 @@ import { ClockInModal } from "@/components/ClockInModal";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TaskCard } from "@/components/TaskCard";
+import { useAuth } from "@/context/AuthContext";
 import type { InspectionItem, NoteAttachment, Part, PartStatus } from "@/context/JobsContext";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -88,6 +90,8 @@ export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, addInspection, updateInspection, receivePart, updatePartStatus } = useJobs();
   const { sortedStages, getStage } = useStages();
+  const { role } = useAuth();
+  const { t } = useLang();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -141,6 +145,7 @@ export default function JobDetailScreen() {
     : 0;
   const isStageDelayed = currentStage ? hoursInCurrentStage > currentStage.expectedHours : false;
   const overdueHours = currentStage ? Math.max(0, hoursInCurrentStage - currentStage.expectedHours) : 0;
+  const allTasksDone = job.tasks.length > 0 && job.tasks.every((task) => task.status === "done");
 
   const handleAdvanceStage = () => {
     if (!nextStage) return;
@@ -369,14 +374,46 @@ export default function JobDetailScreen() {
               </View>
             </ScrollView>
 
-            {/* Advance button */}
-            {nextStage && (
+            {/* QC manual banner — shown to technicians when at QC stage */}
+            {currentStage?.isManual && role !== "supervisor" && (
+              <View style={[styles.qcBanner, { backgroundColor: "#f5f3ff", borderColor: "#c4b5fd" }]}>
+                <View style={[styles.qcIconWrap, { backgroundColor: "#7c3aed" }]}>
+                  <Feather name="shield" size={13} color="#fff" />
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.qcBannerTitle}>{t.qcRequired}</Text>
+                  <Text style={styles.qcBannerSub}>{t.qcManual}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Auto-advance notice — shown when all tasks done and stage advances automatically */}
+            {allTasksDone && !currentStage?.isManual && nextStage && (
+              <View style={[styles.autoAdvanceBanner, { backgroundColor: "#f0fdf4", borderColor: "#86efac" }]}>
+                <Feather name="check-circle" size={13} color="#16a34a" />
+                <Text style={[styles.autoAdvanceBannerText, { color: "#166534" }]}>{t.awaitingQC}</Text>
+              </View>
+            )}
+
+            {/* Advance button — hidden for technicians on manual (QC) stages */}
+            {nextStage && (!currentStage?.isManual || role === "supervisor") && !allTasksDone && (
               <Pressable
                 onPress={handleAdvanceStage}
                 style={[styles.advanceBtn, { backgroundColor: nextStage.color }]}
               >
                 <Feather name={nextStage.icon as any} size={14} color="#fff" />
-                <Text style={styles.advanceBtnText}>Move to {nextStage.name}</Text>
+                <Text style={styles.advanceBtnText}>{t.moveTo} {nextStage.name}</Text>
+                <Feather name="arrow-right" size={14} color="#fff" />
+              </Pressable>
+            )}
+            {/* Supervisor advance button always available */}
+            {nextStage && currentStage?.isManual && role === "supervisor" && (
+              <Pressable
+                onPress={handleAdvanceStage}
+                style={[styles.advanceBtn, { backgroundColor: nextStage.color }]}
+              >
+                <Feather name="check-square" size={14} color="#fff" />
+                <Text style={styles.advanceBtnText}>{t.qcCheck} — {t.moveTo} {nextStage.name}</Text>
                 <Feather name="arrow-right" size={14} color="#fff" />
               </Pressable>
             )}
@@ -384,7 +421,7 @@ export default function JobDetailScreen() {
             {!nextStage && (
               <View style={[styles.finalStageNote, { backgroundColor: "#dcfce7", borderColor: "#86efac" }]}>
                 <Feather name="check-circle" size={14} color="#16a34a" />
-                <Text style={[styles.finalStageNoteText, { color: "#166534" }]}>Final stage reached — ready to complete job</Text>
+                <Text style={[styles.finalStageNoteText, { color: "#166534" }]}>{t.stageComplete}</Text>
               </View>
             )}
           </View>
@@ -876,6 +913,12 @@ const styles = StyleSheet.create({
   advanceBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
   finalStageNote: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
   finalStageNoteText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  qcBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderRadius: 12, borderWidth: 1.5 },
+  qcIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 },
+  qcBannerTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#7c3aed" },
+  qcBannerSub: { fontSize: 11, fontFamily: "Inter_400Regular", color: "#6d28d9", lineHeight: 16 },
+  autoAdvanceBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
+  autoAdvanceBannerText: { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1 },
   completedStageCard: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
   completedStageText: { fontSize: 13, fontFamily: "Inter_500Medium" },
 

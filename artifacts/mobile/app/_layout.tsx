@@ -37,7 +37,7 @@ function DelayChecker() {
     const runCheck = () => {
       const now = Date.now();
       jobsRef.current.forEach((job) => {
-        if (job.status === "completed") return;
+        if (job.status === "completed" || job.status === "on_hold") return;
         const stage = stagesRef.current.find((s) => s.id === job.currentStageId);
         if (!stage) return;
         const entry = [...(job.stageHistory ?? [])].reverse().find((e) => e.stageId === job.currentStageId);
@@ -53,6 +53,47 @@ function DelayChecker() {
     const interval = setInterval(runCheck, 300000);
     return () => clearInterval(interval);
   }, []);
+
+  return null;
+}
+
+function StageAutoAdvancer() {
+  const { state, advanceStage } = useJobs();
+  const { sortedStages } = useStages();
+
+  const processedRef = useRef<Set<string>>(new Set());
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const stagesRef = useRef(sortedStages);
+  stagesRef.current = sortedStages;
+  const advanceRef = useRef(advanceStage);
+  advanceRef.current = advanceStage;
+
+  useEffect(() => {
+    stateRef.current.jobs.forEach((job) => {
+      if (job.status === "completed" || job.status === "on_hold") return;
+      if (job.tasks.length === 0) return;
+
+      const allDone = job.tasks.every((t) => t.status === "done");
+      const key = `${job.id}::${job.currentStageId}`;
+
+      if (!allDone) {
+        processedRef.current.delete(key);
+        return;
+      }
+      if (processedRef.current.has(key)) return;
+
+      const currentIdx = stagesRef.current.findIndex((s) => s.id === job.currentStageId);
+      const currentStage = stagesRef.current[currentIdx];
+      const nextStage = currentIdx >= 0 && currentIdx < stagesRef.current.length - 1
+        ? stagesRef.current[currentIdx + 1] : null;
+
+      if (!currentStage || currentStage.isManual || !nextStage) return;
+
+      processedRef.current.add(key);
+      advanceRef.current(job.id, nextStage.id, nextStage.name);
+    });
+  }, [state.jobs]);
 
   return null;
 }
@@ -82,6 +123,7 @@ export default function RootLayout() {
                   <GestureHandlerRootView>
                     <KeyboardProvider>
                       <DelayChecker />
+                      <StageAutoAdvancer />
                       <Stack screenOptions={{ headerShown: false }}>
                         <Stack.Screen name="login" />
                         <Stack.Screen name="(tabs)" />

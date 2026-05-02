@@ -8,13 +8,14 @@ export interface ProductionStage {
   icon: string;
   expectedHours: number;
   order: number;
+  isManual?: boolean;
 }
 
 export const DEFAULT_STAGES: ProductionStage[] = [
   { id: "stage-001", name: "Reception",         color: "#6366f1", icon: "inbox",        expectedHours: 0.5, order: 0 },
   { id: "stage-002", name: "Diagnosis",          color: "#0284c7", icon: "search",       expectedHours: 1.0, order: 1 },
   { id: "stage-003", name: "Repair",             color: "#d97706", icon: "tool",         expectedHours: 3.0, order: 2 },
-  { id: "stage-004", name: "QC Check",           color: "#7c3aed", icon: "check-square", expectedHours: 0.5, order: 3 },
+  { id: "stage-004", name: "QC Check",           color: "#7c3aed", icon: "check-square", expectedHours: 0.5, order: 3, isManual: true },
   { id: "stage-005", name: "Ready for Delivery", color: "#16a34a", icon: "package",      expectedHours: 0.5, order: 4 },
 ];
 

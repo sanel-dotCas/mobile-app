@@ -6,11 +6,13 @@ import React from "react";
 import { ActivityIndicator, Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useAuth } from "@/context/AuthContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function SupervisorLayout() {
   const { isAuthenticated, isLoading, role } = useAuth();
   const colors = useColors();
+  const { t } = useLang();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
@@ -51,7 +53,7 @@ export default function SupervisorLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Live",
+          title: t.supervision,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="waveform" tintColor={color} size={24} /> : <Feather name="activity" size={22} color={color} />,
         }}
@@ -59,7 +61,7 @@ export default function SupervisorLayout() {
       <Tabs.Screen
         name="technicians"
         options={{
-          title: "Technicians",
+          title: t.technicians,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="person.2" tintColor={color} size={24} /> : <Feather name="users" size={22} color={color} />,
         }}
@@ -67,7 +69,7 @@ export default function SupervisorLayout() {
       <Tabs.Screen
         name="jobs"
         options={{
-          title: "Jobs",
+          title: t.jobs,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="wrench" tintColor={color} size={24} /> : <Feather name="briefcase" size={22} color={color} />,
         }}
@@ -75,7 +77,7 @@ export default function SupervisorLayout() {
       <Tabs.Screen
         name="workshop"
         options={{
-          title: "Workshop",
+          title: t.workshop,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="building.2" tintColor={color} size={24} /> : <Feather name="grid" size={22} color={color} />,
         }}
@@ -83,7 +85,7 @@ export default function SupervisorLayout() {
       <Tabs.Screen
         name="stages"
         options={{
-          title: "Stages",
+          title: t.stages,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="slider.horizontal.3" tintColor={color} size={24} /> : <Feather name="layers" size={22} color={color} />,
         }}

@@ -12,11 +12,13 @@ import {
 } from "react-native";
 
 import { useAuth } from "@/context/AuthContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading, role } = useAuth();
   const colors = useColors();
+  const { t } = useLang();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
@@ -64,7 +66,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Dashboard",
+          title: t.dashboard,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="house" tintColor={color} size={24} /> : <Feather name="home" size={22} color={color} />,
         }}
@@ -72,7 +74,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="jobs"
         options={{
-          title: "Jobs",
+          title: t.jobs,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="briefcase" tintColor={color} size={24} /> : <Feather name="briefcase" size={22} color={color} />,
         }}
@@ -80,7 +82,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="timerecord"
         options={{
-          title: "Time Record",
+          title: t.timeRecord,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="clock" tintColor={color} size={24} /> : <Feather name="clock" size={22} color={color} />,
         }}

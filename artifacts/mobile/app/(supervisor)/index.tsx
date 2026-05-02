@@ -12,8 +12,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { useAuth } from "@/context/AuthContext";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -29,6 +31,7 @@ export default function LiveSupervisionScreen() {
   const insets  = useSafeAreaInsets();
   const { state } = useJobs();
   const { logout } = useAuth();
+  const { t } = useLang();
   const router  = useRouter();
   const { getStage } = useStages();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -59,12 +62,15 @@ export default function LiveSupervisionScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <AppHeader
-        title="Live Supervision"
+        title={t.supervision}
         subtitle="Production Planner"
         rightElement={
-          <Pressable onPress={logout} style={[styles.logoutBtn, { borderColor: colors.border }]}>
-            <Feather name="log-out" size={14} color={colors.foreground} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <LanguagePicker />
+            <Pressable onPress={logout} style={[styles.logoutBtn, { borderColor: colors.border }]}>
+              <Feather name="log-out" size={14} color={colors.foreground} />
+            </Pressable>
+          </View>
         }
       />
       <ScrollView
@@ -244,6 +250,7 @@ const styles = StyleSheet.create({
   screen:           { flex: 1 },
   scroll:           { flex: 1 },
   content:          { padding: 16, gap: 14 },
+  headerActions:    { flexDirection: "row", alignItems: "center", gap: 8 },
   logoutBtn:        { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
 
   alertsContainer:  { gap: 8 },

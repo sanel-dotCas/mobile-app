@@ -12,8 +12,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { JobCard } from "@/components/JobCard";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { ProgressBar } from "@/components/ProgressBar";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -31,6 +33,7 @@ export default function DashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { state } = useJobs();
+  const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const today = new Date("2026-04-30");
@@ -53,13 +56,16 @@ export default function DashboardScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <AppHeader
-        title="Dashboard"
-        subtitle="Technician Assigned Jobs"
+        title={t.dashboard}
+        subtitle={t.assignedJobs}
         rightElement={
-          <Pressable style={[styles.exportBtn, { borderColor: colors.border }]}>
-            <Feather name="download" size={14} color={colors.foreground} />
-            <Text style={[styles.exportBtnText, { color: colors.foreground }]}>Export</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <LanguagePicker />
+            <Pressable style={[styles.exportBtn, { borderColor: colors.border }]}>
+              <Feather name="download" size={14} color={colors.foreground} />
+              <Text style={[styles.exportBtnText, { color: colors.foreground }]}>{t.export}</Text>
+            </Pressable>
+          </View>
         }
       />
       <ScrollView
@@ -187,6 +193,11 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 16,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   exportBtn: {
     flexDirection: "row",
