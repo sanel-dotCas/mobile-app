@@ -531,48 +531,58 @@ export default function EstimateDetailScreen() {
   const canApprove  = estimate.status === "review" || (estimate.lines.length > 0 && estimate.status === "inspection_in_progress");
 
   const handlePickPhoto = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      const camStatus = await ImagePicker.requestCameraPermissionsAsync();
-      if (camStatus.status !== "granted") {
-        Alert.alert("Permission Required", "Camera or photo library permission is needed.");
-        return;
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        const camStatus = await ImagePicker.requestCameraPermissionsAsync();
+        if (camStatus.status !== "granted") {
+          Alert.alert("Permission Required", "Camera or photo library permission is needed.");
+          return;
+        }
       }
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.75,
-      base64: true,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setPhotoUri(asset.uri);
-      setPhotoBase64(asset.base64 ?? null);
-      setAnalysisError(null);
-      if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
-      addPhoto(estimate.id, { uri: asset.uri, capturedAt: new Date().toISOString() });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.75,
+        base64: true,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setPhotoUri(asset.uri);
+        setPhotoBase64(asset.base64 ?? null);
+        setAnalysisError(null);
+        if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
+        addPhoto(estimate.id, { uri: asset.uri, capturedAt: new Date().toISOString() });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not open camera.";
+      setAnalysisError(msg);
     }
   }, [estimate, updateStatus, addPhoto]);
 
   const handlePickFromLibrary = useCallback(async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.75,
-      base64: true,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setPhotoUri(asset.uri);
-      setPhotoBase64(asset.base64 ?? null);
-      setAnalysisError(null);
-      if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
-      addPhoto(estimate.id, { uri: asset.uri, capturedAt: new Date().toISOString() });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.75,
+        base64: true,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setPhotoUri(asset.uri);
+        setPhotoBase64(asset.base64 ?? null);
+        setAnalysisError(null);
+        if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
+        addPhoto(estimate.id, { uri: asset.uri, capturedAt: new Date().toISOString() });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not open photo library.";
+      setAnalysisError(msg);
     }
   }, [estimate, updateStatus, addPhoto]);
 
