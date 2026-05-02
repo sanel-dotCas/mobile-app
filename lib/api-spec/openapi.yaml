@@ -10,13 +10,24 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: yard-auth
+    description: Yard authentication
+  - name: yard-locations
+    description: Yard locations management
+  - name: yard-spots
+    description: Spot assignment and management
+  - name: yard-vehicles
+    description: Vehicle inventory
+  - name: yard-inspections
+    description: PDI & inspections
+  - name: yard-dashboard
+    description: Dashboard statistics
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +35,344 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /yard/auth/login:
+    post:
+      operationId: yardLogin
+      tags: [yard-auth]
+      summary: Login to yard manager
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/YardLoginBody"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardUser"
+        "401":
+          description: Invalid credentials
+
+  /yard/auth/logout:
+    post:
+      operationId: yardLogout
+      tags: [yard-auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+
+  /yard/auth/me:
+    get:
+      operationId: yardMe
+      tags: [yard-auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardUser"
+        "401":
+          description: Not authenticated
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+  /yard/dashboard/stats:
+    get:
+      operationId: getYardDashboardStats
+      tags: [yard-dashboard]
+      summary: Get global yard dashboard stats
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardDashboardStats"
+
+  # ── Locations ─────────────────────────────────────────────────────────────
+  /yard/locations:
+    get:
+      operationId: listYardLocations
+      tags: [yard-locations]
+      summary: List all yard locations with capacity stats
+      responses:
+        "200":
+          description: List of locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/YardLocation"
+    post:
+      operationId: createYardLocation
+      tags: [yard-locations]
+      summary: Create a new location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateYardLocationBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardLocation"
+
+  /yard/locations/{locationId}:
+    get:
+      operationId: getYardLocation
+      tags: [yard-locations]
+      summary: Get location detail with zones and spots
+      parameters:
+        - name: locationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Location detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardLocationDetail"
+
+  /yard/locations/{locationId}/movement:
+    get:
+      operationId: getLocationMovementFeed
+      tags: [yard-locations]
+      summary: Get movement feed for a location
+      parameters:
+        - name: locationId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Movement feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MovementEntry"
+
+  # ── Spots ─────────────────────────────────────────────────────────────────
+  /yard/spots/{spotId}:
+    patch:
+      operationId: updateYardSpot
+      tags: [yard-spots]
+      summary: Update a spot (assign, release, reserve vehicle)
+      parameters:
+        - name: spotId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateYardSpotBody"
+      responses:
+        "200":
+          description: Updated spot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardSpot"
+
+  # ── Vehicles ──────────────────────────────────────────────────────────────
+  /yard/vehicles:
+    get:
+      operationId: listYardVehicles
+      tags: [yard-vehicles]
+      summary: List vehicle inventory
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, in_transit, pdi_pending, sold, all]
+        - name: locationId
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 15
+      responses:
+        "200":
+          description: Vehicle list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardVehicleList"
+    post:
+      operationId: createYardVehicle
+      tags: [yard-vehicles]
+      summary: Add a new vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateYardVehicleBody"
+      responses:
+        "201":
+          description: Created vehicle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardVehicle"
+
+  /yard/vehicles/{vehicleId}:
+    get:
+      operationId: getYardVehicle
+      tags: [yard-vehicles]
+      summary: Get vehicle detail
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Vehicle detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardVehicle"
+    patch:
+      operationId: updateYardVehicle
+      tags: [yard-vehicles]
+      summary: Update vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateYardVehicleBody"
+      responses:
+        "200":
+          description: Updated vehicle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardVehicle"
+
+  # ── Inspections ───────────────────────────────────────────────────────────
+  /yard/inspections:
+    get:
+      operationId: listYardInspections
+      tags: [yard-inspections]
+      summary: List PDI inspections
+      parameters:
+        - name: locationId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [finished, in-progress, queued, all]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 15
+      responses:
+        "200":
+          description: Inspection list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardInspectionList"
+    post:
+      operationId: createYardInspection
+      tags: [yard-inspections]
+      summary: Create a new PDI inspection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateYardInspectionBody"
+      responses:
+        "201":
+          description: Created inspection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardInspection"
+
+  /yard/inspections/{inspectionId}:
+    patch:
+      operationId: updateYardInspection
+      tags: [yard-inspections]
+      summary: Update inspection status
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateYardInspectionBody"
+      responses:
+        "200":
+          description: Updated inspection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/YardInspection"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +380,415 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    # ── Auth ────────────────────────────────────────────────────────────────
+    YardLoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required: [username, password]
+
+    YardUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [yard_manager, yard_operator, admin]
+        locationId:
+          type: integer
+          nullable: true
+      required: [id, username, name, role]
+
+    # ── Dashboard ────────────────────────────────────────────────────────────
+    YardDashboardStats:
+      type: object
+      properties:
+        totalCapacity:
+          type: integer
+        totalOccupied:
+          type: integer
+        readyForPDI:
+          type: integer
+        readyForSale:
+          type: integer
+        expectedInbound:
+          type: integer
+        arrivingToday:
+          type: integer
+        totalLocations:
+          type: integer
+        recentMovements:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovementEntry"
+      required: [totalCapacity, totalOccupied, readyForPDI, readyForSale, expectedInbound, arrivingToday, totalLocations, recentMovements]
+
+    # ── Location ─────────────────────────────────────────────────────────────
+    YardLocation:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [DEALERSHIP_LOT, YARD, PARKING_AREA, PORT]
+        city:
+          type: string
+        address:
+          type: string
+          nullable: true
+        totalCapacity:
+          type: integer
+        occupied:
+          type: integer
+        arrived:
+          type: integer
+        inYard:
+          type: integer
+        readyPDI:
+          type: integer
+        readySale:
+          type: integer
+        autoChecks:
+          type: boolean
+      required: [id, name, type, city, totalCapacity, occupied, arrived, inYard, readyPDI, readySale, autoChecks]
+
+    CreateYardLocationBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [DEALERSHIP_LOT, YARD, PARKING_AREA, PORT]
+        city:
+          type: string
+        address:
+          type: string
+        totalCapacity:
+          type: integer
+      required: [name, type, city, totalCapacity]
+
+    YardLocationDetail:
+      allOf:
+        - $ref: "#/components/schemas/YardLocation"
+        - type: object
+          properties:
+            zones:
+              type: array
+              items:
+                $ref: "#/components/schemas/YardZone"
+          required: [zones]
+
+    YardZone:
+      type: object
+      properties:
+        id:
+          type: integer
+        locationId:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [SHOWROOM_FRONT, NEW_INVENTORY, PDI_QUEUE, STANDARD, RECEIVING, OVERFLOW]
+        isPremium:
+          type: boolean
+        spots:
+          type: array
+          items:
+            $ref: "#/components/schemas/YardSpot"
+      required: [id, locationId, name, type, isPremium, spots]
+
+    YardSpot:
+      type: object
+      properties:
+        id:
+          type: integer
+        zoneId:
+          type: integer
+        code:
+          type: string
+        status:
+          type: string
+          enum: [available, occupied, reserved, disabled]
+        vehicleId:
+          type: integer
+          nullable: true
+        vehicle:
+          $ref: "#/components/schemas/YardVehicle"
+          nullable: true
+        reservedUntil:
+          type: string
+          nullable: true
+        dimensions:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        spotType:
+          type: string
+          nullable: true
+        timeInSpot:
+          type: string
+          nullable: true
+      required: [id, zoneId, code, status]
+
+    UpdateYardSpotBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [available, occupied, reserved, disabled]
+        vehicleId:
+          type: integer
+          nullable: true
+        reservedUntil:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    # ── Vehicle ──────────────────────────────────────────────────────────────
+    YardVehicle:
+      type: object
+      properties:
+        id:
+          type: integer
+        vin:
+          type: string
+        stockNumber:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        color:
+          type: string
+          nullable: true
+        mileage:
+          type: integer
+          nullable: true
+        condition:
+          type: string
+          enum: [new, used]
+          nullable: true
+        status:
+          type: string
+          enum: [available, in_transit, pdi_pending, sold]
+        locationId:
+          type: integer
+          nullable: true
+        locationName:
+          type: string
+          nullable: true
+        spotId:
+          type: integer
+          nullable: true
+        spotCode:
+          type: string
+          nullable: true
+        zoneName:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        arrivedAt:
+          type: string
+          nullable: true
+      required: [id, vin, stockNumber, make, model, year, status]
+
+    YardVehicleList:
+      type: object
+      properties:
+        vehicles:
+          type: array
+          items:
+            $ref: "#/components/schemas/YardVehicle"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required: [vehicles, total, page, totalPages]
+
+    CreateYardVehicleBody:
+      type: object
+      properties:
+        vin:
+          type: string
+        stockNumber:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        color:
+          type: string
+        mileage:
+          type: integer
+        condition:
+          type: string
+          enum: [new, used]
+        status:
+          type: string
+          enum: [available, in_transit, pdi_pending, sold]
+        locationId:
+          type: integer
+        price:
+          type: number
+      required: [vin, stockNumber, make, model, year, status]
+
+    UpdateYardVehicleBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [available, in_transit, pdi_pending, sold]
+        locationId:
+          type: integer
+          nullable: true
+        spotId:
+          type: integer
+          nullable: true
+        color:
+          type: string
+        price:
+          type: number
+
+    # ── Inspection ────────────────────────────────────────────────────────────
+    YardInspection:
+      type: object
+      properties:
+        id:
+          type: integer
+        inspectionNumber:
+          type: string
+        vehicleId:
+          type: integer
+        stockVin:
+          type: string
+        vehicleName:
+          type: string
+        type:
+          type: string
+          enum: [pre-inspection, secondary, final-quality]
+        status:
+          type: string
+          enum: [finished, in-progress, queued]
+        locationId:
+          type: integer
+          nullable: true
+        locationName:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        bodyDamage:
+          type: string
+          nullable: true
+        fuelPercentage:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+        completedAt:
+          type: string
+          nullable: true
+      required: [id, inspectionNumber, vehicleId, stockVin, vehicleName, type, status, createdAt]
+
+    YardInspectionList:
+      type: object
+      properties:
+        inspections:
+          type: array
+          items:
+            $ref: "#/components/schemas/YardInspection"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required: [inspections, total, page, totalPages]
+
+    CreateYardInspectionBody:
+      type: object
+      properties:
+        vehicleId:
+          type: integer
+        type:
+          type: string
+          enum: [pre-inspection, secondary, final-quality]
+        locationId:
+          type: integer
+        notes:
+          type: string
+        bodyDamage:
+          type: string
+        fuelPercentage:
+          type: integer
+      required: [vehicleId, type]
+
+    UpdateYardInspectionBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [finished, in-progress, queued]
+        notes:
+          type: string
+        bodyDamage:
+          type: string
+        fuelPercentage:
+          type: integer
+        completedAt:
+          type: string
+
+    # ── Movement ──────────────────────────────────────────────────────────────
+    MovementEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        locationId:
+          type: integer
+        locationName:
+          type: string
+        vehicleId:
+          type: integer
+          nullable: true
+        vehicleName:
+          type: string
+          nullable: true
+        action:
+          type: string
+        actor:
+          type: string
+        createdAt:
+          type: string
+      required: [id, locationId, locationName, action, actor, createdAt]

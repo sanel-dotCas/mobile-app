@@ -5,18 +5,43 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  CreateYardInspectionBody,
+  CreateYardLocationBody,
+  CreateYardVehicleBody,
+  GetLocationMovementFeedParams,
+  HealthStatus,
+  ListYardInspectionsParams,
+  ListYardVehiclesParams,
+  MovementEntry,
+  UpdateYardInspectionBody,
+  UpdateYardSpotBody,
+  UpdateYardVehicleBody,
+  YardDashboardStats,
+  YardInspection,
+  YardInspectionList,
+  YardLocation,
+  YardLocationDetail,
+  YardLoginBody,
+  YardSpot,
+  YardUser,
+  YardVehicle,
+  YardVehicleList,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -25,7 +50,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -99,3 +123,1396 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Login to yard manager
+ */
+export const getYardLoginUrl = () => {
+  return `/api/yard/auth/login`;
+};
+
+export const yardLogin = async (
+  yardLoginBody: YardLoginBody,
+  options?: RequestInit,
+): Promise<YardUser> => {
+  return customFetch<YardUser>(getYardLoginUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(yardLoginBody),
+  });
+};
+
+export const getYardLoginMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof yardLogin>>,
+    TError,
+    { data: BodyType<YardLoginBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof yardLogin>>,
+  TError,
+  { data: BodyType<YardLoginBody> },
+  TContext
+> => {
+  const mutationKey = ["yardLogin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof yardLogin>>,
+    { data: BodyType<YardLoginBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return yardLogin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type YardLoginMutationResult = NonNullable<
+  Awaited<ReturnType<typeof yardLogin>>
+>;
+export type YardLoginMutationBody = BodyType<YardLoginBody>;
+export type YardLoginMutationError = ErrorType<void>;
+
+/**
+ * @summary Login to yard manager
+ */
+export const useYardLogin = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof yardLogin>>,
+    TError,
+    { data: BodyType<YardLoginBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof yardLogin>>,
+  TError,
+  { data: BodyType<YardLoginBody> },
+  TContext
+> => {
+  return useMutation(getYardLoginMutationOptions(options));
+};
+
+/**
+ * @summary Logout
+ */
+export const getYardLogoutUrl = () => {
+  return `/api/yard/auth/logout`;
+};
+
+export const yardLogout = async (options?: RequestInit): Promise<void> => {
+  return customFetch<void>(getYardLogoutUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getYardLogoutMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof yardLogout>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof yardLogout>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["yardLogout"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof yardLogout>>,
+    void
+  > = () => {
+    return yardLogout(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type YardLogoutMutationResult = NonNullable<
+  Awaited<ReturnType<typeof yardLogout>>
+>;
+
+export type YardLogoutMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Logout
+ */
+export const useYardLogout = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof yardLogout>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof yardLogout>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getYardLogoutMutationOptions(options));
+};
+
+/**
+ * @summary Get current user
+ */
+export const getYardMeUrl = () => {
+  return `/api/yard/auth/me`;
+};
+
+export const yardMe = async (options?: RequestInit): Promise<YardUser> => {
+  return customFetch<YardUser>(getYardMeUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getYardMeQueryKey = () => {
+  return [`/api/yard/auth/me`] as const;
+};
+
+export const getYardMeQueryOptions = <
+  TData = Awaited<ReturnType<typeof yardMe>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof yardMe>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getYardMeQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof yardMe>>> = ({
+    signal,
+  }) => yardMe({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof yardMe>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type YardMeQueryResult = NonNullable<Awaited<ReturnType<typeof yardMe>>>;
+export type YardMeQueryError = ErrorType<void>;
+
+/**
+ * @summary Get current user
+ */
+
+export function useYardMe<
+  TData = Awaited<ReturnType<typeof yardMe>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof yardMe>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getYardMeQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get global yard dashboard stats
+ */
+export const getGetYardDashboardStatsUrl = () => {
+  return `/api/yard/dashboard/stats`;
+};
+
+export const getYardDashboardStats = async (
+  options?: RequestInit,
+): Promise<YardDashboardStats> => {
+  return customFetch<YardDashboardStats>(getGetYardDashboardStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetYardDashboardStatsQueryKey = () => {
+  return [`/api/yard/dashboard/stats`] as const;
+};
+
+export const getGetYardDashboardStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getYardDashboardStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getYardDashboardStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetYardDashboardStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getYardDashboardStats>>
+  > = ({ signal }) => getYardDashboardStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getYardDashboardStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetYardDashboardStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getYardDashboardStats>>
+>;
+export type GetYardDashboardStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get global yard dashboard stats
+ */
+
+export function useGetYardDashboardStats<
+  TData = Awaited<ReturnType<typeof getYardDashboardStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getYardDashboardStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetYardDashboardStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all yard locations with capacity stats
+ */
+export const getListYardLocationsUrl = () => {
+  return `/api/yard/locations`;
+};
+
+export const listYardLocations = async (
+  options?: RequestInit,
+): Promise<YardLocation[]> => {
+  return customFetch<YardLocation[]>(getListYardLocationsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListYardLocationsQueryKey = () => {
+  return [`/api/yard/locations`] as const;
+};
+
+export const getListYardLocationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listYardLocations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listYardLocations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListYardLocationsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listYardLocations>>
+  > = ({ signal }) => listYardLocations({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listYardLocations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListYardLocationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listYardLocations>>
+>;
+export type ListYardLocationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all yard locations with capacity stats
+ */
+
+export function useListYardLocations<
+  TData = Awaited<ReturnType<typeof listYardLocations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listYardLocations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListYardLocationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new location
+ */
+export const getCreateYardLocationUrl = () => {
+  return `/api/yard/locations`;
+};
+
+export const createYardLocation = async (
+  createYardLocationBody: CreateYardLocationBody,
+  options?: RequestInit,
+): Promise<YardLocation> => {
+  return customFetch<YardLocation>(getCreateYardLocationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createYardLocationBody),
+  });
+};
+
+export const getCreateYardLocationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createYardLocation>>,
+    TError,
+    { data: BodyType<CreateYardLocationBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createYardLocation>>,
+  TError,
+  { data: BodyType<CreateYardLocationBody> },
+  TContext
+> => {
+  const mutationKey = ["createYardLocation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createYardLocation>>,
+    { data: BodyType<CreateYardLocationBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createYardLocation(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateYardLocationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createYardLocation>>
+>;
+export type CreateYardLocationMutationBody = BodyType<CreateYardLocationBody>;
+export type CreateYardLocationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a new location
+ */
+export const useCreateYardLocation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createYardLocation>>,
+    TError,
+    { data: BodyType<CreateYardLocationBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createYardLocation>>,
+  TError,
+  { data: BodyType<CreateYardLocationBody> },
+  TContext
+> => {
+  return useMutation(getCreateYardLocationMutationOptions(options));
+};
+
+/**
+ * @summary Get location detail with zones and spots
+ */
+export const getGetYardLocationUrl = (locationId: number) => {
+  return `/api/yard/locations/${locationId}`;
+};
+
+export const getYardLocation = async (
+  locationId: number,
+  options?: RequestInit,
+): Promise<YardLocationDetail> => {
+  return customFetch<YardLocationDetail>(getGetYardLocationUrl(locationId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetYardLocationQueryKey = (locationId: number) => {
+  return [`/api/yard/locations/${locationId}`] as const;
+};
+
+export const getGetYardLocationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getYardLocation>>,
+  TError = ErrorType<unknown>,
+>(
+  locationId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getYardLocation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetYardLocationQueryKey(locationId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getYardLocation>>> = ({
+    signal,
+  }) => getYardLocation(locationId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!locationId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getYardLocation>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetYardLocationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getYardLocation>>
+>;
+export type GetYardLocationQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get location detail with zones and spots
+ */
+
+export function useGetYardLocation<
+  TData = Awaited<ReturnType<typeof getYardLocation>>,
+  TError = ErrorType<unknown>,
+>(
+  locationId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getYardLocation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetYardLocationQueryOptions(locationId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get movement feed for a location
+ */
+export const getGetLocationMovementFeedUrl = (
+  locationId: number,
+  params?: GetLocationMovementFeedParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/yard/locations/${locationId}/movement?${stringifiedParams}`
+    : `/api/yard/locations/${locationId}/movement`;
+};
+
+export const getLocationMovementFeed = async (
+  locationId: number,
+  params?: GetLocationMovementFeedParams,
+  options?: RequestInit,
+): Promise<MovementEntry[]> => {
+  return customFetch<MovementEntry[]>(
+    getGetLocationMovementFeedUrl(locationId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetLocationMovementFeedQueryKey = (
+  locationId: number,
+  params?: GetLocationMovementFeedParams,
+) => {
+  return [
+    `/api/yard/locations/${locationId}/movement`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetLocationMovementFeedQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLocationMovementFeed>>,
+  TError = ErrorType<unknown>,
+>(
+  locationId: number,
+  params?: GetLocationMovementFeedParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLocationMovementFeed>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetLocationMovementFeedQueryKey(locationId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLocationMovementFeed>>
+  > = ({ signal }) =>
+    getLocationMovementFeed(locationId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!locationId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLocationMovementFeed>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLocationMovementFeedQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLocationMovementFeed>>
+>;
+export type GetLocationMovementFeedQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get movement feed for a location
+ */
+
+export function useGetLocationMovementFeed<
+  TData = Awaited<ReturnType<typeof getLocationMovementFeed>>,
+  TError = ErrorType<unknown>,
+>(
+  locationId: number,
+  params?: GetLocationMovementFeedParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLocationMovementFeed>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLocationMovementFeedQueryOptions(
+    locationId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a spot (assign, release, reserve vehicle)
+ */
+export const getUpdateYardSpotUrl = (spotId: number) => {
+  return `/api/yard/spots/${spotId}`;
+};
+
+export const updateYardSpot = async (
+  spotId: number,
+  updateYardSpotBody: UpdateYardSpotBody,
+  options?: RequestInit,
+): Promise<YardSpot> => {
+  return customFetch<YardSpot>(getUpdateYardSpotUrl(spotId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateYardSpotBody),
+  });
+};
+
+export const getUpdateYardSpotMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateYardSpot>>,
+    TError,
+    { spotId: number; data: BodyType<UpdateYardSpotBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateYardSpot>>,
+  TError,
+  { spotId: number; data: BodyType<UpdateYardSpotBody> },
+  TContext
+> => {
+  const mutationKey = ["updateYardSpot"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateYardSpot>>,
+    { spotId: number; data: BodyType<UpdateYardSpotBody> }
+  > = (props) => {
+    const { spotId, data } = props ?? {};
+
+    return updateYardSpot(spotId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateYardSpotMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateYardSpot>>
+>;
+export type UpdateYardSpotMutationBody = BodyType<UpdateYardSpotBody>;
+export type UpdateYardSpotMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a spot (assign, release, reserve vehicle)
+ */
+export const useUpdateYardSpot = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateYardSpot>>,
+    TError,
+    { spotId: number; data: BodyType<UpdateYardSpotBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateYardSpot>>,
+  TError,
+  { spotId: number; data: BodyType<UpdateYardSpotBody> },
+  TContext
+> => {
+  return useMutation(getUpdateYardSpotMutationOptions(options));
+};
+
+/**
+ * @summary List vehicle inventory
+ */
+export const getListYardVehiclesUrl = (params?: ListYardVehiclesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/yard/vehicles?${stringifiedParams}`
+    : `/api/yard/vehicles`;
+};
+
+export const listYardVehicles = async (
+  params?: ListYardVehiclesParams,
+  options?: RequestInit,
+): Promise<YardVehicleList> => {
+  return customFetch<YardVehicleList>(getListYardVehiclesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListYardVehiclesQueryKey = (
+  params?: ListYardVehiclesParams,
+) => {
+  return [`/api/yard/vehicles`, ...(params ? [params] : [])] as const;
+};
+
+export const getListYardVehiclesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listYardVehicles>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListYardVehiclesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listYardVehicles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListYardVehiclesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listYardVehicles>>
+  > = ({ signal }) => listYardVehicles(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listYardVehicles>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListYardVehiclesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listYardVehicles>>
+>;
+export type ListYardVehiclesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List vehicle inventory
+ */
+
+export function useListYardVehicles<
+  TData = Awaited<ReturnType<typeof listYardVehicles>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListYardVehiclesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listYardVehicles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListYardVehiclesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a new vehicle
+ */
+export const getCreateYardVehicleUrl = () => {
+  return `/api/yard/vehicles`;
+};
+
+export const createYardVehicle = async (
+  createYardVehicleBody: CreateYardVehicleBody,
+  options?: RequestInit,
+): Promise<YardVehicle> => {
+  return customFetch<YardVehicle>(getCreateYardVehicleUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createYardVehicleBody),
+  });
+};
+
+export const getCreateYardVehicleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createYardVehicle>>,
+    TError,
+    { data: BodyType<CreateYardVehicleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createYardVehicle>>,
+  TError,
+  { data: BodyType<CreateYardVehicleBody> },
+  TContext
+> => {
+  const mutationKey = ["createYardVehicle"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createYardVehicle>>,
+    { data: BodyType<CreateYardVehicleBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createYardVehicle(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateYardVehicleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createYardVehicle>>
+>;
+export type CreateYardVehicleMutationBody = BodyType<CreateYardVehicleBody>;
+export type CreateYardVehicleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a new vehicle
+ */
+export const useCreateYardVehicle = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createYardVehicle>>,
+    TError,
+    { data: BodyType<CreateYardVehicleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createYardVehicle>>,
+  TError,
+  { data: BodyType<CreateYardVehicleBody> },
+  TContext
+> => {
+  return useMutation(getCreateYardVehicleMutationOptions(options));
+};
+
+/**
+ * @summary Get vehicle detail
+ */
+export const getGetYardVehicleUrl = (vehicleId: number) => {
+  return `/api/yard/vehicles/${vehicleId}`;
+};
+
+export const getYardVehicle = async (
+  vehicleId: number,
+  options?: RequestInit,
+): Promise<YardVehicle> => {
+  return customFetch<YardVehicle>(getGetYardVehicleUrl(vehicleId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetYardVehicleQueryKey = (vehicleId: number) => {
+  return [`/api/yard/vehicles/${vehicleId}`] as const;
+};
+
+export const getGetYardVehicleQueryOptions = <
+  TData = Awaited<ReturnType<typeof getYardVehicle>>,
+  TError = ErrorType<unknown>,
+>(
+  vehicleId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getYardVehicle>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetYardVehicleQueryKey(vehicleId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getYardVehicle>>> = ({
+    signal,
+  }) => getYardVehicle(vehicleId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!vehicleId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getYardVehicle>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetYardVehicleQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getYardVehicle>>
+>;
+export type GetYardVehicleQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get vehicle detail
+ */
+
+export function useGetYardVehicle<
+  TData = Awaited<ReturnType<typeof getYardVehicle>>,
+  TError = ErrorType<unknown>,
+>(
+  vehicleId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getYardVehicle>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetYardVehicleQueryOptions(vehicleId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update vehicle
+ */
+export const getUpdateYardVehicleUrl = (vehicleId: number) => {
+  return `/api/yard/vehicles/${vehicleId}`;
+};
+
+export const updateYardVehicle = async (
+  vehicleId: number,
+  updateYardVehicleBody: UpdateYardVehicleBody,
+  options?: RequestInit,
+): Promise<YardVehicle> => {
+  return customFetch<YardVehicle>(getUpdateYardVehicleUrl(vehicleId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateYardVehicleBody),
+  });
+};
+
+export const getUpdateYardVehicleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateYardVehicle>>,
+    TError,
+    { vehicleId: number; data: BodyType<UpdateYardVehicleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateYardVehicle>>,
+  TError,
+  { vehicleId: number; data: BodyType<UpdateYardVehicleBody> },
+  TContext
+> => {
+  const mutationKey = ["updateYardVehicle"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateYardVehicle>>,
+    { vehicleId: number; data: BodyType<UpdateYardVehicleBody> }
+  > = (props) => {
+    const { vehicleId, data } = props ?? {};
+
+    return updateYardVehicle(vehicleId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateYardVehicleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateYardVehicle>>
+>;
+export type UpdateYardVehicleMutationBody = BodyType<UpdateYardVehicleBody>;
+export type UpdateYardVehicleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update vehicle
+ */
+export const useUpdateYardVehicle = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateYardVehicle>>,
+    TError,
+    { vehicleId: number; data: BodyType<UpdateYardVehicleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateYardVehicle>>,
+  TError,
+  { vehicleId: number; data: BodyType<UpdateYardVehicleBody> },
+  TContext
+> => {
+  return useMutation(getUpdateYardVehicleMutationOptions(options));
+};
+
+/**
+ * @summary List PDI inspections
+ */
+export const getListYardInspectionsUrl = (
+  params?: ListYardInspectionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/yard/inspections?${stringifiedParams}`
+    : `/api/yard/inspections`;
+};
+
+export const listYardInspections = async (
+  params?: ListYardInspectionsParams,
+  options?: RequestInit,
+): Promise<YardInspectionList> => {
+  return customFetch<YardInspectionList>(getListYardInspectionsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListYardInspectionsQueryKey = (
+  params?: ListYardInspectionsParams,
+) => {
+  return [`/api/yard/inspections`, ...(params ? [params] : [])] as const;
+};
+
+export const getListYardInspectionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listYardInspections>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListYardInspectionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listYardInspections>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListYardInspectionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listYardInspections>>
+  > = ({ signal }) =>
+    listYardInspections(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listYardInspections>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListYardInspectionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listYardInspections>>
+>;
+export type ListYardInspectionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List PDI inspections
+ */
+
+export function useListYardInspections<
+  TData = Awaited<ReturnType<typeof listYardInspections>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListYardInspectionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listYardInspections>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListYardInspectionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new PDI inspection
+ */
+export const getCreateYardInspectionUrl = () => {
+  return `/api/yard/inspections`;
+};
+
+export const createYardInspection = async (
+  createYardInspectionBody: CreateYardInspectionBody,
+  options?: RequestInit,
+): Promise<YardInspection> => {
+  return customFetch<YardInspection>(getCreateYardInspectionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createYardInspectionBody),
+  });
+};
+
+export const getCreateYardInspectionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createYardInspection>>,
+    TError,
+    { data: BodyType<CreateYardInspectionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createYardInspection>>,
+  TError,
+  { data: BodyType<CreateYardInspectionBody> },
+  TContext
+> => {
+  const mutationKey = ["createYardInspection"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createYardInspection>>,
+    { data: BodyType<CreateYardInspectionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createYardInspection(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateYardInspectionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createYardInspection>>
+>;
+export type CreateYardInspectionMutationBody =
+  BodyType<CreateYardInspectionBody>;
+export type CreateYardInspectionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a new PDI inspection
+ */
+export const useCreateYardInspection = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createYardInspection>>,
+    TError,
+    { data: BodyType<CreateYardInspectionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createYardInspection>>,
+  TError,
+  { data: BodyType<CreateYardInspectionBody> },
+  TContext
+> => {
+  return useMutation(getCreateYardInspectionMutationOptions(options));
+};
+
+/**
+ * @summary Update inspection status
+ */
+export const getUpdateYardInspectionUrl = (inspectionId: number) => {
+  return `/api/yard/inspections/${inspectionId}`;
+};
+
+export const updateYardInspection = async (
+  inspectionId: number,
+  updateYardInspectionBody: UpdateYardInspectionBody,
+  options?: RequestInit,
+): Promise<YardInspection> => {
+  return customFetch<YardInspection>(getUpdateYardInspectionUrl(inspectionId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateYardInspectionBody),
+  });
+};
+
+export const getUpdateYardInspectionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateYardInspection>>,
+    TError,
+    { inspectionId: number; data: BodyType<UpdateYardInspectionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateYardInspection>>,
+  TError,
+  { inspectionId: number; data: BodyType<UpdateYardInspectionBody> },
+  TContext
+> => {
+  const mutationKey = ["updateYardInspection"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateYardInspection>>,
+    { inspectionId: number; data: BodyType<UpdateYardInspectionBody> }
+  > = (props) => {
+    const { inspectionId, data } = props ?? {};
+
+    return updateYardInspection(inspectionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateYardInspectionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateYardInspection>>
+>;
+export type UpdateYardInspectionMutationBody =
+  BodyType<UpdateYardInspectionBody>;
+export type UpdateYardInspectionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update inspection status
+ */
+export const useUpdateYardInspection = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateYardInspection>>,
+    TError,
+    { inspectionId: number; data: BodyType<UpdateYardInspectionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateYardInspection>>,
+  TError,
+  { inspectionId: number; data: BodyType<UpdateYardInspectionBody> },
+  TContext
+> => {
+  return useMutation(getUpdateYardInspectionMutationOptions(options));
+};

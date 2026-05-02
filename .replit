@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -32,5 +32,8 @@ localPort = 18115
 externalPort = 3000
 
 [[ports]]
-localPort = 18116
-externalPort = 3001
+localPort = 21273
+externalPort = 3002
+
+[nix]
+channel = "stable-25_05"

@@ -8,3 +8,368 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface YardLoginBody {
+  username: string;
+  password: string;
+}
+
+export type YardUserRole = (typeof YardUserRole)[keyof typeof YardUserRole];
+
+export const YardUserRole = {
+  yard_manager: "yard_manager",
+  yard_operator: "yard_operator",
+  admin: "admin",
+} as const;
+
+export interface YardUser {
+  id: number;
+  username: string;
+  name: string;
+  role: YardUserRole;
+  locationId?: number | null;
+}
+
+export interface MovementEntry {
+  id: number;
+  locationId: number;
+  locationName: string;
+  vehicleId?: number | null;
+  vehicleName?: string | null;
+  action: string;
+  actor: string;
+  createdAt: string;
+}
+
+export interface YardDashboardStats {
+  totalCapacity: number;
+  totalOccupied: number;
+  readyForPDI: number;
+  readyForSale: number;
+  expectedInbound: number;
+  arrivingToday: number;
+  totalLocations: number;
+  recentMovements: MovementEntry[];
+}
+
+export type YardLocationType =
+  (typeof YardLocationType)[keyof typeof YardLocationType];
+
+export const YardLocationType = {
+  DEALERSHIP_LOT: "DEALERSHIP_LOT",
+  YARD: "YARD",
+  PARKING_AREA: "PARKING_AREA",
+  PORT: "PORT",
+} as const;
+
+export interface YardLocation {
+  id: number;
+  name: string;
+  type: YardLocationType;
+  city: string;
+  address?: string | null;
+  totalCapacity: number;
+  occupied: number;
+  arrived: number;
+  inYard: number;
+  readyPDI: number;
+  readySale: number;
+  autoChecks: boolean;
+}
+
+export type CreateYardLocationBodyType =
+  (typeof CreateYardLocationBodyType)[keyof typeof CreateYardLocationBodyType];
+
+export const CreateYardLocationBodyType = {
+  DEALERSHIP_LOT: "DEALERSHIP_LOT",
+  YARD: "YARD",
+  PARKING_AREA: "PARKING_AREA",
+  PORT: "PORT",
+} as const;
+
+export interface CreateYardLocationBody {
+  name: string;
+  type: CreateYardLocationBodyType;
+  city: string;
+  address?: string;
+  totalCapacity: number;
+}
+
+export type YardZoneType = (typeof YardZoneType)[keyof typeof YardZoneType];
+
+export const YardZoneType = {
+  SHOWROOM_FRONT: "SHOWROOM_FRONT",
+  NEW_INVENTORY: "NEW_INVENTORY",
+  PDI_QUEUE: "PDI_QUEUE",
+  STANDARD: "STANDARD",
+  RECEIVING: "RECEIVING",
+  OVERFLOW: "OVERFLOW",
+} as const;
+
+export type YardSpotStatus =
+  (typeof YardSpotStatus)[keyof typeof YardSpotStatus];
+
+export const YardSpotStatus = {
+  available: "available",
+  occupied: "occupied",
+  reserved: "reserved",
+  disabled: "disabled",
+} as const;
+
+export type YardVehicleCondition =
+  | (typeof YardVehicleCondition)[keyof typeof YardVehicleCondition]
+  | null;
+
+export const YardVehicleCondition = {
+  new: "new",
+  used: "used",
+} as const;
+
+export type YardVehicleStatus =
+  (typeof YardVehicleStatus)[keyof typeof YardVehicleStatus];
+
+export const YardVehicleStatus = {
+  available: "available",
+  in_transit: "in_transit",
+  pdi_pending: "pdi_pending",
+  sold: "sold",
+} as const;
+
+export interface YardVehicle {
+  id: number;
+  vin: string;
+  stockNumber: string;
+  make: string;
+  model: string;
+  year: number;
+  color?: string | null;
+  mileage?: number | null;
+  condition?: YardVehicleCondition;
+  status: YardVehicleStatus;
+  locationId?: number | null;
+  locationName?: string | null;
+  spotId?: number | null;
+  spotCode?: string | null;
+  zoneName?: string | null;
+  price?: number | null;
+  imageUrl?: string | null;
+  arrivedAt?: string | null;
+}
+
+export interface YardSpot {
+  id: number;
+  zoneId: number;
+  code: string;
+  status: YardSpotStatus;
+  vehicleId?: number | null;
+  vehicle?: YardVehicle | null;
+  reservedUntil?: string | null;
+  dimensions?: string | null;
+  notes?: string | null;
+  spotType?: string | null;
+  timeInSpot?: string | null;
+}
+
+export interface YardZone {
+  id: number;
+  locationId: number;
+  name: string;
+  type: YardZoneType;
+  isPremium: boolean;
+  spots: YardSpot[];
+}
+
+export type YardLocationDetail = YardLocation & {
+  zones: YardZone[];
+};
+
+export type UpdateYardSpotBodyStatus =
+  (typeof UpdateYardSpotBodyStatus)[keyof typeof UpdateYardSpotBodyStatus];
+
+export const UpdateYardSpotBodyStatus = {
+  available: "available",
+  occupied: "occupied",
+  reserved: "reserved",
+  disabled: "disabled",
+} as const;
+
+export interface UpdateYardSpotBody {
+  status?: UpdateYardSpotBodyStatus;
+  vehicleId?: number | null;
+  reservedUntil?: string | null;
+  notes?: string | null;
+}
+
+export interface YardVehicleList {
+  vehicles: YardVehicle[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export type CreateYardVehicleBodyCondition =
+  (typeof CreateYardVehicleBodyCondition)[keyof typeof CreateYardVehicleBodyCondition];
+
+export const CreateYardVehicleBodyCondition = {
+  new: "new",
+  used: "used",
+} as const;
+
+export type CreateYardVehicleBodyStatus =
+  (typeof CreateYardVehicleBodyStatus)[keyof typeof CreateYardVehicleBodyStatus];
+
+export const CreateYardVehicleBodyStatus = {
+  available: "available",
+  in_transit: "in_transit",
+  pdi_pending: "pdi_pending",
+  sold: "sold",
+} as const;
+
+export interface CreateYardVehicleBody {
+  vin: string;
+  stockNumber: string;
+  make: string;
+  model: string;
+  year: number;
+  color?: string;
+  mileage?: number;
+  condition?: CreateYardVehicleBodyCondition;
+  status: CreateYardVehicleBodyStatus;
+  locationId?: number;
+  price?: number;
+}
+
+export type UpdateYardVehicleBodyStatus =
+  (typeof UpdateYardVehicleBodyStatus)[keyof typeof UpdateYardVehicleBodyStatus];
+
+export const UpdateYardVehicleBodyStatus = {
+  available: "available",
+  in_transit: "in_transit",
+  pdi_pending: "pdi_pending",
+  sold: "sold",
+} as const;
+
+export interface UpdateYardVehicleBody {
+  status?: UpdateYardVehicleBodyStatus;
+  locationId?: number | null;
+  spotId?: number | null;
+  color?: string;
+  price?: number;
+}
+
+export type YardInspectionType =
+  (typeof YardInspectionType)[keyof typeof YardInspectionType];
+
+export const YardInspectionType = {
+  "pre-inspection": "pre-inspection",
+  secondary: "secondary",
+  "final-quality": "final-quality",
+} as const;
+
+export type YardInspectionStatus =
+  (typeof YardInspectionStatus)[keyof typeof YardInspectionStatus];
+
+export const YardInspectionStatus = {
+  finished: "finished",
+  "in-progress": "in-progress",
+  queued: "queued",
+} as const;
+
+export interface YardInspection {
+  id: number;
+  inspectionNumber: string;
+  vehicleId: number;
+  stockVin: string;
+  vehicleName: string;
+  type: YardInspectionType;
+  status: YardInspectionStatus;
+  locationId?: number | null;
+  locationName?: string | null;
+  notes?: string | null;
+  bodyDamage?: string | null;
+  fuelPercentage?: number | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface YardInspectionList {
+  inspections: YardInspection[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export type CreateYardInspectionBodyType =
+  (typeof CreateYardInspectionBodyType)[keyof typeof CreateYardInspectionBodyType];
+
+export const CreateYardInspectionBodyType = {
+  "pre-inspection": "pre-inspection",
+  secondary: "secondary",
+  "final-quality": "final-quality",
+} as const;
+
+export interface CreateYardInspectionBody {
+  vehicleId: number;
+  type: CreateYardInspectionBodyType;
+  locationId?: number;
+  notes?: string;
+  bodyDamage?: string;
+  fuelPercentage?: number;
+}
+
+export type UpdateYardInspectionBodyStatus =
+  (typeof UpdateYardInspectionBodyStatus)[keyof typeof UpdateYardInspectionBodyStatus];
+
+export const UpdateYardInspectionBodyStatus = {
+  finished: "finished",
+  "in-progress": "in-progress",
+  queued: "queued",
+} as const;
+
+export interface UpdateYardInspectionBody {
+  status?: UpdateYardInspectionBodyStatus;
+  notes?: string;
+  bodyDamage?: string;
+  fuelPercentage?: number;
+  completedAt?: string;
+}
+
+export type GetLocationMovementFeedParams = {
+  limit?: number;
+};
+
+export type ListYardVehiclesParams = {
+  q?: string;
+  status?: ListYardVehiclesStatus;
+  locationId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ListYardVehiclesStatus =
+  (typeof ListYardVehiclesStatus)[keyof typeof ListYardVehiclesStatus];
+
+export const ListYardVehiclesStatus = {
+  available: "available",
+  in_transit: "in_transit",
+  pdi_pending: "pdi_pending",
+  sold: "sold",
+  all: "all",
+} as const;
+
+export type ListYardInspectionsParams = {
+  locationId?: number;
+  status?: ListYardInspectionsStatus;
+  page?: number;
+  limit?: number;
+};
+
+export type ListYardInspectionsStatus =
+  (typeof ListYardInspectionsStatus)[keyof typeof ListYardInspectionsStatus];
+
+export const ListYardInspectionsStatus = {
+  finished: "finished",
+  "in-progress": "in-progress",
+  queued: "queued",
+  all: "all",
+} as const;

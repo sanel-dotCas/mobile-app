@@ -8,9 +8,467 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
+});
+
+/**
+ * @summary Login to yard manager
+ */
+export const YardLoginBody = zod.object({
+  username: zod.string(),
+  password: zod.string(),
+});
+
+export const YardLoginResponse = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  name: zod.string(),
+  role: zod.enum(["yard_manager", "yard_operator", "admin"]),
+  locationId: zod.number().nullish(),
+});
+
+/**
+ * @summary Get current user
+ */
+export const YardMeResponse = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  name: zod.string(),
+  role: zod.enum(["yard_manager", "yard_operator", "admin"]),
+  locationId: zod.number().nullish(),
+});
+
+/**
+ * @summary Get global yard dashboard stats
+ */
+export const GetYardDashboardStatsResponse = zod.object({
+  totalCapacity: zod.number(),
+  totalOccupied: zod.number(),
+  readyForPDI: zod.number(),
+  readyForSale: zod.number(),
+  expectedInbound: zod.number(),
+  arrivingToday: zod.number(),
+  totalLocations: zod.number(),
+  recentMovements: zod.array(
+    zod.object({
+      id: zod.number(),
+      locationId: zod.number(),
+      locationName: zod.string(),
+      vehicleId: zod.number().nullish(),
+      vehicleName: zod.string().nullish(),
+      action: zod.string(),
+      actor: zod.string(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary List all yard locations with capacity stats
+ */
+export const ListYardLocationsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  type: zod.enum(["DEALERSHIP_LOT", "YARD", "PARKING_AREA", "PORT"]),
+  city: zod.string(),
+  address: zod.string().nullish(),
+  totalCapacity: zod.number(),
+  occupied: zod.number(),
+  arrived: zod.number(),
+  inYard: zod.number(),
+  readyPDI: zod.number(),
+  readySale: zod.number(),
+  autoChecks: zod.boolean(),
+});
+export const ListYardLocationsResponse = zod.array(
+  ListYardLocationsResponseItem,
+);
+
+/**
+ * @summary Create a new location
+ */
+export const CreateYardLocationBody = zod.object({
+  name: zod.string(),
+  type: zod.enum(["DEALERSHIP_LOT", "YARD", "PARKING_AREA", "PORT"]),
+  city: zod.string(),
+  address: zod.string().optional(),
+  totalCapacity: zod.number(),
+});
+
+/**
+ * @summary Get location detail with zones and spots
+ */
+export const GetYardLocationParams = zod.object({
+  locationId: zod.coerce.number(),
+});
+
+export const GetYardLocationResponse = zod
+  .object({
+    id: zod.number(),
+    name: zod.string(),
+    type: zod.enum(["DEALERSHIP_LOT", "YARD", "PARKING_AREA", "PORT"]),
+    city: zod.string(),
+    address: zod.string().nullish(),
+    totalCapacity: zod.number(),
+    occupied: zod.number(),
+    arrived: zod.number(),
+    inYard: zod.number(),
+    readyPDI: zod.number(),
+    readySale: zod.number(),
+    autoChecks: zod.boolean(),
+  })
+  .and(
+    zod.object({
+      zones: zod.array(
+        zod.object({
+          id: zod.number(),
+          locationId: zod.number(),
+          name: zod.string(),
+          type: zod.enum([
+            "SHOWROOM_FRONT",
+            "NEW_INVENTORY",
+            "PDI_QUEUE",
+            "STANDARD",
+            "RECEIVING",
+            "OVERFLOW",
+          ]),
+          isPremium: zod.boolean(),
+          spots: zod.array(
+            zod.object({
+              id: zod.number(),
+              zoneId: zod.number(),
+              code: zod.string(),
+              status: zod.enum([
+                "available",
+                "occupied",
+                "reserved",
+                "disabled",
+              ]),
+              vehicleId: zod.number().nullish(),
+              vehicle: zod
+                .object({
+                  id: zod.number(),
+                  vin: zod.string(),
+                  stockNumber: zod.string(),
+                  make: zod.string(),
+                  model: zod.string(),
+                  year: zod.number(),
+                  color: zod.string().nullish(),
+                  mileage: zod.number().nullish(),
+                  condition: zod.enum(["new", "used"]).nullish(),
+                  status: zod.enum([
+                    "available",
+                    "in_transit",
+                    "pdi_pending",
+                    "sold",
+                  ]),
+                  locationId: zod.number().nullish(),
+                  locationName: zod.string().nullish(),
+                  spotId: zod.number().nullish(),
+                  spotCode: zod.string().nullish(),
+                  zoneName: zod.string().nullish(),
+                  price: zod.number().nullish(),
+                  imageUrl: zod.string().nullish(),
+                  arrivedAt: zod.string().nullish(),
+                })
+                .nullish(),
+              reservedUntil: zod.string().nullish(),
+              dimensions: zod.string().nullish(),
+              notes: zod.string().nullish(),
+              spotType: zod.string().nullish(),
+              timeInSpot: zod.string().nullish(),
+            }),
+          ),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Get movement feed for a location
+ */
+export const GetLocationMovementFeedParams = zod.object({
+  locationId: zod.coerce.number(),
+});
+
+export const getLocationMovementFeedQueryLimitDefault = 20;
+
+export const GetLocationMovementFeedQueryParams = zod.object({
+  limit: zod.coerce.number().default(getLocationMovementFeedQueryLimitDefault),
+});
+
+export const GetLocationMovementFeedResponseItem = zod.object({
+  id: zod.number(),
+  locationId: zod.number(),
+  locationName: zod.string(),
+  vehicleId: zod.number().nullish(),
+  vehicleName: zod.string().nullish(),
+  action: zod.string(),
+  actor: zod.string(),
+  createdAt: zod.string(),
+});
+export const GetLocationMovementFeedResponse = zod.array(
+  GetLocationMovementFeedResponseItem,
+);
+
+/**
+ * @summary Update a spot (assign, release, reserve vehicle)
+ */
+export const UpdateYardSpotParams = zod.object({
+  spotId: zod.coerce.number(),
+});
+
+export const UpdateYardSpotBody = zod.object({
+  status: zod
+    .enum(["available", "occupied", "reserved", "disabled"])
+    .optional(),
+  vehicleId: zod.number().nullish(),
+  reservedUntil: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateYardSpotResponse = zod.object({
+  id: zod.number(),
+  zoneId: zod.number(),
+  code: zod.string(),
+  status: zod.enum(["available", "occupied", "reserved", "disabled"]),
+  vehicleId: zod.number().nullish(),
+  vehicle: zod
+    .object({
+      id: zod.number(),
+      vin: zod.string(),
+      stockNumber: zod.string(),
+      make: zod.string(),
+      model: zod.string(),
+      year: zod.number(),
+      color: zod.string().nullish(),
+      mileage: zod.number().nullish(),
+      condition: zod.enum(["new", "used"]).nullish(),
+      status: zod.enum(["available", "in_transit", "pdi_pending", "sold"]),
+      locationId: zod.number().nullish(),
+      locationName: zod.string().nullish(),
+      spotId: zod.number().nullish(),
+      spotCode: zod.string().nullish(),
+      zoneName: zod.string().nullish(),
+      price: zod.number().nullish(),
+      imageUrl: zod.string().nullish(),
+      arrivedAt: zod.string().nullish(),
+    })
+    .nullish(),
+  reservedUntil: zod.string().nullish(),
+  dimensions: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  spotType: zod.string().nullish(),
+  timeInSpot: zod.string().nullish(),
+});
+
+/**
+ * @summary List vehicle inventory
+ */
+export const listYardVehiclesQueryPageDefault = 1;
+export const listYardVehiclesQueryLimitDefault = 15;
+
+export const ListYardVehiclesQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+  status: zod
+    .enum(["available", "in_transit", "pdi_pending", "sold", "all"])
+    .optional(),
+  locationId: zod.coerce.number().optional(),
+  page: zod.coerce.number().default(listYardVehiclesQueryPageDefault),
+  limit: zod.coerce.number().default(listYardVehiclesQueryLimitDefault),
+});
+
+export const ListYardVehiclesResponse = zod.object({
+  vehicles: zod.array(
+    zod.object({
+      id: zod.number(),
+      vin: zod.string(),
+      stockNumber: zod.string(),
+      make: zod.string(),
+      model: zod.string(),
+      year: zod.number(),
+      color: zod.string().nullish(),
+      mileage: zod.number().nullish(),
+      condition: zod.enum(["new", "used"]).nullish(),
+      status: zod.enum(["available", "in_transit", "pdi_pending", "sold"]),
+      locationId: zod.number().nullish(),
+      locationName: zod.string().nullish(),
+      spotId: zod.number().nullish(),
+      spotCode: zod.string().nullish(),
+      zoneName: zod.string().nullish(),
+      price: zod.number().nullish(),
+      imageUrl: zod.string().nullish(),
+      arrivedAt: zod.string().nullish(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  totalPages: zod.number(),
+});
+
+/**
+ * @summary Add a new vehicle
+ */
+export const CreateYardVehicleBody = zod.object({
+  vin: zod.string(),
+  stockNumber: zod.string(),
+  make: zod.string(),
+  model: zod.string(),
+  year: zod.number(),
+  color: zod.string().optional(),
+  mileage: zod.number().optional(),
+  condition: zod.enum(["new", "used"]).optional(),
+  status: zod.enum(["available", "in_transit", "pdi_pending", "sold"]),
+  locationId: zod.number().optional(),
+  price: zod.number().optional(),
+});
+
+/**
+ * @summary Get vehicle detail
+ */
+export const GetYardVehicleParams = zod.object({
+  vehicleId: zod.coerce.number(),
+});
+
+export const GetYardVehicleResponse = zod.object({
+  id: zod.number(),
+  vin: zod.string(),
+  stockNumber: zod.string(),
+  make: zod.string(),
+  model: zod.string(),
+  year: zod.number(),
+  color: zod.string().nullish(),
+  mileage: zod.number().nullish(),
+  condition: zod.enum(["new", "used"]).nullish(),
+  status: zod.enum(["available", "in_transit", "pdi_pending", "sold"]),
+  locationId: zod.number().nullish(),
+  locationName: zod.string().nullish(),
+  spotId: zod.number().nullish(),
+  spotCode: zod.string().nullish(),
+  zoneName: zod.string().nullish(),
+  price: zod.number().nullish(),
+  imageUrl: zod.string().nullish(),
+  arrivedAt: zod.string().nullish(),
+});
+
+/**
+ * @summary Update vehicle
+ */
+export const UpdateYardVehicleParams = zod.object({
+  vehicleId: zod.coerce.number(),
+});
+
+export const UpdateYardVehicleBody = zod.object({
+  status: zod
+    .enum(["available", "in_transit", "pdi_pending", "sold"])
+    .optional(),
+  locationId: zod.number().nullish(),
+  spotId: zod.number().nullish(),
+  color: zod.string().optional(),
+  price: zod.number().optional(),
+});
+
+export const UpdateYardVehicleResponse = zod.object({
+  id: zod.number(),
+  vin: zod.string(),
+  stockNumber: zod.string(),
+  make: zod.string(),
+  model: zod.string(),
+  year: zod.number(),
+  color: zod.string().nullish(),
+  mileage: zod.number().nullish(),
+  condition: zod.enum(["new", "used"]).nullish(),
+  status: zod.enum(["available", "in_transit", "pdi_pending", "sold"]),
+  locationId: zod.number().nullish(),
+  locationName: zod.string().nullish(),
+  spotId: zod.number().nullish(),
+  spotCode: zod.string().nullish(),
+  zoneName: zod.string().nullish(),
+  price: zod.number().nullish(),
+  imageUrl: zod.string().nullish(),
+  arrivedAt: zod.string().nullish(),
+});
+
+/**
+ * @summary List PDI inspections
+ */
+export const listYardInspectionsQueryPageDefault = 1;
+export const listYardInspectionsQueryLimitDefault = 15;
+
+export const ListYardInspectionsQueryParams = zod.object({
+  locationId: zod.coerce.number().optional(),
+  status: zod.enum(["finished", "in-progress", "queued", "all"]).optional(),
+  page: zod.coerce.number().default(listYardInspectionsQueryPageDefault),
+  limit: zod.coerce.number().default(listYardInspectionsQueryLimitDefault),
+});
+
+export const ListYardInspectionsResponse = zod.object({
+  inspections: zod.array(
+    zod.object({
+      id: zod.number(),
+      inspectionNumber: zod.string(),
+      vehicleId: zod.number(),
+      stockVin: zod.string(),
+      vehicleName: zod.string(),
+      type: zod.enum(["pre-inspection", "secondary", "final-quality"]),
+      status: zod.enum(["finished", "in-progress", "queued"]),
+      locationId: zod.number().nullish(),
+      locationName: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      bodyDamage: zod.string().nullish(),
+      fuelPercentage: zod.number().nullish(),
+      createdAt: zod.string(),
+      completedAt: zod.string().nullish(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  totalPages: zod.number(),
+});
+
+/**
+ * @summary Create a new PDI inspection
+ */
+export const CreateYardInspectionBody = zod.object({
+  vehicleId: zod.number(),
+  type: zod.enum(["pre-inspection", "secondary", "final-quality"]),
+  locationId: zod.number().optional(),
+  notes: zod.string().optional(),
+  bodyDamage: zod.string().optional(),
+  fuelPercentage: zod.number().optional(),
+});
+
+/**
+ * @summary Update inspection status
+ */
+export const UpdateYardInspectionParams = zod.object({
+  inspectionId: zod.coerce.number(),
+});
+
+export const UpdateYardInspectionBody = zod.object({
+  status: zod.enum(["finished", "in-progress", "queued"]).optional(),
+  notes: zod.string().optional(),
+  bodyDamage: zod.string().optional(),
+  fuelPercentage: zod.number().optional(),
+  completedAt: zod.string().optional(),
+});
+
+export const UpdateYardInspectionResponse = zod.object({
+  id: zod.number(),
+  inspectionNumber: zod.string(),
+  vehicleId: zod.number(),
+  stockVin: zod.string(),
+  vehicleName: zod.string(),
+  type: zod.enum(["pre-inspection", "secondary", "final-quality"]),
+  status: zod.enum(["finished", "in-progress", "queued"]),
+  locationId: zod.number().nullish(),
+  locationName: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  bodyDamage: zod.string().nullish(),
+  fuelPercentage: zod.number().nullish(),
+  createdAt: zod.string(),
+  completedAt: zod.string().nullish(),
 });
