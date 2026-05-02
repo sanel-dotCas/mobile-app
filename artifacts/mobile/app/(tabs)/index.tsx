@@ -63,10 +63,6 @@ export default function DashboardScreen() {
         rightElement={
           <View style={styles.headerActions}>
             <LanguagePicker />
-            <Pressable style={[styles.exportBtn, { borderColor: colors.border }]}>
-              <Feather name="download" size={14} color={colors.foreground} />
-              <Text style={[styles.exportBtnText, { color: colors.foreground }]}>{t.export}</Text>
-            </Pressable>
             <Pressable
               onPress={logout}
               style={[styles.logoutBtn, { borderColor: colors.border }]}
