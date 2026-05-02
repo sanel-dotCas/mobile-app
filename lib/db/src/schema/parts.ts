@@ -128,6 +128,9 @@ export const partsSalesTable = pgTable("parts_sales", {
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   confirmedAt: timestamp("confirmed_at"),
+  paymentMethod: text("payment_method"),
+  paymentRef: text("payment_ref"),
+  paidAt: timestamp("paid_at"),
 });
 
 export const partsSaleItemsTable = pgTable("parts_sale_items", {
@@ -187,4 +190,30 @@ export const partsRoRequestItemsTable = pgTable("parts_ro_request_items", {
   qtyIssued: integer("qty_issued").notNull().default(0),
   unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
+});
+
+export const partsBillStatusEnum = pgEnum("parts_bill_status", [
+  "unpaid",
+  "partial",
+  "paid",
+  "cancelled",
+]);
+
+export const partsBillsTable = pgTable("parts_bills", {
+  id: serial("id").primaryKey(),
+  billNumber: text("bill_number").notNull().unique(),
+  orderId: integer("order_id").notNull(),
+  supplierName: text("supplier_name").notNull(),
+  supplierInvoiceNumber: text("supplier_invoice_number"),
+  currency: text("currency").notNull().default("USD"),
+  exchangeRate: numeric("exchange_rate", { precision: 12, scale: 6 }).default("1"),
+  localCurrencyCode: text("local_currency_code").notNull().default("AED"),
+  totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+  paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  status: partsBillStatusEnum("status").notNull().default("unpaid"),
+  dueDate: timestamp("due_date"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  paidAt: timestamp("paid_at"),
 });

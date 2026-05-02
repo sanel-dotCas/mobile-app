@@ -85,6 +85,9 @@ export default function PartsOrders() {
   const [invoiceInput, setInvoiceInput] = useState("");
   const [invoiceError, setInvoiceError] = useState("");
   const invoiceRef = useRef<TextInput>(null);
+  const [billCreated, setBillCreated] = useState<{
+    billNumber: string; totalAmount: string; currency: string; supplierName: string; status: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -156,9 +159,10 @@ export default function PartsOrders() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setReceiveSuccess(true);
-        load();
         const updated = await res.json();
+        setReceiveSuccess(true);
+        if (updated.bill) setBillCreated(updated.bill);
+        load();
         if (updated.order) {
           setSelectedOrder({ ...updated.order, items: (updated.order.items ?? []).map((i: OrderItem) => ({ ...i, receiving: 0 })) });
         }
@@ -281,7 +285,7 @@ export default function PartsOrders() {
         {selectedOrder && (
           <View style={[styles.modalScreen, { backgroundColor: colors.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border, backgroundColor: colors.headerBg }]}>
-              <Pressable onPress={() => setSelectedOrder(null)} style={styles.backBtn}>
+              <Pressable onPress={() => { setSelectedOrder(null); setBillCreated(null); setReceiveSuccess(false); }} style={styles.backBtn}>
                 <Feather name="x" size={22} color={colors.foreground} />
               </Pressable>
               <View style={{ flex: 1 }}>
@@ -294,9 +298,23 @@ export default function PartsOrders() {
             </View>
 
             {receiveSuccess && (
-              <View style={[styles.successBanner, { backgroundColor: "#dcfce7", borderColor: "#bbf7d0" }]}>
-                <Feather name="check-circle" size={16} color="#16a34a" />
-                <Text style={[styles.successText, { color: "#16a34a" }]}>Items received — stock updated</Text>
+              <View style={{ gap: 0 }}>
+                <View style={[styles.successBanner, { backgroundColor: "#dcfce7", borderColor: "#bbf7d0" }]}>
+                  <Feather name="check-circle" size={16} color="#16a34a" />
+                  <Text style={[styles.successText, { color: "#16a34a" }]}>Items received — stock updated</Text>
+                </View>
+                {billCreated && (
+                  <View style={[styles.billBanner, { backgroundColor: "#ede9fe", borderColor: "#c4b5fd" }]}>
+                    <Feather name="file-text" size={14} color="#7c3aed" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.billBannerTitle, { color: "#7c3aed" }]}>Vendor Bill Created</Text>
+                      <Text style={[styles.billBannerNum, { color: "#6d28d9" }]}>{billCreated.billNumber}</Text>
+                      <Text style={[styles.billBannerMeta, { color: "#7c3aed" }]}>
+                        {billCreated.supplierName} · {CURRENCY_SYMBOLS[billCreated.currency] ?? billCreated.currency}{parseFloat(billCreated.totalAmount).toFixed(2)} · Unpaid (30 days)
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
@@ -550,4 +568,8 @@ const styles = StyleSheet.create({
   invoiceWarning: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 8, borderWidth: 1, padding: 8 },
   receiveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, padding: 14 },
   receiveBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  billBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderBottomWidth: 1, borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
+  billBannerTitle: { fontSize: 11, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.5 },
+  billBannerNum: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  billBannerMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
 });

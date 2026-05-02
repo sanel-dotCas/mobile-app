@@ -12,6 +12,7 @@ import {
   partsTransferItemsTable,
   partsRoRequestsTable,
   partsRoRequestItemsTable,
+  partsBillsTable,
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 
@@ -588,7 +589,42 @@ router.post("/parts/orders/:id/receive", async (req, res) => {
       .where(eq(partsOrdersTable.id, orderId))
       .returning();
 
-    res.json({ order: { ...updatedOrder, items: allItems } });
+    // Calculate total amount for items received in this batch and create a vendor bill
+    let billTotal = 0;
+    for (const receipt of (items as { orderItemId: number; qtyReceived: number; binCode?: string }[])) {
+      if (receipt.qtyReceived <= 0) continue;
+      const [oi] = await db.select().from(partsOrderItemsTable).where(eq(partsOrderItemsTable.id, receipt.orderItemId));
+      if (!oi || !oi.unitCost) continue;
+      const unit = parseFloat(oi.unitCost);
+      const disc = parseFloat(oi.discountPct ?? "0");
+      const markup = parseFloat(oi.markupPct ?? "0");
+      const vat = parseFloat(oi.vatPct ?? "5");
+      const afterDisc = unit * receipt.qtyReceived * (1 - disc / 100);
+      const afterMarkup = afterDisc * (1 + markup / 100);
+      billTotal += afterMarkup * (1 + vat / 100);
+    }
+
+    let bill = null;
+    if (billTotal > 0) {
+      const existingBills = await db.select({ billNumber: partsBillsTable.billNumber }).from(partsBillsTable);
+      const billNumber = nextNumber("BILL", existingBills.map((b) => b.billNumber));
+      const [createdBill] = await db.insert(partsBillsTable).values({
+        billNumber,
+        orderId,
+        supplierName: order.supplierName,
+        supplierInvoiceNumber: effectiveInvoice ?? null,
+        currency: order.currency ?? "USD",
+        exchangeRate: order.exchangeRate ?? "1",
+        localCurrencyCode: order.localCurrencyCode ?? "AED",
+        totalAmount: billTotal.toFixed(2),
+        status: "unpaid",
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        createdBy: receivedBy ?? null,
+      } as typeof partsBillsTable.$inferInsert).returning();
+      bill = createdBill;
+    }
+
+    res.json({ order: { ...updatedOrder, items: allItems }, bill });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to receive items" });
@@ -685,6 +721,36 @@ router.post("/parts/sales", async (req, res) => {
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to create sale" });
+  }
+});
+
+// ── Sales Payment ──────────────────────────────────────────────────────────────
+router.post("/parts/sales/:id/payment", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const saleId = parseInt(req.params.id);
+    const { paymentMethod, paymentRef } = req.body as { paymentMethod?: string; paymentRef?: string };
+
+    const [sale] = await db.select().from(partsSalesTable).where(eq(partsSalesTable.id, saleId));
+    if (!sale) return res.status(404).json({ error: "Sale not found" });
+    if (sale.status === "paid") return res.status(400).json({ error: "Sale already paid" });
+
+    const [updated] = await db
+      .update(partsSalesTable)
+      .set({
+        status: "paid",
+        paymentMethod: paymentMethod ?? "cash",
+        paymentRef: paymentRef ?? null,
+        paidAt: new Date(),
+      } as Partial<typeof partsSalesTable.$inferInsert>)
+      .where(eq(partsSalesTable.id, saleId))
+      .returning();
+
+    const items = await db.select().from(partsSaleItemsTable).where(eq(partsSaleItemsTable.saleId, saleId));
+    res.json({ ...updated, items });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to record payment" });
   }
 });
 

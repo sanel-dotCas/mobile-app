@@ -56,6 +56,9 @@ interface SaleRecord {
   exchangeRate: string;
   localCurrencyCode: string;
   createdAt: string;
+  paymentMethod: string | null;
+  paymentRef: string | null;
+  paidAt: string | null;
   items: Array<{
     id: number;
     partNumber: string;
@@ -96,6 +99,13 @@ export default function PartsSales() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [invoiceResult, setInvoiceResult] = useState<SaleRecord | null>(null);
+
+  // Payment flow
+  const [payModal, setPayModal] = useState(false);
+  const [payMethod, setPayMethod] = useState<"cash" | "card" | "bank" | "cheque">("cash");
+  const [payRef, setPayRef] = useState("");
+  const [payLoading, setPayLoading] = useState(false);
+  const [invoiceView, setInvoiceView] = useState<SaleRecord | null>(null);
 
   // Scan / search modal — full-screen, input at top
   const [scanModal, setScanModal] = useState(false);
@@ -283,6 +293,7 @@ export default function PartsSales() {
         setCustomerRef("");
         setNotes("");
         load();
+        setPayModal(true);
       }
     } catch {
       //
@@ -291,12 +302,43 @@ export default function PartsSales() {
     }
   };
 
+  const recordPayment = async () => {
+    if (!invoiceResult) return;
+    setPayLoading(true);
+    try {
+      const res = await fetch(`${BASE}/parts/sales/${invoiceResult.id}/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: payMethod, paymentRef: payRef.trim() || null }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPayModal(false);
+        setInvoiceView(updated);
+        load();
+      }
+    } catch {
+      //
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  const skipPayment = () => {
+    setPayModal(false);
+    setInvoiceView(invoiceResult);
+  };
+
   const resetNewSale = () => {
     setCart([]);
     setCustomerName("");
     setCustomerRef("");
     setNotes("");
     setInvoiceResult(null);
+    setPayModal(false);
+    setPayMethod("cash");
+    setPayRef("");
+    setInvoiceView(null);
     setMode("list");
   };
 
@@ -391,14 +433,16 @@ export default function PartsSales() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Invoice success */}
-          {invoiceResult && (
+          {invoiceResult && !payModal && !invoiceView && (
             <View style={[styles.successCard, { backgroundColor: "#dcfce7", borderColor: "#bbf7d0" }]}>
               <Feather name="check-circle" size={28} color="#16a34a" />
               <Text style={[styles.successTitle, { color: "#16a34a" }]}>Invoice Created!</Text>
               <Text style={[styles.successInv, { color: "#15803d" }]}>{invoiceResult.saleNumber}</Text>
-              <Pressable style={[styles.doneBtn, { backgroundColor: "#16a34a" }]} onPress={resetNewSale}>
-                <Text style={styles.doneBtnText}>Done</Text>
+              <Pressable style={[styles.doneBtn, { backgroundColor: "#7c3aed" }]} onPress={() => setPayModal(true)}>
+                <Text style={styles.doneBtnText}>Record Payment</Text>
+              </Pressable>
+              <Pressable onPress={skipPayment}>
+                <Text style={{ color: "#64748b", fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 4 }}>Skip — Pay Later</Text>
               </Pressable>
             </View>
           )}
@@ -582,6 +626,222 @@ export default function PartsSales() {
           )}
         </ScrollView>
       )}
+
+      {/* Payment Modal */}
+      <Modal visible={payModal} animationType="slide" transparent onRequestClose={skipPayment}>
+        <View style={styles.payOverlay}>
+          <View style={[styles.paySheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.payHandle, { backgroundColor: colors.border }]} />
+
+            {/* Invoice header */}
+            <View style={styles.payInvRow}>
+              <View style={[styles.payInvBadge, { backgroundColor: "#7c3aed20" }]}>
+                <Feather name="file-text" size={14} color="#7c3aed" />
+                <Text style={[styles.payInvNum, { color: "#7c3aed" }]}>{invoiceResult?.saleNumber}</Text>
+              </View>
+              <Text style={[styles.payAmountLabel, { color: colors.foreground }]}>
+                {CURRENCY_SYMBOLS[invoiceResult?.currency ?? "USD"] ?? invoiceResult?.currency}
+                {invoiceResult ? invoiceResult.items.reduce((acc, item) => {
+                  const { lineTotal } = calcLineAmounts(parseFloat(item.unitPrice)||0, item.qty, parseFloat(item.discountPct)||0, parseFloat(item.markupPct)||0, parseFloat(item.vatPct)||0);
+                  return acc + lineTotal;
+                }, 0).toFixed(2) : "0.00"}
+              </Text>
+            </View>
+
+            <Text style={[styles.payTitle, { color: colors.foreground }]}>How was payment received?</Text>
+
+            {/* Method chips */}
+            <View style={styles.payMethodRow}>
+              {(["cash", "card", "bank", "cheque"] as const).map((m) => {
+                const labels = { cash: "Cash", card: "Card", bank: "Bank Transfer", cheque: "Cheque" };
+                const icons  = { cash: "dollar-sign", card: "credit-card", bank: "repeat", cheque: "edit-3" } as const;
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => setPayMethod(m)}
+                    style={[styles.payMethodChip, {
+                      backgroundColor: payMethod === m ? "#7c3aed" : colors.secondary,
+                      borderColor: payMethod === m ? "#7c3aed" : colors.border,
+                    }]}
+                  >
+                    <Feather name={icons[m]} size={13} color={payMethod === m ? "#fff" : colors.foreground} />
+                    <Text style={[styles.payMethodText, { color: payMethod === m ? "#fff" : colors.foreground }]}>{labels[m]}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Reference field */}
+            <Text style={[styles.payRefLabel, { color: colors.mutedForeground }]}>
+              {{ cash: "Receipt number (optional)", card: "Card / terminal ref", bank: "Transfer reference", cheque: "Cheque number" }[payMethod]}
+            </Text>
+            <TextInput
+              style={[styles.payRefInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              placeholder="e.g. TXN-000123"
+              placeholderTextColor={colors.mutedForeground}
+              value={payRef}
+              onChangeText={setPayRef}
+              autoCapitalize="characters"
+            />
+
+            {/* Actions */}
+            <Pressable
+              style={[styles.payBtn, { backgroundColor: payLoading ? "#7c3aed80" : "#7c3aed" }]}
+              onPress={recordPayment}
+              disabled={payLoading}
+            >
+              {payLoading ? <ActivityIndicator size="small" color="#fff" /> : (
+                <>
+                  <Feather name="check-circle" size={16} color="#fff" />
+                  <Text style={styles.payBtnText}>Confirm Payment Received</Text>
+                </>
+              )}
+            </Pressable>
+            <Pressable onPress={skipPayment} style={styles.paySkip}>
+              <Text style={[styles.paySkipText, { color: colors.mutedForeground }]}>Skip — Mark as Unpaid</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Invoice View Modal */}
+      <Modal visible={!!invoiceView} animationType="slide" onRequestClose={() => { setInvoiceView(null); resetNewSale(); }}>
+        {invoiceView && (
+          <View style={[styles.invScreen, { backgroundColor: colors.background }]}>
+            <View style={[styles.invHeader, { backgroundColor: colors.headerBg, borderBottomColor: colors.border, paddingTop: insets.top > 0 ? insets.top : 24 }]}>
+              <Text style={[styles.invHeaderTitle, { color: colors.foreground }]}>Invoice</Text>
+              <Pressable onPress={() => { setInvoiceView(null); resetNewSale(); }} style={styles.invCloseBtn}>
+                <Feather name="x" size={22} color={colors.foreground} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={[styles.invContent, { paddingBottom: bottomPad + 32 }]} showsVerticalScrollIndicator={false}>
+
+              {/* Company + invoice meta */}
+              <View style={[styles.invMetaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.invMetaTop}>
+                  <View>
+                    <Text style={[styles.invCompany, { color: "#7c3aed" }]}>IGMMA</Text>
+                    <Text style={[styles.invCompanySub, { color: colors.mutedForeground }]}>Dealer Management System</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.invNum, { color: colors.foreground }]}>{invoiceView.saleNumber}</Text>
+                    <Text style={[styles.invDate, { color: colors.mutedForeground }]}>{new Date(invoiceView.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</Text>
+                  </View>
+                </View>
+                <View style={[styles.invDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.invMetaRow}>
+                  <Text style={[styles.invMetaLabel, { color: colors.mutedForeground }]}>Customer</Text>
+                  <Text style={[styles.invMetaVal, { color: colors.foreground }]}>{invoiceView.customerName ?? "Walk-in Customer"}</Text>
+                </View>
+                {invoiceView.customerRef && (
+                  <View style={styles.invMetaRow}>
+                    <Text style={[styles.invMetaLabel, { color: colors.mutedForeground }]}>Reference</Text>
+                    <Text style={[styles.invMetaVal, { color: colors.foreground }]}>{invoiceView.customerRef}</Text>
+                  </View>
+                )}
+                <View style={styles.invMetaRow}>
+                  <Text style={[styles.invMetaLabel, { color: colors.mutedForeground }]}>Currency</Text>
+                  <Text style={[styles.invMetaVal, { color: colors.foreground }]}>{invoiceView.currency} ({CURRENCY_SYMBOLS[invoiceView.currency] ?? invoiceView.currency})</Text>
+                </View>
+              </View>
+
+              {/* Line items */}
+              <View style={[styles.invItemsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.invItemsHeader, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.invColPart, { color: colors.mutedForeground }]}>Part</Text>
+                  <Text style={[styles.invColQty,  { color: colors.mutedForeground }]}>Qty</Text>
+                  <Text style={[styles.invColPrice,{ color: colors.mutedForeground }]}>Unit</Text>
+                  <Text style={[styles.invColTotal,{ color: colors.mutedForeground }]}>Total</Text>
+                </View>
+                {invoiceView.items.map((item, idx) => {
+                  const { lineTotal } = calcLineAmounts(parseFloat(item.unitPrice)||0, item.qty, parseFloat(item.discountPct)||0, parseFloat(item.markupPct)||0, parseFloat(item.vatPct)||0);
+                  const sym = CURRENCY_SYMBOLS[invoiceView.currency] ?? invoiceView.currency;
+                  return (
+                    <View key={item.id} style={[styles.invItemRow, { borderTopColor: colors.border, backgroundColor: idx % 2 === 0 ? "transparent" : colors.secondary + "60" }]}>
+                      <View style={styles.invColPart}>
+                        <Text style={[{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#7c3aed" }]}>{item.partNumber}</Text>
+                        <Text style={[{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.foreground }]} numberOfLines={1}>{item.partName}</Text>
+                        {(parseFloat(item.discountPct) > 0 || parseFloat(item.markupPct) > 0) && (
+                          <Text style={{ fontSize: 10, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                            {parseFloat(item.discountPct) > 0 ? `-${item.discountPct}% ` : ""}{parseFloat(item.markupPct) > 0 ? `+${item.markupPct}% ` : ""}VAT {item.vatPct}%
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={[styles.invColQty, { color: colors.foreground }]}>{item.qty}</Text>
+                      <Text style={[styles.invColPrice, { color: colors.foreground }]}>{sym}{(parseFloat(item.unitPrice)||0).toFixed(2)}</Text>
+                      <Text style={[styles.invColTotal, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>{sym}{lineTotal.toFixed(2)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* Totals */}
+              {(() => {
+                const subtotal = invoiceView.items.reduce((acc, item) => {
+                  const { afterMarkup } = calcLineAmounts(parseFloat(item.unitPrice)||0, item.qty, parseFloat(item.discountPct)||0, parseFloat(item.markupPct)||0, parseFloat(item.vatPct)||0);
+                  return acc + afterMarkup;
+                }, 0);
+                const vatTotal = invoiceView.items.reduce((acc, item) => {
+                  const { vatAmount } = calcLineAmounts(parseFloat(item.unitPrice)||0, item.qty, parseFloat(item.discountPct)||0, parseFloat(item.markupPct)||0, parseFloat(item.vatPct)||0);
+                  return acc + vatAmount;
+                }, 0);
+                const grand = subtotal + vatTotal;
+                const sym = CURRENCY_SYMBOLS[invoiceView.currency] ?? invoiceView.currency;
+                return (
+                  <View style={[styles.invTotalsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    {[
+                      { label: "Subtotal (excl. VAT)", value: `${sym}${subtotal.toFixed(2)}`, bold: false },
+                      { label: "Total VAT",            value: `${sym}${vatTotal.toFixed(2)}`,  bold: false },
+                    ].map(({ label, value, bold }) => (
+                      <View key={label} style={styles.invTotalRow}>
+                        <Text style={[styles.invTotalLabel, { color: colors.mutedForeground }]}>{label}</Text>
+                        <Text style={[styles.invTotalValue, { color: colors.foreground, fontFamily: bold ? "Inter_700Bold" : "Inter_500Medium" }]}>{value}</Text>
+                      </View>
+                    ))}
+                    <View style={[styles.invGrandRow, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.invGrandLabel, { color: colors.foreground }]}>Grand Total</Text>
+                      <Text style={[styles.invGrandValue, { color: "#7c3aed" }]}>{sym}{grand.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {/* Payment status */}
+              <View style={[styles.invPayCard, {
+                backgroundColor: invoiceView.status === "paid" ? "#dcfce7" : "#fef3c7",
+                borderColor:     invoiceView.status === "paid" ? "#bbf7d0" : "#fde68a",
+              }]}>
+                <Feather
+                  name={invoiceView.status === "paid" ? "check-circle" : "clock"}
+                  size={20}
+                  color={invoiceView.status === "paid" ? "#16a34a" : "#d97706"}
+                />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.invPayStatus, { color: invoiceView.status === "paid" ? "#16a34a" : "#d97706" }]}>
+                    {invoiceView.status === "paid" ? "Payment Received" : "Awaiting Payment"}
+                  </Text>
+                  {invoiceView.paymentMethod && (
+                    <Text style={[styles.invPayMeta, { color: invoiceView.status === "paid" ? "#15803d" : "#92400e" }]}>
+                      {{ cash: "Cash", card: "Card", bank: "Bank Transfer", cheque: "Cheque" }[invoiceView.paymentMethod] ?? invoiceView.paymentMethod}
+                      {invoiceView.paymentRef ? ` · Ref: ${invoiceView.paymentRef}` : ""}
+                    </Text>
+                  )}
+                  {invoiceView.paidAt && (
+                    <Text style={[styles.invPayMeta, { color: "#15803d" }]}>
+                      {new Date(invoiceView.paidAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              <Pressable style={[styles.invDoneBtn, { backgroundColor: "#7c3aed" }]} onPress={() => { setInvoiceView(null); resetNewSale(); }}>
+                <Feather name="check" size={18} color="#fff" />
+                <Text style={styles.invDoneBtnText}>Done — Back to Sales</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
 
       {/* Full-screen Part Search Modal — input stays above keyboard */}
       <Modal visible={scanModal} animationType="slide" onRequestClose={() => setScanModal(false)}>
@@ -945,4 +1205,59 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   detailTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   detailSub: { fontSize: 13, fontFamily: "Inter_400Regular" },
+
+  // Payment modal
+  payOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" },
+  paySheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, padding: 24, paddingBottom: 36, gap: 14 },
+  payHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 4 },
+  payInvRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  payInvBadge: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  payInvNum: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  payAmountLabel: { fontSize: 26, fontFamily: "Inter_700Bold" },
+  payTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  payMethodRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  payMethodChip: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 10, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 9 },
+  payMethodText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  payRefLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  payRefInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
+  payBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, paddingVertical: 14 },
+  payBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  paySkip: { alignItems: "center", paddingVertical: 4 },
+  paySkipText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+
+  // Invoice view modal
+  invScreen: { flex: 1 },
+  invHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1 },
+  invHeaderTitle: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  invCloseBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  invContent: { padding: 16, gap: 12 },
+  invMetaCard: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 8 },
+  invMetaTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  invCompany: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  invCompanySub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  invNum: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  invDate: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  invDivider: { height: 1, marginVertical: 4 },
+  invMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  invMetaLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  invMetaVal: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  invItemsCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  invItemsHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
+  invItemRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1 },
+  invColPart: { flex: 3, paddingRight: 4 },
+  invColQty: { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  invColPrice: { flex: 2, fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "right" },
+  invColTotal: { flex: 2, fontSize: 12, fontFamily: "Inter_600SemiBold", textAlign: "right" },
+  invTotalsCard: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 8 },
+  invTotalRow: { flexDirection: "row", justifyContent: "space-between" },
+  invTotalLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  invTotalValue: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  invGrandRow: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, paddingTop: 10, marginTop: 4 },
+  invGrandLabel: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  invGrandValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  invPayCard: { flexDirection: "row", alignItems: "flex-start", gap: 12, borderRadius: 12, borderWidth: 1, padding: 14 },
+  invPayStatus: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  invPayMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  invDoneBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, padding: 14, marginTop: 4 },
+  invDoneBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
