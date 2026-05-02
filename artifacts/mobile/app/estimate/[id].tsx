@@ -530,15 +530,43 @@ export default function EstimateDetailScreen() {
   const canSubmit   = estimate.status === "review" || estimate.status === "inspection_in_progress";
   const canApprove  = estimate.status === "review" || (estimate.lines.length > 0 && estimate.status === "inspection_in_progress");
 
+  const applyAsset = useCallback((uri: string, base64: string | null) => {
+    setPhotoUri(uri);
+    setPhotoBase64(base64);
+    setAnalysisError(null);
+    if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
+    addPhoto(estimate.id, { uri, capturedAt: new Date().toISOString() });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [estimate, updateStatus, addPhoto]);
+
+  const handleWebFilePick = useCallback(() => {
+    if (Platform.OS !== "web") return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const objectUrl = URL.createObjectURL(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+        applyAsset(objectUrl, base64);
+      };
+      reader.onerror = () => setAnalysisError("Could not read the selected file.");
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }, [applyAsset]);
+
   const handlePickPhoto = useCallback(async () => {
+    if (Platform.OS === "web") { handleWebFilePick(); return; }
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        const camStatus = await ImagePicker.requestCameraPermissionsAsync();
-        if (camStatus.status !== "granted") {
-          Alert.alert("Permission Required", "Camera or photo library permission is needed.");
-          return;
-        }
+      const camStatus = await ImagePicker.requestCameraPermissionsAsync();
+      if (camStatus.status !== "granted") {
+        Alert.alert("Permission Required", "Camera permission is needed.");
+        return;
       }
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ["images"],
@@ -549,20 +577,16 @@ export default function EstimateDetailScreen() {
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setPhotoUri(asset.uri);
-        setPhotoBase64(asset.base64 ?? null);
-        setAnalysisError(null);
-        if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
-        addPhoto(estimate.id, { uri: asset.uri, capturedAt: new Date().toISOString() });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        applyAsset(asset.uri, asset.base64 ?? null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not open camera.";
       setAnalysisError(msg);
     }
-  }, [estimate, updateStatus, addPhoto]);
+  }, [handleWebFilePick, applyAsset]);
 
   const handlePickFromLibrary = useCallback(async () => {
+    if (Platform.OS === "web") { handleWebFilePick(); return; }
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
@@ -573,18 +597,13 @@ export default function EstimateDetailScreen() {
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setPhotoUri(asset.uri);
-        setPhotoBase64(asset.base64 ?? null);
-        setAnalysisError(null);
-        if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
-        addPhoto(estimate.id, { uri: asset.uri, capturedAt: new Date().toISOString() });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        applyAsset(asset.uri, asset.base64 ?? null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not open photo library.";
       setAnalysisError(msg);
     }
-  }, [estimate, updateStatus, addPhoto]);
+  }, [handleWebFilePick, applyAsset]);
 
   const handleAnalyse = useCallback(async () => {
     setIsAnalysing(true);
@@ -702,10 +721,20 @@ export default function EstimateDetailScreen() {
                   onPress={handlePickPhoto}
                   style={[styles.retakeBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
                 >
-                  <Feather name="refresh-cw" size={12} color={colors.mutedForeground} />
-                  <Text style={[styles.retakeBtnText, { color: colors.mutedForeground }]}>{t.retakePhoto}</Text>
+                  <Feather name={Platform.OS === "web" ? "upload" : "refresh-cw"} size={12} color={colors.mutedForeground} />
+                  <Text style={[styles.retakeBtnText, { color: colors.mutedForeground }]}>
+                    {Platform.OS === "web" ? "Replace Photo" : t.retakePhoto}
+                  </Text>
                 </Pressable>
               </View>
+            ) : Platform.OS === "web" ? (
+              <Pressable
+                onPress={handleWebFilePick}
+                style={({ pressed }) => [styles.photoBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Feather name="upload" size={16} color="#fff" />
+                <Text style={styles.photoBtnText}>Upload Photo</Text>
+              </Pressable>
             ) : (
               <View style={styles.photoActions}>
                 <Pressable
