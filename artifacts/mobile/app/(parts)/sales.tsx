@@ -97,12 +97,22 @@ export default function PartsSales() {
   const [submitting, setSubmitting] = useState(false);
   const [invoiceResult, setInvoiceResult] = useState<SaleRecord | null>(null);
 
-  // Scan / search modal
+  // Scan / search modal — full-screen, input at top
   const [scanModal, setScanModal] = useState(false);
   const [scanInput, setScanInput] = useState("");
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState("");
   const scanRef = useRef<TextInput>(null);
+
+  // All-parts cache for live search
+  interface PartResult {
+    id: number; partNumber: string; name: string; category: string;
+    qtyOnHand: number; unitSalePrice: string | null; unitCost: string | null;
+    vatRate: string | null; binCode: string | null;
+  }
+  const [allParts, setAllParts] = useState<PartResult[]>([]);
+  const [searchResults, setSearchResults] = useState<PartResult[]>([]);
+  const [partsLoading, setPartsLoading] = useState(false);
 
   // Line edit modal
   const [lineModal, setLineModal] = useState<CartItem | null>(null);
@@ -129,42 +139,69 @@ export default function PartsSales() {
 
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  const handleScan = async () => {
-    if (!scanInput.trim()) return;
-    setScanLoading(true);
+  const addPartToCart = (part: PartResult) => {
+    const existing = cart.find((c) => c.partNumber === part.partNumber);
+    if (existing) {
+      setCart((prev) => prev.map((c) => c.partNumber === part.partNumber ? { ...c, qty: c.qty + 1 } : c));
+    } else {
+      setCart((prev) => [
+        ...prev,
+        {
+          key: Date.now().toString(),
+          partId: part.id,
+          partNumber: part.partNumber,
+          partName: part.name,
+          qty: 1,
+          unitPrice: part.unitSalePrice ?? part.unitCost ?? "0",
+          discountPct: "0",
+          markupPct: "0",
+          vatPct: part.vatRate ?? "5",
+        },
+      ]);
+    }
+    setScanInput("");
+    setScanModal(false);
+  };
+
+  const handleSearchChange = (text: string) => {
+    setScanInput(text);
+    const q = text.trim().toLowerCase();
+    if (!q) {
+      setSearchResults(allParts);
+      return;
+    }
+    setSearchResults(
+      allParts.filter(
+        (p) =>
+          p.partNumber.toLowerCase().includes(q) ||
+          p.name.toLowerCase().includes(q) ||
+          (p.category?.toLowerCase().includes(q) ?? false) ||
+          (p.binCode?.toLowerCase().includes(q) ?? false)
+      )
+    );
+  };
+
+  const openSearchModal = async () => {
+    setScanInput("");
     setScanError("");
+    setScanModal(true);
+    setTimeout(() => scanRef.current?.focus(), 250);
+    if (allParts.length > 0) {
+      setSearchResults(allParts);
+      return;
+    }
+    setPartsLoading(true);
     try {
-      const res = await fetch(`${BASE}/parts/items/by-number/${scanInput.trim().toUpperCase()}`);
+      const res = await fetch(`${BASE}/parts/items`);
       if (res.ok) {
-        const part = await res.json();
-        const existing = cart.find((c) => c.partNumber === part.partNumber);
-        if (existing) {
-          setCart((prev) => prev.map((c) => c.partNumber === part.partNumber ? { ...c, qty: c.qty + 1 } : c));
-        } else {
-          setCart((prev) => [
-            ...prev,
-            {
-              key: Date.now().toString(),
-              partId: part.id,
-              partNumber: part.partNumber,
-              partName: part.name,
-              qty: 1,
-              unitPrice: part.unitSalePrice ?? part.unitCost ?? "0",
-              discountPct: "0",
-              markupPct: "0",
-              vatPct: part.vatRate ?? "5",
-            },
-          ]);
-        }
-        setScanInput("");
-        setScanModal(false);
-      } else {
-        setScanError("Part not found. Check the part number.");
+        const d = await res.json();
+        setAllParts(d.items ?? []);
+        setSearchResults(d.items ?? []);
       }
     } catch {
-      setScanError("Connection error. Try again.");
+      //
     } finally {
-      setScanLoading(false);
+      setPartsLoading(false);
     }
   };
 
@@ -423,7 +460,7 @@ export default function PartsSales() {
                   </Text>
                   <Pressable
                     style={[styles.addBtn, { backgroundColor: "#7c3aed20", borderColor: "#7c3aed" }]}
-                    onPress={() => { setScanModal(true); setScanInput(""); setScanError(""); setTimeout(() => scanRef.current?.focus(), 200); }}
+                    onPress={openSearchModal}
                   >
                     <Feather name="plus" size={14} color="#7c3aed" />
                     <Text style={[styles.addBtnText, { color: "#7c3aed" }]}>Add Part</Text>
@@ -546,41 +583,110 @@ export default function PartsSales() {
         </ScrollView>
       )}
 
-      {/* Scan Modal */}
-      <Modal visible={scanModal} animationType="slide" transparent onRequestClose={() => setScanModal(false)}>
-        <View style={styles.scanOverlay}>
-          <View style={[styles.scanBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.scanHeader}>
-              <Text style={[styles.scanTitle, { color: colors.foreground }]}>Add Part to Cart</Text>
-              <Pressable onPress={() => setScanModal(false)}>
-                <Feather name="x" size={22} color={colors.foreground} />
-              </Pressable>
-            </View>
-            <TextInput
-              ref={scanRef}
-              style={[styles.scanInput, { color: colors.foreground, borderColor: colors.border }]}
-              placeholder="Scan or type part number..."
-              placeholderTextColor={colors.mutedForeground}
-              value={scanInput}
-              onChangeText={(v) => { setScanInput(v); setScanError(""); }}
-              autoCapitalize="characters"
-              onSubmitEditing={handleScan}
-              returnKeyType="search"
-            />
-            {scanError ? <Text style={styles.scanError}>{scanError}</Text> : null}
-            <Pressable
-              style={[styles.scanBtn, { backgroundColor: scanLoading ? "#7c3aed80" : "#7c3aed" }]}
-              onPress={handleScan}
-              disabled={scanLoading}
-            >
-              {scanLoading ? <ActivityIndicator size="small" color="#fff" /> : (
-                <>
-                  <Feather name="search" size={16} color="#fff" />
-                  <Text style={styles.scanBtnText}>Add to Cart</Text>
-                </>
-              )}
+      {/* Full-screen Part Search Modal — input stays above keyboard */}
+      <Modal visible={scanModal} animationType="slide" onRequestClose={() => setScanModal(false)}>
+        <View style={[styles.searchScreen, { backgroundColor: colors.background }]}>
+          {/* Fixed header — always above keyboard */}
+          <View style={[styles.searchHeader, { backgroundColor: colors.headerBg, borderBottomColor: colors.border, paddingTop: insets.top > 0 ? insets.top : 16 }]}>
+            <Pressable onPress={() => setScanModal(false)} style={styles.searchBack} hitSlop={10}>
+              <Feather name="x" size={22} color={colors.foreground} />
             </Pressable>
+            <View style={[styles.searchInputWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Feather name="search" size={16} color={colors.mutedForeground} style={{ marginLeft: 10 }} />
+              <TextInput
+                ref={scanRef}
+                style={[styles.searchInputField, { color: colors.foreground }]}
+                placeholder="Search by name, part number or bin…"
+                placeholderTextColor={colors.mutedForeground}
+                value={scanInput}
+                onChangeText={handleSearchChange}
+                autoCapitalize="none"
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+              {scanInput.length > 0 && (
+                <Pressable onPress={() => handleSearchChange("")} hitSlop={8} style={{ marginRight: 10 }}>
+                  <Feather name="x-circle" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              )}
+            </View>
           </View>
+
+          {/* Results count */}
+          {!partsLoading && allParts.length > 0 && (
+            <View style={[styles.searchCountBar, { backgroundColor: colors.secondary, borderBottomColor: colors.border }]}>
+              <Text style={[styles.searchCountText, { color: colors.mutedForeground }]}>
+                {scanInput.trim()
+                  ? `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""} for "${scanInput.trim()}"`
+                  : `${allParts.length} parts — tap to add`}
+              </Text>
+            </View>
+          )}
+
+          {/* Results list — takes all remaining space above keyboard */}
+          {partsLoading ? (
+            <View style={styles.searchCenter}>
+              <ActivityIndicator size="large" color="#7c3aed" />
+              <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>Loading inventory…</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(p) => String(p.id)}
+              contentContainerStyle={styles.searchList}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.searchCenter}>
+                  <Feather name="package" size={40} color={colors.mutedForeground} />
+                  <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                    {scanInput.trim() ? "No parts match your search" : "Start typing to search"}
+                  </Text>
+                </View>
+              }
+              renderItem={({ item: part }) => {
+                const inCart = cart.some((c) => c.partNumber === part.partNumber);
+                const qtyColor = part.qtyOnHand === 0 ? "#ef4444" : part.qtyOnHand < 3 ? "#d97706" : "#16a34a";
+                const sym = CURRENCY_SYMBOLS[currency] ?? currency;
+                const price = parseFloat(part.unitSalePrice ?? part.unitCost ?? "0");
+                return (
+                  <Pressable
+                    style={[styles.searchResultRow, { backgroundColor: inCart ? "#7c3aed08" : colors.card, borderColor: inCart ? "#7c3aed40" : colors.border }]}
+                    onPress={() => addPartToCart(part)}
+                  >
+                    <View style={styles.searchResultLeft}>
+                      <View style={styles.searchResultTopRow}>
+                        <View style={[styles.pnBadge, { backgroundColor: "#7c3aed20" }]}>
+                          <Text style={[styles.pnText, { color: "#7c3aed" }]}>{part.partNumber}</Text>
+                        </View>
+                        {part.binCode && (
+                          <View style={[styles.binChip, { backgroundColor: colors.secondary }]}>
+                            <Feather name="grid" size={10} color={colors.mutedForeground} />
+                            <Text style={[styles.binChipText, { color: colors.mutedForeground }]}>{part.binCode}</Text>
+                          </View>
+                        )}
+                        {inCart && (
+                          <View style={[styles.inCartBadge, { backgroundColor: "#7c3aed20" }]}>
+                            <Feather name="check" size={10} color="#7c3aed" />
+                            <Text style={[styles.inCartText, { color: "#7c3aed" }]}>In cart</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.searchResultName, { color: colors.foreground }]} numberOfLines={1}>{part.name}</Text>
+                      <Text style={[styles.searchResultMeta, { color: colors.mutedForeground }]}>{part.category}</Text>
+                    </View>
+                    <View style={styles.searchResultRight}>
+                      <Text style={[styles.searchResultPrice, { color: colors.foreground }]}>{sym}{price.toFixed(2)}</Text>
+                      <Text style={[styles.searchResultQty, { color: qtyColor }]}>Qty: {part.qtyOnHand}</Text>
+                      <View style={[styles.addIconBtn, { backgroundColor: inCart ? "#7c3aed20" : "#7c3aed" }]}>
+                        <Feather name={inCart ? "plus" : "plus"} size={16} color={inCart ? "#7c3aed" : "#fff"} />
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              }}
+            />
+          )}
         </View>
       </Modal>
 
@@ -794,15 +900,35 @@ const styles = StyleSheet.create({
   successInv: { fontSize: 26, fontFamily: "Inter_700Bold" },
   doneBtn: { borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10, marginTop: 8 },
   doneBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 15 },
+  // Line-edit modal (keeps bottom-sheet style)
   scanOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
-  scanBox: { borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, padding: 20, gap: 12 },
   lineBox: { borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, padding: 20, maxHeight: "85%", gap: 12 },
   scanHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   scanTitle: { fontSize: 17, fontFamily: "Inter_700Bold", flex: 1, marginRight: 8 },
-  scanInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, fontFamily: "Inter_400Regular" },
-  scanError: { color: "#ef4444", fontSize: 13, fontFamily: "Inter_400Regular" },
-  scanBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 10, padding: 12 },
-  scanBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  // Full-screen part search modal
+  searchScreen: { flex: 1 },
+  searchHeader: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingBottom: 12, borderBottomWidth: 1 },
+  searchBack: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  searchInputWrap: { flex: 1, flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, height: 44 },
+  searchInputField: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular", paddingHorizontal: 10, height: "100%" },
+  searchCountBar: { paddingHorizontal: 16, paddingVertical: 7, borderBottomWidth: 1 },
+  searchCountText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  searchList: { padding: 12, gap: 10, paddingBottom: 40 },
+  searchCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, minHeight: 300 },
+  searchHint: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  searchResultRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  searchResultLeft: { flex: 1, gap: 3 },
+  searchResultTopRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  searchResultName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  searchResultMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  searchResultRight: { alignItems: "flex-end", gap: 4 },
+  searchResultPrice: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  searchResultQty: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  addIconBtn: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", marginTop: 2 },
+  binChip: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  binChipText: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  inCartBadge: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  inCartText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   fieldLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 4, marginTop: 8 },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   qtyBtn: { width: 38, height: 38, borderRadius: 8, borderWidth: 1, alignItems: "center", justifyContent: "center" },
