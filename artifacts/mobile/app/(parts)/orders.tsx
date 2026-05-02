@@ -78,7 +78,7 @@ export default function PartsOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [filter, setFilter] = useState<"pending" | "draft" | "all">("pending");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [receiveLoading, setReceiveLoading] = useState(false);
   const [receiveSuccess, setReceiveSuccess] = useState(false);
@@ -89,9 +89,102 @@ export default function PartsOrders() {
     billNumber: string; totalAmount: string; currency: string; supplierName: string; status: string;
   } | null>(null);
 
+  // Create PO state
+  const [createPoModal, setCreatePoModal] = useState(false);
+  const [poStep, setPoStep] = useState<1|2|3>(1);
+  const [newPoSupplier, setNewPoSupplier] = useState({ supplierCode: "", supplierName: "", currency: "USD", expectedAt: "", notes: "" });
+  const [poItems, setPoItems] = useState<{ partNumber: string; partName: string; qtyOrdered: number; unitCost: string }[]>([]);
+  const [poItemInput, setPoItemInput] = useState({ partNumber: "", partName: "", qtyOrdered: "1", unitCost: "" });
+  const [poSearchQuery, setPoSearchQuery] = useState("");
+  const [poSearchResults, setPoSearchResults] = useState<Array<{ partNumber: string; name: string; qtyOnHand: number; unitCost: string | null; supplierCode: string | null }>>([]);
+  const [poLoading, setPoLoading] = useState(false);
+  const [poSuccess, setPoSuccess] = useState<string | null>(null);
+  // PO approval
+  const [approveLoading, setApproveLoading] = useState<number | null>(null);
+  // Supplier return state
+  const [supplierReturnModal, setSupplierReturnModal] = useState(false);
+  const [srItems, setSrItems] = useState<{ partNumber: string; partName: string; qty: number; unitCost: string; selected: boolean }[]>([]);
+  const [srReason, setSrReason] = useState("");
+  const [srLoading, setSrLoading] = useState(false);
+  const [srSuccess, setSrSuccess] = useState(false);
+
+  const searchPoInventory = async (q: string) => {
+    if (q.trim().length < 2) { setPoSearchResults([]); return; }
+    try {
+      const res = await fetch(`${BASE}/parts/items?q=${encodeURIComponent(q.trim())}&limit=15`);
+      if (res.ok) { const d = await res.json(); setPoSearchResults(d.items ?? []); }
+    } catch { /* */ }
+  };
+
+  const addPoItemFromInventory = (part: { partNumber: string; name: string; unitCost: string | null }) => {
+    if (!poItems.find(i => i.partNumber === part.partNumber)) {
+      setPoItems(prev => [...prev, { partNumber: part.partNumber, partName: part.name, qtyOrdered: 1, unitCost: part.unitCost ?? "" }]);
+    }
+    setPoSearchQuery(""); setPoSearchResults([]);
+  };
+
+  const addPoItemManual = () => {
+    if (!poItemInput.partName.trim()) return;
+    setPoItems(prev => [...prev, { partNumber: poItemInput.partNumber.toUpperCase(), partName: poItemInput.partName.trim(), qtyOrdered: parseInt(poItemInput.qtyOrdered) || 1, unitCost: poItemInput.unitCost }]);
+    setPoItemInput({ partNumber: "", partName: "", qtyOrdered: "1", unitCost: "" });
+  };
+
+  const submitCreatePo = async (isDraft: boolean) => {
+    if (!newPoSupplier.supplierName.trim() || poItems.length === 0) return;
+    setPoLoading(true);
+    try {
+      const res = await fetch(`${BASE}/parts/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ supplierCode: newPoSupplier.supplierCode.trim() || newPoSupplier.supplierName.slice(0, 8).toUpperCase(), supplierName: newPoSupplier.supplierName.trim(), currency: newPoSupplier.currency, expectedAt: newPoSupplier.expectedAt || null, notes: newPoSupplier.notes || null, isDraft, createdBy: userCode, items: poItems }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setPoSuccess(d.orderNumber);
+        load();
+        setTimeout(() => { setCreatePoModal(false); setPoStep(1); setNewPoSupplier({ supplierCode: "", supplierName: "", currency: "USD", expectedAt: "", notes: "" }); setPoItems([]); setPoSuccess(null); }, 2000);
+      }
+    } catch { /* */ } finally { setPoLoading(false); }
+  };
+
+  const approvePo = async (orderId: number) => {
+    setApproveLoading(orderId);
+    try {
+      const res = await fetch(`${BASE}/parts/orders/${orderId}/approve`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvedBy: userCode }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (selectedOrder?.id === orderId) setSelectedOrder({ ...d, items: d.items.map((i: OrderItem) => ({ ...i, receiving: 0 })) });
+        load();
+      }
+    } catch { /* */ } finally { setApproveLoading(null); }
+  };
+
+  const openSupplierReturn = () => {
+    if (!selectedOrder) return;
+    setSrItems(selectedOrder.items.filter(i => i.qtyReceived > 0).map(i => ({ partNumber: i.partNumber, partName: i.partName, qty: 1, unitCost: i.unitCost ?? "0", selected: false })));
+    setSrReason(""); setSrSuccess(false); setSupplierReturnModal(true);
+  };
+
+  const submitSupplierReturn = async () => {
+    if (!selectedOrder) return;
+    const selected = srItems.filter(i => i.selected && i.qty > 0);
+    if (selected.length === 0) return;
+    setSrLoading(true);
+    try {
+      const res = await fetch(`${BASE}/parts/orders/${selectedOrder.id}/supplier-return`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: srReason, createdBy: userCode, items: selected }),
+      });
+      if (res.ok) { setSrSuccess(true); load(); }
+    } catch { /* */ } finally { setSrLoading(false); }
+  };
+
   const load = useCallback(async () => {
     try {
-      const qs = filter === "pending" ? "?status=ordered&status=partial" : "";
+      const qs = filter === "pending" ? "?status=ordered&status=partial" : filter === "draft" ? "?status=draft" : "";
       const res = await fetch(`${BASE}/parts/orders${qs}`);
       if (res.ok) {
         const d = await res.json();
@@ -196,14 +289,14 @@ export default function PartsOrders() {
       <AppHeader title="Orders" subtitle="Parts Receiving" showNotifications={false} />
 
       <View style={styles.tabs}>
-        {(["pending", "all"] as const).map((f) => (
+        {(["pending", "draft", "all"] as const).map((f) => (
           <Pressable
             key={f}
             onPress={() => setFilter(f)}
             style={[styles.tab, { borderBottomColor: filter === f ? "#7c3aed" : "transparent", borderBottomWidth: 2 }]}
           >
             <Text style={[styles.tabText, { color: filter === f ? "#7c3aed" : colors.mutedForeground }]}>
-              {f === "pending" ? "Pending" : "All Orders"}
+              {f === "pending" ? "Pending" : f === "draft" ? "Drafts" : "All"}
             </Text>
           </Pressable>
         ))}
@@ -260,6 +353,17 @@ export default function PartsOrders() {
                   )}
                   <Text style={[styles.currencyTag, { color: colors.mutedForeground }]}>{sym} {order.currency}</Text>
                 </View>
+                {order.status === "draft" && (
+                  <Pressable
+                    style={[styles.approveBtn, { backgroundColor: approveLoading === order.id ? "#6d28d9" : "#7c3aed" }]}
+                    onPress={(e) => { e.stopPropagation?.(); approvePo(order.id); }}
+                    disabled={approveLoading === order.id}
+                  >
+                    {approveLoading === order.id
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <><Feather name="check-circle" size={13} color="#fff" /><Text style={styles.approveBtnText}>Approve PO</Text></>}
+                  </Pressable>
+                )}
                 <View style={styles.cardFooter}>
                   <Text style={[styles.cardMeta, { color: colors.mutedForeground }]}>
                     {(order.items ?? []).length} item{(order.items ?? []).length !== 1 ? "s" : ""}
@@ -280,6 +384,14 @@ export default function PartsOrders() {
           }}
         />
       )}
+
+      {/* Create PO FAB */}
+      <Pressable
+        style={[styles.fab, { backgroundColor: "#7c3aed" }]}
+        onPress={() => { setCreatePoModal(true); setPoStep(1); }}
+      >
+        <Feather name="plus" size={24} color="#fff" />
+      </Pressable>
 
       <Modal visible={!!selectedOrder} animationType="slide" onRequestClose={() => setSelectedOrder(null)}>
         {selectedOrder && (
@@ -459,7 +571,29 @@ export default function PartsOrders() {
               })}
             </ScrollView>
 
-            {selectedOrder.status !== "received" && selectedOrder.status !== "cancelled" && totalReceiving > 0 && (
+            {(selectedOrder.status === "received" || selectedOrder.items.some(i => i.qtyReceived > 0)) && (
+              <Pressable
+                style={[styles.supplierReturnBtn, { borderColor: "#ef4444", marginHorizontal: 16, marginBottom: 8 }]}
+                onPress={openSupplierReturn}
+              >
+                <Feather name="rotate-ccw" size={14} color="#ef4444" />
+                <Text style={[styles.supplierReturnText, { color: "#ef4444" }]}>Return to Supplier</Text>
+              </Pressable>
+            )}
+
+            {selectedOrder.status === "draft" && (
+              <Pressable
+                style={[styles.receiveBtn, { backgroundColor: approveLoading === selectedOrder.id ? "#6d28d9" : "#7c3aed", marginHorizontal: 16, marginBottom: 8 }]}
+                onPress={() => approvePo(selectedOrder.id)}
+                disabled={approveLoading === selectedOrder.id}
+              >
+                {approveLoading === selectedOrder.id
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <><Feather name="check-circle" size={18} color="#fff" /><Text style={styles.receiveBtnText}>Approve & Send PO</Text></>}
+              </Pressable>
+            )}
+
+            {selectedOrder.status !== "received" && selectedOrder.status !== "cancelled" && selectedOrder.status !== "draft" && totalReceiving > 0 && (
               <View style={[styles.modalFooter, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
                 {!invoiceInput.trim() && (
                   <View style={[styles.invoiceWarning, { backgroundColor: "#fef3c7", borderColor: "#fde68a" }]}>
@@ -490,6 +624,187 @@ export default function PartsOrders() {
           </View>
         )}
       </Modal>
+
+      {/* ── Create PO Modal ───────────────────────────────── */}
+      <Modal visible={createPoModal} animationType="slide" onRequestClose={() => { setCreatePoModal(false); setPoStep(1); setPoSuccess(null); }}>
+        <View style={[styles.modalScreen, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, backgroundColor: colors.headerBg }]}>
+            <Pressable onPress={() => { if (poStep > 1) setPoStep((s) => (s - 1) as 1|2|3); else { setCreatePoModal(false); setPoStep(1); } }} style={styles.backBtn}>
+              <Feather name={poStep > 1 ? "arrow-left" : "x"} size={22} color={colors.foreground} />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Purchase Order</Text>
+              <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>Step {poStep} of 3 — {poStep === 1 ? "Supplier" : poStep === 2 ? "Items" : "Review"}</Text>
+            </View>
+          </View>
+          {poSuccess ? (
+            <View style={styles.center}><Feather name="check-circle" size={48} color="#16a34a" /><Text style={[styles.modalTitle, { color: colors.foreground, marginTop: 12 }]}>{poSuccess}</Text><Text style={[styles.modalSub, { color: colors.mutedForeground }]}>Purchase Order created!</Text></View>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: bottomPad + 40 }}>
+              {poStep === 1 && (
+                <>
+                  <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Supplier Details</Text>
+                  <View style={[styles.invoiceSection, { borderColor: colors.border, gap: 8 }]}>
+                    {[
+                      { label: "Supplier Name *", key: "supplierName", placeholder: "e.g. Al Futtaim Parts" },
+                      { label: "Supplier Code (optional)", key: "supplierCode", placeholder: "e.g. AFP", caps: "characters" as const },
+                      { label: "Expected Delivery (YYYY-MM-DD)", key: "expectedAt", placeholder: "2025-06-01" },
+                      { label: "Notes", key: "notes", placeholder: "Special instructions..." },
+                    ].map(f => (
+                      <View key={f.key}>
+                        <Text style={[styles.invoiceLabel, { color: colors.foreground }]}>{f.label}</Text>
+                        <TextInput style={[styles.invoiceInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} placeholder={f.placeholder} placeholderTextColor={colors.mutedForeground} value={newPoSupplier[f.key as keyof typeof newPoSupplier]} onChangeText={v => setNewPoSupplier(p => ({ ...p, [f.key]: v }))} autoCapitalize={f.caps ?? "none"} />
+                      </View>
+                    ))}
+                    <Text style={[styles.invoiceLabel, { color: colors.foreground }]}>Currency</Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {["USD", "AED", "EUR", "GBP"].map(c => (
+                        <Pressable key={c} onPress={() => setNewPoSupplier(p => ({ ...p, currency: c }))} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: newPoSupplier.currency === c ? "#7c3aed" : colors.secondary }}>
+                          <Text style={{ color: newPoSupplier.currency === c ? "#fff" : colors.mutedForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>{c}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <Pressable style={[styles.receiveBtn, { backgroundColor: newPoSupplier.supplierName.trim() ? "#7c3aed" : "#a78bfa" }]} onPress={() => { if (newPoSupplier.supplierName.trim()) setPoStep(2); }} disabled={!newPoSupplier.supplierName.trim()}>
+                    <Text style={styles.receiveBtnText}>Next: Add Items</Text>
+                    <Feather name="arrow-right" size={16} color="#fff" />
+                  </Pressable>
+                </>
+              )}
+              {poStep === 2 && (
+                <>
+                  <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Search Inventory</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, backgroundColor: colors.card }}>
+                    <Feather name="search" size={14} color={colors.mutedForeground} />
+                    <TextInput style={[{ flex: 1, padding: 10, color: colors.foreground, fontFamily: "Inter_400Regular", fontSize: 14 }]} placeholder="Search parts..." placeholderTextColor={colors.mutedForeground} value={poSearchQuery} onChangeText={v => { setPoSearchQuery(v); searchPoInventory(v); }} />
+                  </View>
+                  {poSearchResults.length > 0 && (
+                    <View style={[styles.notesBox, { borderColor: colors.border, gap: 0, padding: 0, overflow: "hidden" }]}>
+                      {poSearchResults.slice(0, 8).map((p, i) => (
+                        <Pressable key={p.partNumber} onPress={() => addPoItemFromInventory(p)} style={{ paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: i < poSearchResults.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                          <View><Text style={[styles.notesText, { color: colors.foreground }]}>{p.partNumber} — {p.name}</Text><Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>Stock: {p.qtyOnHand} · Cost: {p.unitCost ?? "—"}</Text></View>
+                          <Feather name="plus-circle" size={18} color="#7c3aed" />
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Add Manually</Text>
+                  <View style={[styles.invoiceSection, { borderColor: colors.border, gap: 6 }]}>
+                    {[
+                      { field: "partNumber", placeholder: "Part #", caps: "characters" as const },
+                      { field: "partName", placeholder: "Part Name *" },
+                    ].map(f => (
+                      <TextInput key={f.field} style={[styles.invoiceInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} placeholder={f.placeholder} placeholderTextColor={colors.mutedForeground} value={poItemInput[f.field as keyof typeof poItemInput]} onChangeText={v => setPoItemInput(p => ({ ...p, [f.field]: v }))} autoCapitalize={f.caps} />
+                    ))}
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TextInput style={[styles.invoiceInput, { flex: 1, color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} placeholder="Qty" placeholderTextColor={colors.mutedForeground} value={poItemInput.qtyOrdered} onChangeText={v => setPoItemInput(p => ({ ...p, qtyOrdered: v }))} keyboardType="numeric" />
+                      <TextInput style={[styles.invoiceInput, { flex: 1, color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} placeholder="Unit Cost" placeholderTextColor={colors.mutedForeground} value={poItemInput.unitCost} onChangeText={v => setPoItemInput(p => ({ ...p, unitCost: v }))} keyboardType="decimal-pad" />
+                    </View>
+                    <Pressable style={{ backgroundColor: "#ede9fe", borderRadius: 8, padding: 10, alignItems: "center" }} onPress={addPoItemManual}>
+                      <Text style={{ color: "#7c3aed", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>+ Add Item</Text>
+                    </Pressable>
+                  </View>
+                  {poItems.length > 0 && (
+                    <>
+                      <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Items ({poItems.length})</Text>
+                      {poItems.map((item, idx) => (
+                        <View key={idx} style={[styles.itemCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.pnText, { color: "#7c3aed" }]}>{item.partNumber || "—"} · Qty {item.qtyOrdered}</Text>
+                              <Text style={[styles.itemName, { color: colors.foreground }]}>{item.partName}</Text>
+                              {item.unitCost ? <Text style={[styles.costText, { color: colors.mutedForeground }]}>Cost: {newPoSupplier.currency} {item.unitCost}</Text> : null}
+                            </View>
+                            <Pressable onPress={() => setPoItems(prev => prev.filter((_, i) => i !== idx))}><Feather name="x" size={18} color="#ef4444" /></Pressable>
+                          </View>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                  <Pressable style={[styles.receiveBtn, { backgroundColor: poItems.length > 0 ? "#7c3aed" : "#a78bfa" }]} onPress={() => { if (poItems.length > 0) setPoStep(3); }} disabled={poItems.length === 0}>
+                    <Text style={styles.receiveBtnText}>Review Order →</Text>
+                  </Pressable>
+                </>
+              )}
+              {poStep === 3 && (
+                <>
+                  <View style={[styles.notesBox, { borderColor: "#7c3aed", backgroundColor: "#ede9fe20" }]}>
+                    <Text style={[styles.sectionLabel, { color: colors.foreground }]}>{newPoSupplier.supplierName}</Text>
+                    <Text style={[styles.notesText, { color: colors.mutedForeground }]}>Currency: {newPoSupplier.currency} · {poItems.length} items</Text>
+                    {newPoSupplier.expectedAt ? <Text style={[styles.notesText, { color: colors.mutedForeground }]}>Expected: {newPoSupplier.expectedAt}</Text> : null}
+                    {newPoSupplier.notes ? <Text style={[styles.notesText, { color: colors.mutedForeground }]}>{newPoSupplier.notes}</Text> : null}
+                  </View>
+                  {poItems.map((item, idx) => (
+                    <View key={idx} style={[styles.itemCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                      <Text style={[styles.pnText, { color: "#7c3aed" }]}>{item.partNumber || "—"} · Qty {item.qtyOrdered}</Text>
+                      <Text style={[styles.itemName, { color: colors.foreground }]}>{item.partName}</Text>
+                      {item.unitCost ? <Text style={[styles.costText, { color: colors.mutedForeground }]}>Unit Cost: {newPoSupplier.currency} {item.unitCost}</Text> : null}
+                    </View>
+                  ))}
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    <Pressable style={[styles.receiveBtn, { flex: 1, backgroundColor: "#6b7280", opacity: poLoading ? 0.7 : 1 }]} onPress={() => submitCreatePo(true)} disabled={poLoading}>
+                      {poLoading ? <ActivityIndicator size="small" color="#fff" /> : <><Feather name="bookmark" size={15} color="#fff" /><Text style={styles.receiveBtnText}>Save Draft</Text></>}
+                    </Pressable>
+                    <Pressable style={[styles.receiveBtn, { flex: 1, backgroundColor: "#7c3aed", opacity: poLoading ? 0.7 : 1 }]} onPress={() => submitCreatePo(false)} disabled={poLoading}>
+                      {poLoading ? <ActivityIndicator size="small" color="#fff" /> : <><Feather name="send" size={15} color="#fff" /><Text style={styles.receiveBtnText}>Send Now</Text></>}
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Supplier Return Modal ─────────────────────────── */}
+      <Modal visible={supplierReturnModal} animationType="slide" onRequestClose={() => setSupplierReturnModal(false)}>
+        <View style={[styles.modalScreen, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, backgroundColor: colors.headerBg }]}>
+            <Pressable onPress={() => setSupplierReturnModal(false)} style={styles.backBtn}><Feather name="x" size={22} color={colors.foreground} /></Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Return to Supplier</Text>
+              <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>{selectedOrder?.orderNumber} · {selectedOrder?.supplierName}</Text>
+            </View>
+          </View>
+          {srSuccess ? (
+            <View style={styles.center}><Feather name="check-circle" size={48} color="#16a34a" /><Text style={[styles.modalTitle, { color: colors.foreground, marginTop: 12 }]}>Return Created</Text><Text style={[styles.modalSub, { color: colors.mutedForeground }]}>SRN issued · stock adjusted</Text><Pressable style={[styles.receiveBtn, { backgroundColor: "#7c3aed", marginTop: 20 }]} onPress={() => { setSupplierReturnModal(false); setSrSuccess(false); }}><Text style={styles.receiveBtnText}>Done</Text></Pressable></View>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: bottomPad + 40 }}>
+              {srItems.length === 0 ? (
+                <View style={styles.center}><Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No received items to return</Text></View>
+              ) : (
+                <>
+                  <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Select Items to Return</Text>
+                  {srItems.map((item, idx) => (
+                    <View key={idx} style={[styles.itemCard, { borderColor: item.selected ? "#7c3aed" : colors.border, borderWidth: item.selected ? 1.5 : 1, backgroundColor: colors.card }]}>
+                      <Pressable onPress={() => setSrItems(prev => prev.map((i, j) => j === idx ? { ...i, selected: !i.selected } : i))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                        <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: item.selected ? "#7c3aed" : colors.border, backgroundColor: item.selected ? "#7c3aed" : "transparent", alignItems: "center", justifyContent: "center" }}>
+                          {item.selected && <Feather name="check" size={12} color="#fff" />}
+                        </View>
+                        <Text style={[styles.itemName, { color: colors.foreground, flex: 1 }]}>{item.partNumber} — {item.partName}</Text>
+                      </Pressable>
+                      {item.selected && (
+                        <View style={[styles.receiveRow]}>
+                          <Text style={[styles.receiveLabel, { color: colors.mutedForeground }]}>Return Qty</Text>
+                          <Pressable onPress={() => setSrItems(prev => prev.map((i, j) => j === idx ? { ...i, qty: Math.max(1, i.qty - 1) } : i))} style={[styles.qtyBtn, { borderColor: colors.border }]}><Feather name="minus" size={14} color={colors.foreground} /></Pressable>
+                          <Text style={[styles.qtyDisplay, { color: colors.foreground }]}>{item.qty}</Text>
+                          <Pressable onPress={() => setSrItems(prev => prev.map((i, j) => j === idx ? { ...i, qty: i.qty + 1 } : i))} style={[styles.qtyBtn, { borderColor: colors.border }]}><Feather name="plus" size={14} color={colors.foreground} /></Pressable>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                  <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Reason</Text>
+                  <TextInput style={[styles.invoiceInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 70 }]} placeholder="e.g. Wrong part, defective..." placeholderTextColor={colors.mutedForeground} value={srReason} onChangeText={setSrReason} multiline />
+                  <Pressable style={[styles.receiveBtn, { backgroundColor: srItems.some(i => i.selected) ? "#ef4444" : "#d1d5db", opacity: srLoading ? 0.7 : 1 }]} onPress={submitSupplierReturn} disabled={srLoading || !srItems.some(i => i.selected)}>
+                    {srLoading ? <ActivityIndicator size="small" color="#fff" /> : <><Feather name="rotate-ccw" size={15} color="#fff" /><Text style={styles.receiveBtnText}>Submit Return</Text></>}
+                  </Pressable>
+                </>
+              )}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -572,4 +887,11 @@ const styles = StyleSheet.create({
   billBannerTitle: { fontSize: 11, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.5 },
   billBannerNum: { fontSize: 14, fontFamily: "Inter_700Bold" },
   billBannerMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  fab: { position: "absolute", bottom: 100, right: 20, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 8 },
+  approveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 },
+  approveBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  supplierReturnBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1 },
+  supplierReturnText: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  qtyDisplay: { fontSize: 16, fontFamily: "Inter_700Bold", minWidth: 28, textAlign: "center" as const },
+  searchBar: {},
 });

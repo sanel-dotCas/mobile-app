@@ -102,6 +102,12 @@ export default function PartsSales() {
 
   // Payment flow
   const [payModal, setPayModal] = useState(false);
+  // Sales return / credit note flow
+  const [returnModal, setReturnModal] = useState(false);
+  const [returnItems, setReturnItems] = useState<Array<{ saleItemId: number; partNumber: string; partName: string; maxQty: number; qty: number; unitPrice: string; discountPct: string; vatPct: string; selected: boolean; reason: string }>>([]);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnLoading, setReturnLoading] = useState(false);
+  const [creditNoteView, setCreditNoteView] = useState<{ returnNumber: string; customerName: string | null; currency: string; items: Array<{ partNumber: string; partName: string; qty: number; unitPrice: string; vatPct: string }>; createdAt: string } | null>(null);
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "bank" | "cheque">("cash");
   const [payRef, setPayRef] = useState("");
   const [payLoading, setPayLoading] = useState(false);
@@ -327,6 +333,38 @@ export default function PartsSales() {
   const skipPayment = () => {
     setPayModal(false);
     setInvoiceView(invoiceResult);
+  };
+
+  const openReturnModal = (sale: SaleRecord) => {
+    setReturnItems(sale.items.map(i => ({
+      saleItemId: i.id, partNumber: i.partNumber, partName: i.partName,
+      maxQty: i.qty, qty: i.qty, unitPrice: i.unitPrice,
+      discountPct: i.discountPct, vatPct: i.vatPct, selected: false, reason: "",
+    })));
+    setReturnReason("");
+    setReturnModal(true);
+  };
+
+  const submitReturn = async (sale: SaleRecord) => {
+    const selected = returnItems.filter(i => i.selected && i.qty > 0);
+    if (selected.length === 0) return;
+    setReturnLoading(true);
+    try {
+      const res = await fetch(`${BASE}/parts/sales/${sale.id}/return`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: returnReason.trim() || null, createdBy: userCode,
+          items: selected.map(i => ({ saleItemId: i.saleItemId, partNumber: i.partNumber, partName: i.partName, qty: i.qty, unitPrice: i.unitPrice, discountPct: i.discountPct, vatPct: i.vatPct })),
+        }),
+      });
+      if (res.ok) {
+        const cn = await res.json();
+        setReturnModal(false);
+        setCreditNoteView({ returnNumber: cn.returnNumber, customerName: cn.customerName, currency: cn.currency, items: cn.items, createdAt: cn.createdAt });
+        load();
+      }
+    } catch { /* */ } finally { setReturnLoading(false); }
   };
 
   const resetNewSale = () => {
@@ -1054,6 +1092,14 @@ export default function PartsSales() {
               </View>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 20, gap: 10 }}>
+              {/* Return button */}
+              <Pressable
+                style={[styles.returnBtn, { backgroundColor: "#fee2e2", borderColor: "#fca5a5" }]}
+                onPress={() => openReturnModal(selectedSale)}
+              >
+                <Feather name="rotate-ccw" size={14} color="#ef4444" />
+                <Text style={[styles.returnBtnText, { color: "#ef4444" }]}>Create Return / Credit Note</Text>
+              </Pressable>
               {selectedSale.items.map((item) => {
                 const { afterMarkup, vatAmount, lineTotal } = calcLineAmounts(
                   parseFloat(item.unitPrice)||0, item.qty,
@@ -1100,6 +1146,104 @@ export default function PartsSales() {
           </View>
         )}
       </Modal>
+
+      {/* ── Sales Return Modal ────────────────────────────── */}
+      <Modal visible={returnModal && !!selectedSale} animationType="slide" onRequestClose={() => setReturnModal(false)}>
+        <View style={[styles.screen, { backgroundColor: colors.background }]}>
+          <View style={[styles.detailHeader, { borderBottomColor: colors.border, backgroundColor: colors.headerBg }]}>
+            <Pressable onPress={() => setReturnModal(false)} style={styles.backBtn}><Feather name="x" size={22} color={colors.foreground} /></Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.detailTitle, { color: colors.foreground }]}>Create Return</Text>
+              <Text style={[styles.detailSub, { color: colors.mutedForeground }]}>{selectedSale?.saleNumber} · Credit Note</Text>
+            </View>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: insets.bottom + 40 }}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Select Items to Return</Text>
+            {returnItems.map((item, idx) => (
+              <View key={idx} style={[styles.section, { borderColor: item.selected ? "#7c3aed" : colors.border, borderWidth: item.selected ? 1.5 : 1 }]}>
+                <Pressable onPress={() => setReturnItems(prev => prev.map((i, j) => j === idx ? { ...i, selected: !i.selected } : i))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: item.selected ? "#7c3aed" : colors.border, backgroundColor: item.selected ? "#7c3aed" : "transparent", alignItems: "center", justifyContent: "center" }}>
+                    {item.selected && <Feather name="check" size={12} color="#fff" />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cartItemName, { color: colors.foreground }]}>{item.partName}</Text>
+                    <Text style={[styles.cartMeta, { color: colors.mutedForeground }]}>{item.partNumber} · Max: {item.maxQty}</Text>
+                  </View>
+                </Pressable>
+                {item.selected && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 }}>
+                    <Text style={[styles.cartMeta, { color: colors.mutedForeground }]}>Return Qty:</Text>
+                    <Pressable onPress={() => setReturnItems(prev => prev.map((i, j) => j === idx ? { ...i, qty: Math.max(1, i.qty - 1) } : i))} style={[styles.qtyStepBtn, { borderColor: colors.border }]}><Feather name="minus" size={14} color={colors.foreground} /></Pressable>
+                    <Text style={[styles.qtyValue, { color: colors.foreground }]}>{item.qty}</Text>
+                    <Pressable onPress={() => setReturnItems(prev => prev.map((i, j) => j === idx ? { ...i, qty: Math.min(item.maxQty, i.qty + 1) } : i))} style={[styles.qtyStepBtn, { borderColor: colors.border }]}><Feather name="plus" size={14} color={colors.foreground} /></Pressable>
+                  </View>
+                )}
+              </View>
+            ))}
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Return Reason</Text>
+            <View style={[styles.section, { borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.notesInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
+                placeholder="e.g. Customer changed mind, defective part..."
+                placeholderTextColor={colors.mutedForeground}
+                value={returnReason}
+                onChangeText={setReturnReason}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+            <Pressable
+              style={[styles.payBtn, { backgroundColor: returnItems.some(i => i.selected) ? "#7c3aed" : "#a78bfa", opacity: returnLoading ? 0.7 : 1 }]}
+              onPress={() => selectedSale && submitReturn(selectedSale)}
+              disabled={returnLoading || !returnItems.some(i => i.selected)}
+            >
+              {returnLoading ? <ActivityIndicator size="small" color="#fff" /> : <><Feather name="rotate-ccw" size={16} color="#fff" /><Text style={styles.payBtnText}>Create Credit Note</Text></>}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ── Credit Note View ──────────────────────────────── */}
+      <Modal visible={!!creditNoteView} animationType="slide" onRequestClose={() => setCreditNoteView(null)}>
+        {creditNoteView && (
+          <View style={[styles.screen, { backgroundColor: colors.background }]}>
+            <View style={[styles.detailHeader, { borderBottomColor: colors.border, backgroundColor: colors.headerBg }]}>
+              <Pressable onPress={() => { setCreditNoteView(null); setSelectedSale(null); }} style={styles.backBtn}><Feather name="x" size={22} color={colors.foreground} /></Pressable>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.detailTitle, { color: colors.foreground }]}>{creditNoteView.returnNumber}</Text>
+                <Text style={[styles.detailSub, { color: colors.mutedForeground }]}>Credit Note · {creditNoteView.customerName ?? "Walk-in"}</Text>
+              </View>
+              <View style={{ backgroundColor: "#dcfce7", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <Text style={{ color: "#16a34a", fontFamily: "Inter_700Bold", fontSize: 12 }}>CONFIRMED</Text>
+              </View>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: insets.bottom + 30 }}>
+              {creditNoteView.items.map((item, idx) => {
+                const up = parseFloat(item.unitPrice) || 0;
+                const vp = parseFloat(item.vatPct) || 5;
+                const net = up * item.qty;
+                const vat = net * vp / 100;
+                const sym = CURRENCY_SYMBOLS[creditNoteView.currency] ?? creditNoteView.currency;
+                return (
+                  <View key={idx} style={[styles.section, { borderColor: colors.border }]}>
+                    <Text style={[styles.cartItemName, { color: colors.foreground }]}>{item.partName}</Text>
+                    <Text style={[styles.cartMeta, { color: colors.mutedForeground }]}>{item.partNumber} · Qty {item.qty} · {sym}{up.toFixed(2)}/unit</Text>
+                    <Text style={[styles.cartMeta, { color: "#16a34a", fontFamily: "Inter_600SemiBold" }]}>Refund: {sym}{net.toFixed(2)} + VAT {sym}{vat.toFixed(2)} = {sym}{(net + vat).toFixed(2)}</Text>
+                  </View>
+                );
+              })}
+              <View style={[styles.section, { borderColor: "#7c3aed", backgroundColor: "#ede9fe20" }]}>
+                <Text style={[styles.grandTotalLabel, { color: colors.foreground }]}>Total Credit</Text>
+                <Text style={{ fontSize: 22, fontFamily: "Inter_700Bold", color: "#7c3aed" }}>
+                  {CURRENCY_SYMBOLS[creditNoteView.currency] ?? creditNoteView.currency}{creditNoteView.items.reduce((acc, i) => { const up = parseFloat(i.unitPrice)||0; const vp = parseFloat(i.vatPct)||5; const net = up*i.qty; return acc + net + net*vp/100; }, 0).toFixed(2)}
+                </Text>
+                <Text style={[styles.cartMeta, { color: colors.mutedForeground }]}>Issued: {new Date(creditNoteView.createdAt).toLocaleDateString()}</Text>
+              </View>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
+
     </View>
   );
 }
@@ -1181,6 +1325,11 @@ const styles = StyleSheet.create({
   searchResultTopRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   searchResultName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   searchResultMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  returnBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1 },
+  returnBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  qtyStepBtn: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  qtyValue: { fontSize: 16, fontFamily: "Inter_700Bold", minWidth: 28, textAlign: "center" },
+  notesInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 70 },
   searchResultRight: { alignItems: "flex-end", gap: 4 },
   searchResultPrice: { fontSize: 15, fontFamily: "Inter_700Bold" },
   searchResultQty: { fontSize: 12, fontFamily: "Inter_600SemiBold" },

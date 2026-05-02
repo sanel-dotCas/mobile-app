@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -58,6 +59,10 @@ export default function PartsInventory() {
   );
   const [activeCategory, setActiveCategory] = useState("All");
   const [scanModalVisible, setScanModalVisible] = useState(params.scan === "1");
+  const [aiReviewLoading, setAiReviewLoading] = useState(false);
+  const [aiReviewModal, setAiReviewModal] = useState(false);
+  const [aiResult, setAiResult] = useState<{ summary: string; draftOrders: Array<{ id: number; orderNumber: string; supplierName: string; priority: string; itemCount: number; status: string }>; lowStockCount: number } | null>(null);
+  const [aiApproveLoading, setAiApproveLoading] = useState<number | null>(null);
   const [scanInput, setScanInput] = useState("");
   const [scanError, setScanError] = useState("");
   const [scanLoading, setScanLoading] = useState(false);
@@ -71,6 +76,38 @@ export default function PartsInventory() {
     if (activeCategory !== "All") qs.set("category", activeCategory);
     return `${BASE}/parts/items?${qs.toString()}`;
   }, [search, activeFilter, activeCategory]);
+
+  const userCode = (() => { try { const { useAuth } = require("@/context/AuthContext"); return useAuth().userCode; } catch { return "PT"; } })();
+
+  const runAiStockReview = async () => {
+    setAiReviewLoading(true);
+    try {
+      const res = await fetch(`${BASE}/parts/ai/stock-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ createdBy: userCode }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setAiResult(d);
+        setAiReviewModal(true);
+      }
+    } catch { /* */ } finally { setAiReviewLoading(false); }
+  };
+
+  const approveAiDraftPo = async (orderId: number) => {
+    setAiApproveLoading(orderId);
+    try {
+      const res = await fetch(`${BASE}/parts/orders/${orderId}/approve`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvedBy: userCode }),
+      });
+      if (res.ok && aiResult) {
+        setAiResult({ ...aiResult, draftOrders: aiResult.draftOrders.map(o => o.id === orderId ? { ...o, status: "ordered" } : o) });
+      }
+    } catch { /* */ } finally { setAiApproveLoading(null); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -160,13 +197,24 @@ export default function PartsInventory() {
         subtitle={`${items.length} parts`}
         showNotifications={false}
         rightElement={
-          <Pressable
-            style={[styles.scanBtn, { backgroundColor: "#7c3aed" }]}
-            onPress={() => { setScanModalVisible(true); setTimeout(() => scanRef.current?.focus(), 300); }}
-          >
-            <Feather name="search" size={16} color="#fff" />
-            <Text style={styles.scanBtnText}>Scan</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable
+              style={[styles.scanBtn, { backgroundColor: "#7c3aed" }]}
+              onPress={runAiStockReview}
+              disabled={aiReviewLoading}
+            >
+              {aiReviewLoading
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <><Feather name="cpu" size={14} color="#fff" /><Text style={styles.scanBtnText}>AI Review</Text></>}
+            </Pressable>
+            <Pressable
+              style={[styles.scanBtn, { backgroundColor: "#7c3aed" }]}
+              onPress={() => { setScanModalVisible(true); setTimeout(() => scanRef.current?.focus(), 300); }}
+            >
+              <Feather name="search" size={16} color="#fff" />
+              <Text style={styles.scanBtnText}>Scan</Text>
+            </Pressable>
+          </View>
         }
       />
 
@@ -280,6 +328,80 @@ export default function PartsInventory() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* ── AI Stock Review Modal ────────────────────────── */}
+      <Modal visible={aiReviewModal} animationType="slide" onRequestClose={() => setAiReviewModal(false)}>
+        <View style={[styles.screen, { backgroundColor: colors.background }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingTop: Platform.OS === "ios" ? 60 : 24, paddingBottom: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.headerBg }}>
+            <Pressable onPress={() => setAiReviewModal(false)} style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }}>
+              <Feather name="x" size={22} color={colors.foreground} />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: colors.foreground }}>AI Stock Review</Text>
+              <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+                {aiResult ? `${aiResult.lowStockCount} low-stock items · ${aiResult.draftOrders.length} draft POs` : "Analysis complete"}
+              </Text>
+            </View>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 30 }}>
+            {aiResult && (
+              <>
+                {/* AI Summary */}
+                <View style={{ backgroundColor: "#ede9fe", borderRadius: 12, padding: 14, gap: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Feather name="cpu" size={16} color="#7c3aed" />
+                    <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: "#7c3aed" }}>AI Analysis</Text>
+                  </View>
+                  <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: "#4c1d95", lineHeight: 22 }}>{aiResult.summary}</Text>
+                </View>
+
+                {/* Draft POs */}
+                {aiResult.draftOrders.length > 0 ? (
+                  <>
+                    <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>Generated Draft POs ({aiResult.draftOrders.length})</Text>
+                    {aiResult.draftOrders.map(po => (
+                      <View key={po.id} style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1.5, borderColor: po.status === "ordered" ? "#16a34a" : "#7c3aed", padding: 14, gap: 8 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: colors.foreground }}>{po.orderNumber}</Text>
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>{po.supplierName} · {po.itemCount} items</Text>
+                          </View>
+                          <View style={{ backgroundColor: po.priority === "critical" ? "#fee2e2" : po.priority === "high" ? "#fef3c7" : "#dbeafe", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                            <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: po.priority === "critical" ? "#ef4444" : po.priority === "high" ? "#d97706" : "#1d4ed8" }}>{(po.priority ?? "normal").toUpperCase()}</Text>
+                          </View>
+                        </View>
+                        {po.status === "ordered" ? (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Feather name="check-circle" size={14} color="#16a34a" />
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#16a34a" }}>Approved & Sent</Text>
+                          </View>
+                        ) : (
+                          <Pressable
+                            style={{ backgroundColor: "#7c3aed", borderRadius: 8, padding: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, opacity: aiApproveLoading === po.id ? 0.7 : 1 }}
+                            onPress={() => approveAiDraftPo(po.id)}
+                            disabled={aiApproveLoading === po.id}
+                          >
+                            {aiApproveLoading === po.id
+                              ? <ActivityIndicator size="small" color="#fff" />
+                              : <><Feather name="check-circle" size={14} color="#fff" /><Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Approve & Send PO</Text></>}
+                          </Pressable>
+                        )}
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <View style={{ alignItems: "center", gap: 8, paddingVertical: 24 }}>
+                    <Feather name="check-circle" size={36} color="#16a34a" />
+                    <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>All stocked up!</Text>
+                    <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground, textAlign: "center" }}>No purchase orders needed at this time.</Text>
+                  </View>
+                )}
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
     </View>
   );
 }

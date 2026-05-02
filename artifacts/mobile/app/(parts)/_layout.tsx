@@ -96,6 +96,13 @@ export default function PartsLayout() {
           tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="rfq"
+        options={{
+          title: "RFQ",
+          tabBarIcon: ({ color }) => <Feather name="send" size={22} color={color} />,
+        }}
+      />
       <Tabs.Screen name="suggestions" options={{ href: null }} />
     </Tabs>
   );

@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
+import Anthropic from "@anthropic-ai/sdk";
+import { randomBytes } from "crypto";
 import {
   partsItemsTable,
   partsOrdersTable,
@@ -13,6 +15,14 @@ import {
   partsRoRequestsTable,
   partsRoRequestItemsTable,
   partsBillsTable,
+  partsSalesReturnsTable,
+  partsSaleReturnItemsTable,
+  partsSupplierReturnsTable,
+  partsSupplierReturnItemsTable,
+  partsRfqTable,
+  partsRfqItemsTable,
+  partsRfqSuppliersTable,
+  partsRfqResponseItemsTable,
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 
@@ -471,8 +481,9 @@ router.post("/parts/orders", async (req, res) => {
       orderNumber,
       supplierCode,
       supplierName,
-      status: "ordered",
+      status: (req.body.isDraft ? "draft" : "ordered") as "draft" | "ordered",
       notes: notes ?? null,
+      createdBy: req.body.createdBy ?? null,
       invoiceNumber: invoiceNumber ?? null,
       currency: currency ?? "USD",
       exchangeRate: exchangeRate ? String(exchangeRate) : "1",
@@ -651,6 +662,24 @@ router.get("/parts/sales", async (req, res) => {
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to load sales" });
+  }
+});
+
+// ── Sales Returns (Credit Notes) — must be before /parts/sales/:id ──────────────
+router.get("/parts/sales/returns", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const returns = await db.select().from(partsSalesReturnsTable).orderBy(desc(partsSalesReturnsTable.createdAt));
+    const withItems = await Promise.all(
+      returns.map(async (r) => {
+        const items = await db.select().from(partsSaleReturnItemsTable).where(eq(partsSaleReturnItemsTable.returnId, r.id));
+        return { ...r, items };
+      })
+    );
+    res.json({ returns: withItems });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed" });
   }
 });
 
@@ -1122,6 +1151,397 @@ router.post("/parts/ro-requests/:id/issue", async (req, res) => {
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to issue parts" });
+  }
+});
+
+// ── PO Approval ────────────────────────────────────────────────────────────────
+router.patch("/parts/orders/:id/approve", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const orderId = parseInt(req.params.id);
+    const { approvedBy } = req.body as { approvedBy?: string };
+    const [order] = await db.select().from(partsOrdersTable).where(eq(partsOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.status !== "draft") return res.status(400).json({ error: "Only draft orders can be approved" });
+    const [updated] = await db
+      .update(partsOrdersTable)
+      .set({ status: "ordered", approvedBy: approvedBy ?? null, approvedAt: new Date(), orderedAt: new Date() } as Partial<typeof partsOrdersTable.$inferInsert>)
+      .where(eq(partsOrdersTable.id, orderId))
+      .returning();
+    const items = await db.select().from(partsOrderItemsTable).where(eq(partsOrderItemsTable.orderId, orderId));
+    res.json({ ...updated, items });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to approve order" });
+  }
+});
+
+router.post("/parts/sales/:id/return", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const saleId = parseInt(req.params.id);
+    const { reason, createdBy, items = [] } = req.body as {
+      reason?: string;
+      createdBy?: string;
+      items: { saleItemId: number; partNumber: string; partName: string; qty: number; unitPrice: string; discountPct?: string; vatPct?: string; reason?: string }[];
+    };
+    const [sale] = await db.select().from(partsSalesTable).where(eq(partsSalesTable.id, saleId));
+    if (!sale) return res.status(404).json({ error: "Sale not found" });
+
+    const existing = await db.select({ returnNumber: partsSalesReturnsTable.returnNumber }).from(partsSalesReturnsTable);
+    const returnNumber = nextNumber("CRN", existing.map((r) => r.returnNumber));
+
+    const [saleReturn] = await db.insert(partsSalesReturnsTable).values({
+      returnNumber,
+      originalSaleId: saleId,
+      customerName: sale.customerName,
+      reason: reason ?? null,
+      currency: sale.currency,
+      exchangeRate: String(sale.exchangeRate ?? "1"),
+      localCurrencyCode: sale.localCurrencyCode,
+      status: "confirmed",
+      createdBy: createdBy ?? null,
+    } as typeof partsSalesReturnsTable.$inferInsert).returning();
+
+    if (items.length > 0) {
+      await db.insert(partsSaleReturnItemsTable).values(
+        items.map((i) => ({
+          returnId: saleReturn.id,
+          originalSaleItemId: i.saleItemId ?? null,
+          partNumber: i.partNumber,
+          partName: i.partName,
+          qty: i.qty,
+          unitPrice: String(i.unitPrice),
+          discountPct: String(i.discountPct ?? "0"),
+          vatPct: String(i.vatPct ?? "5"),
+          reason: i.reason ?? null,
+        })) as typeof partsSaleReturnItemsTable.$inferInsert[]
+      );
+      // Restore stock
+      for (const item of items) {
+        const [part] = await db.select().from(partsItemsTable).where(eq(partsItemsTable.partNumber, item.partNumber));
+        if (part) {
+          await db.update(partsItemsTable).set({ qtyOnHand: part.qtyOnHand + item.qty }).where(eq(partsItemsTable.id, part.id));
+        }
+      }
+    }
+
+    const returnItems = await db.select().from(partsSaleReturnItemsTable).where(eq(partsSaleReturnItemsTable.returnId, saleReturn.id));
+    res.status(201).json({ ...saleReturn, items: returnItems });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to create return" });
+  }
+});
+
+// ── Supplier Returns ────────────────────────────────────────────────────────────
+router.get("/parts/supplier-returns", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const returns = await db.select().from(partsSupplierReturnsTable).orderBy(desc(partsSupplierReturnsTable.createdAt));
+    const withItems = await Promise.all(
+      returns.map(async (r) => {
+        const items = await db.select().from(partsSupplierReturnItemsTable).where(eq(partsSupplierReturnItemsTable.returnId, r.id));
+        return { ...r, items };
+      })
+    );
+    res.json({ returns: withItems });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+router.post("/parts/orders/:id/supplier-return", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const orderId = parseInt(req.params.id);
+    const { reason, notes, createdBy, items = [] } = req.body as {
+      reason?: string; notes?: string; createdBy?: string;
+      items: { partNumber: string; partName: string; qty: number; unitCost?: string; reason?: string }[];
+    };
+    const [order] = await db.select().from(partsOrdersTable).where(eq(partsOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const existing = await db.select({ returnNumber: partsSupplierReturnsTable.returnNumber }).from(partsSupplierReturnsTable);
+    const returnNumber = nextNumber("SRN", existing.map((r) => r.returnNumber));
+
+    const [supplierReturn] = await db.insert(partsSupplierReturnsTable).values({
+      returnNumber,
+      orderId,
+      supplierName: order.supplierName,
+      supplierCode: order.supplierCode,
+      reason: reason ?? null,
+      notes: notes ?? null,
+      currency: order.currency,
+      exchangeRate: String(order.exchangeRate ?? "1"),
+      localCurrencyCode: order.localCurrencyCode,
+      status: "pending",
+      createdBy: createdBy ?? null,
+    } as typeof partsSupplierReturnsTable.$inferInsert).returning();
+
+    if (items.length > 0) {
+      await db.insert(partsSupplierReturnItemsTable).values(
+        items.map((i) => ({
+          returnId: supplierReturn.id,
+          partNumber: i.partNumber,
+          partName: i.partName,
+          qty: i.qty,
+          unitCost: i.unitCost ? String(i.unitCost) : "0",
+          reason: i.reason ?? null,
+        })) as typeof partsSupplierReturnItemsTable.$inferInsert[]
+      );
+      // Reduce stock
+      for (const item of items) {
+        const [part] = await db.select().from(partsItemsTable).where(eq(partsItemsTable.partNumber, item.partNumber));
+        if (part) {
+          await db.update(partsItemsTable).set({ qtyOnHand: Math.max(0, part.qtyOnHand - item.qty) }).where(eq(partsItemsTable.id, part.id));
+        }
+      }
+    }
+
+    const returnItems = await db.select().from(partsSupplierReturnItemsTable).where(eq(partsSupplierReturnItemsTable.returnId, supplierReturn.id));
+    res.status(201).json({ ...supplierReturn, items: returnItems });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to create supplier return" });
+  }
+});
+
+// ── AI Stock Review ─────────────────────────────────────────────────────────────
+router.post("/parts/ai/stock-review", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const { createdBy } = req.body as { createdBy?: string };
+    const allParts = await db.select().from(partsItemsTable);
+    const lowStock = allParts.filter((p) => p.qtyOnHand <= Math.ceil(p.minStock * 1.5));
+
+    if (lowStock.length === 0) {
+      return res.json({ summary: "All stock levels are healthy — no restocking needed at this time.", draftOrders: [], lowStockCount: 0 });
+    }
+
+    const anthropic = new Anthropic({
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+    });
+
+    const partsList = lowStock.map((p) =>
+      `${p.partNumber}|${p.name}|qty:${p.qtyOnHand}|min:${p.minStock}|max:${p.maxStock}|supplier:${p.supplierCode ?? "UNKNOWN"}|cost:${p.unitCost ?? "0"}`
+    ).join("\n");
+
+    const aiMsg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 8192,
+      messages: [{
+        role: "user",
+        content: `You are an automotive parts inventory AI. Analyze low-stock items and recommend purchase orders. Respond ONLY with valid JSON, no markdown.
+
+LOW STOCK ITEMS (format: partNumber|name|qty:current|min:threshold|max:target|supplier:code|cost:unitCost):
+${partsList}
+
+JSON response format:
+{"summary":"2-3 sentence analysis","recommendations":[{"supplierCode":"code or UNKNOWN","supplierName":"name or Unknown Supplier","priority":"critical|high|normal","items":[{"partNumber":"","partName":"","currentQty":0,"minStock":0,"maxStock":0,"suggestedQty":0}]}]}`
+      }],
+    });
+
+    const rawText = aiMsg.content[0]?.type === "text" ? aiMsg.content[0].text.trim() : "{}";
+    let aiData: { summary: string; recommendations: Array<{ supplierCode: string; supplierName: string; priority: string; items: Array<{ partNumber: string; partName: string; currentQty: number; minStock: number; maxStock: number; suggestedQty: number }> }> };
+    try {
+      const j = rawText.slice(rawText.indexOf("{"), rawText.lastIndexOf("}") + 1);
+      aiData = JSON.parse(j);
+    } catch {
+      aiData = { summary: rawText.slice(0, 400), recommendations: [] };
+    }
+
+    const draftOrders: object[] = [];
+    for (const rec of aiData.recommendations ?? []) {
+      if (!rec.items?.length) continue;
+      const allOrders = await db.select({ orderNumber: partsOrdersTable.orderNumber }).from(partsOrdersTable);
+      const orderNumber = nextNumber("PO", allOrders.map((o) => o.orderNumber));
+      const [order] = await db.insert(partsOrdersTable).values({
+        orderNumber,
+        supplierCode: rec.supplierCode ?? "UNKNOWN",
+        supplierName: rec.supplierName ?? "Unknown Supplier",
+        status: "draft",
+        notes: `AI-generated (${rec.priority ?? "normal"} priority) — ${new Date().toLocaleDateString("en-GB")}`,
+        currency: "USD",
+        localCurrencyCode: "AED",
+        createdBy: createdBy ?? "AI",
+      } as typeof partsOrdersTable.$inferInsert).returning();
+      await db.insert(partsOrderItemsTable).values(
+        rec.items.map((i) => ({ orderId: order.id, partNumber: i.partNumber, partName: i.partName, qtyOrdered: Math.max(1, i.suggestedQty ?? 1), qtyReceived: 0 })) as typeof partsOrderItemsTable.$inferInsert[]
+      );
+      draftOrders.push({ ...order, priority: rec.priority, itemCount: rec.items.length });
+    }
+
+    res.json({ summary: aiData.summary, draftOrders, lowStockCount: lowStock.length });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "AI stock review failed" });
+  }
+});
+
+// ── RFQ (Request for Quotation) ─────────────────────────────────────────────────
+router.get("/parts/rfq", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const rfqs = await db.select().from(partsRfqTable).orderBy(desc(partsRfqTable.createdAt));
+    const withDetails = await Promise.all(
+      rfqs.map(async (r) => {
+        const items = await db.select().from(partsRfqItemsTable).where(eq(partsRfqItemsTable.rfqId, r.id));
+        const suppliers = await db.select().from(partsRfqSuppliersTable).where(eq(partsRfqSuppliersTable.rfqId, r.id));
+        return { ...r, items, suppliers };
+      })
+    );
+    res.json({ rfqs: withDetails });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+router.post("/parts/rfq", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const { subject, notes, dueDate, createdBy, items = [], suppliers = [] } = req.body as {
+      subject?: string; notes?: string; dueDate?: string; createdBy?: string;
+      items: { partNumber?: string; partName: string; description?: string; qtyRequired: number; unitOfMeasure?: string }[];
+      suppliers: { supplierName: string; supplierCode?: string; contactEmail?: string; contactPhone?: string }[];
+    };
+    const existing = await db.select({ rfqNumber: partsRfqTable.rfqNumber }).from(partsRfqTable);
+    const rfqNumber = nextNumber("RFQ", existing.map((r) => r.rfqNumber));
+    const token = randomBytes(20).toString("hex");
+
+    const [rfq] = await db.insert(partsRfqTable).values({
+      rfqNumber, token, subject: subject ?? null, notes: notes ?? null,
+      status: "draft", createdBy: createdBy ?? null,
+      dueDate: dueDate ? new Date(dueDate) : null,
+    } as typeof partsRfqTable.$inferInsert).returning();
+
+    if (items.length > 0) {
+      await db.insert(partsRfqItemsTable).values(
+        items.map((i) => ({ rfqId: rfq.id, partNumber: i.partNumber ?? null, partName: i.partName, description: i.description ?? null, qtyRequired: i.qtyRequired, unitOfMeasure: i.unitOfMeasure ?? "EA" })) as typeof partsRfqItemsTable.$inferInsert[]
+      );
+    }
+    if (suppliers.length > 0) {
+      await db.insert(partsRfqSuppliersTable).values(
+        suppliers.map((s) => ({ rfqId: rfq.id, supplierName: s.supplierName, supplierCode: s.supplierCode ?? null, contactEmail: s.contactEmail ?? null, contactPhone: s.contactPhone ?? null })) as typeof partsRfqSuppliersTable.$inferInsert[]
+      );
+    }
+
+    const rfqItems = await db.select().from(partsRfqItemsTable).where(eq(partsRfqItemsTable.rfqId, rfq.id));
+    const rfqSuppliers = await db.select().from(partsRfqSuppliersTable).where(eq(partsRfqSuppliersTable.rfqId, rfq.id));
+    res.status(201).json({ ...rfq, items: rfqItems, suppliers: rfqSuppliers });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to create RFQ" });
+  }
+});
+
+router.get("/parts/rfq/:token/form", async (req, res) => {
+  try {
+    const [rfq] = await db.select().from(partsRfqTable).where(eq(partsRfqTable.token, req.params.token));
+    if (!rfq) return res.status(404).send("<h1>RFQ not found or expired</h1>");
+    const items = await db.select().from(partsRfqItemsTable).where(eq(partsRfqItemsTable.rfqId, rfq.id));
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RFQ ${rfq.rfqNumber}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:16px;color:#1e293b}h1{color:#7c3aed}h2{color:#475569;font-size:15px;font-weight:600;margin-top:24px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#f1f5f9;padding:10px 12px;text-align:left;font-size:13px;color:#475569;border:1px solid #e2e8f0}td{padding:10px 12px;border:1px solid #e2e8f0;font-size:14px}input[type=number],input[type=text]{width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box}button{background:#7c3aed;color:#fff;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:20px}button:hover{background:#6d28d9}.badge{display:inline-block;background:#ede9fe;color:#7c3aed;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}.meta{color:#64748b;font-size:13px;margin-top:4px}.success{background:#dcfce7;color:#16a34a;padding:20px;border-radius:10px;text-align:center;font-size:16px;font-weight:600;display:none}input[name=supplierName]{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:8px;box-sizing:border-box}label{display:block;font-size:13px;color:#64748b;margin-bottom:4px;font-weight:500}</style></head>
+<body>
+<h1>📋 Request for Quotation</h1>
+<span class="badge">${rfq.rfqNumber}</span>
+${rfq.subject ? `<p style="margin-top:12px;font-size:16px;font-weight:600">${rfq.subject}</p>` : ""}
+${rfq.dueDate ? `<p class="meta">⏰ Response required by: <strong>${new Date(rfq.dueDate).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</strong></p>` : ""}
+${rfq.notes ? `<p class="meta">📝 ${rfq.notes}</p>` : ""}
+
+<div id="form-area">
+<h2>Your Company</h2>
+<label>Supplier / Company Name *</label>
+<input type="text" name="supplierName" id="supplierName" placeholder="Your company name" required>
+<label>Contact Email</label>
+<input type="text" name="contactEmail" id="contactEmail" placeholder="your@email.com">
+<label>Notes / Comments</label>
+<input type="text" name="suppNotes" id="suppNotes" placeholder="Lead times, special conditions...">
+
+<h2>Parts Pricing</h2>
+<table>
+<thead><tr><th>#</th><th>Part Number</th><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price (USD)</th><th>Lead Time (days)</th><th>Available?</th></tr></thead>
+<tbody>
+${items.map((item, idx) => `<tr>
+  <td>${idx + 1}</td>
+  <td>${item.partNumber ?? "—"}</td>
+  <td>${item.partName}${item.description ? `<br><small style="color:#64748b">${item.description}</small>` : ""}</td>
+  <td>${item.qtyRequired}</td>
+  <td>${item.unitOfMeasure ?? "EA"}</td>
+  <td><input type="number" id="price_${item.id}" min="0" step="0.01" placeholder="0.00"></td>
+  <td><input type="number" id="lead_${item.id}" min="0" step="1" placeholder="7"></td>
+  <td><select id="avail_${item.id}"><option value="yes">Yes</option><option value="partial">Partial</option><option value="no">No</option></select></td>
+</tr>`).join("")}
+</tbody>
+</table>
+
+<button onclick="submitRFQ()">Submit Quotation</button>
+</div>
+<div class="success" id="success-msg">✅ Thank you! Your quotation has been submitted successfully. We will review and contact you shortly.</div>
+
+<script>
+const items = ${JSON.stringify(items.map(i => ({ id: i.id })))};
+async function submitRFQ() {
+  const supplierName = document.getElementById('supplierName').value.trim();
+  if (!supplierName) { alert('Please enter your company name.'); return; }
+  const responses = items.map(item => ({
+    rfqItemId: item.id,
+    unitPrice: parseFloat(document.getElementById('price_'+item.id).value) || null,
+    leadTimeDays: parseInt(document.getElementById('lead_'+item.id).value) || null,
+    available: document.getElementById('avail_'+item.id).value === 'yes' ? 1 : document.getElementById('avail_'+item.id).value === 'partial' ? 0 : -1,
+  }));
+  const body = { supplierName, contactEmail: document.getElementById('contactEmail').value, notes: document.getElementById('suppNotes').value, responses };
+  const r = await fetch(window.location.href.replace('/form', '/submit'), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (r.ok) { document.getElementById('form-area').style.display='none'; document.getElementById('success-msg').style.display='block'; }
+  else { alert('Submission failed. Please try again.'); }
+}
+</script></body></html>`;
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).send("<h1>Server error</h1>");
+  }
+});
+
+router.post("/parts/rfq/:token/submit", async (req, res) => {
+  try {
+    const [rfq] = await db.select().from(partsRfqTable).where(eq(partsRfqTable.token, req.params.token));
+    if (!rfq) return res.status(404).json({ error: "RFQ not found" });
+    const { supplierName, contactEmail, notes, responses = [] } = req.body as {
+      supplierName: string; contactEmail?: string; notes?: string;
+      responses: { rfqItemId: number; unitPrice: number | null; leadTimeDays: number | null; available: number }[];
+    };
+    const [supplier] = await db.insert(partsRfqSuppliersTable).values({
+      rfqId: rfq.id, supplierName, contactEmail: contactEmail ?? null, notes: notes ?? null, submittedAt: new Date(),
+      totalQuoted: responses.reduce((acc, r) => acc + (r.unitPrice ?? 0), 0).toFixed(2),
+    } as typeof partsRfqSuppliersTable.$inferInsert).returning();
+
+    if (responses.length > 0) {
+      await db.insert(partsRfqResponseItemsTable).values(
+        responses.map((r) => ({ rfqSupplierId: supplier.id, rfqItemId: r.rfqItemId, unitPrice: r.unitPrice ? String(r.unitPrice) : null, leadTimeDays: r.leadTimeDays ?? null, available: r.available })) as typeof partsRfqResponseItemsTable.$inferInsert[]
+      );
+    }
+    await db.update(partsRfqTable).set({ status: "received" } as Partial<typeof partsRfqTable.$inferInsert>).where(eq(partsRfqTable.id, rfq.id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to submit quotation" });
+  }
+});
+
+router.patch("/parts/rfq/:id/send", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const rfqId = parseInt(req.params.id);
+    const [updated] = await db.update(partsRfqTable).set({ status: "sent", sentAt: new Date() } as Partial<typeof partsRfqTable.$inferInsert>).where(eq(partsRfqTable.id, rfqId)).returning();
+    res.json(updated);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed" });
   }
 });
 

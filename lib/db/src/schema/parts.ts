@@ -79,6 +79,9 @@ export const partsOrdersTable = pgTable("parts_orders", {
   expectedAt: timestamp("expected_at"),
   receivedAt: timestamp("received_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
 });
 
 export const partsOrderItemsTable = pgTable("parts_order_items", {
@@ -190,6 +193,128 @@ export const partsRoRequestItemsTable = pgTable("parts_ro_request_items", {
   qtyIssued: integer("qty_issued").notNull().default(0),
   unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
+});
+
+// ── Sales Returns (Credit Notes) ───────────────────────────────────────────────
+export const partsSaleReturnStatusEnum = pgEnum("parts_sale_return_status", [
+  "draft",
+  "confirmed",
+  "cancelled",
+]);
+
+export const partsSalesReturnsTable = pgTable("parts_sales_returns", {
+  id: serial("id").primaryKey(),
+  returnNumber: text("return_number").notNull().unique(),
+  originalSaleId: integer("original_sale_id"),
+  customerName: text("customer_name"),
+  reason: text("reason"),
+  currency: text("currency").notNull().default("USD"),
+  exchangeRate: text("exchange_rate").default("1"),
+  localCurrencyCode: text("local_currency_code").notNull().default("AED"),
+  status: partsSaleReturnStatusEnum("status").notNull().default("confirmed"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const partsSaleReturnItemsTable = pgTable("parts_sale_return_items", {
+  id: serial("id").primaryKey(),
+  returnId: integer("return_id").notNull(),
+  originalSaleItemId: integer("original_sale_item_id"),
+  partNumber: text("part_number").notNull(),
+  partName: text("part_name").notNull(),
+  qty: integer("qty").notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).default("0"),
+  discountPct: numeric("discount_pct", { precision: 5, scale: 2 }).default("0"),
+  vatPct: numeric("vat_pct", { precision: 5, scale: 2 }).default("5"),
+  reason: text("reason"),
+});
+
+// ── Supplier Returns ───────────────────────────────────────────────────────────
+export const partsSupplierReturnStatusEnum = pgEnum("parts_supplier_return_status", [
+  "pending",
+  "sent",
+  "confirmed",
+  "cancelled",
+]);
+
+export const partsSupplierReturnsTable = pgTable("parts_supplier_returns", {
+  id: serial("id").primaryKey(),
+  returnNumber: text("return_number").notNull().unique(),
+  orderId: integer("order_id"),
+  supplierName: text("supplier_name").notNull(),
+  supplierCode: text("supplier_code"),
+  reason: text("reason"),
+  currency: text("currency").notNull().default("USD"),
+  exchangeRate: text("exchange_rate").default("1"),
+  localCurrencyCode: text("local_currency_code").notNull().default("AED"),
+  status: partsSupplierReturnStatusEnum("status").notNull().default("pending"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const partsSupplierReturnItemsTable = pgTable("parts_supplier_return_items", {
+  id: serial("id").primaryKey(),
+  returnId: integer("return_id").notNull(),
+  partNumber: text("part_number").notNull(),
+  partName: text("part_name").notNull(),
+  qty: integer("qty").notNull(),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }).default("0"),
+  reason: text("reason"),
+});
+
+// ── RFQ (Request for Quotation to Suppliers) ───────────────────────────────────
+export const partsRfqStatusEnum = pgEnum("parts_rfq_status", [
+  "draft",
+  "sent",
+  "received",
+  "cancelled",
+]);
+
+export const partsRfqTable = pgTable("parts_rfq", {
+  id: serial("id").primaryKey(),
+  rfqNumber: text("rfq_number").notNull().unique(),
+  token: text("token").notNull().unique(),
+  subject: text("subject"),
+  notes: text("notes"),
+  status: partsRfqStatusEnum("status").notNull().default("draft"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  dueDate: timestamp("due_date"),
+  sentAt: timestamp("sent_at"),
+});
+
+export const partsRfqItemsTable = pgTable("parts_rfq_items", {
+  id: serial("id").primaryKey(),
+  rfqId: integer("rfq_id").notNull(),
+  partNumber: text("part_number"),
+  partName: text("part_name").notNull(),
+  description: text("description"),
+  qtyRequired: integer("qty_required").notNull().default(1),
+  unitOfMeasure: text("unit_of_measure").default("EA"),
+});
+
+export const partsRfqSuppliersTable = pgTable("parts_rfq_suppliers", {
+  id: serial("id").primaryKey(),
+  rfqId: integer("rfq_id").notNull(),
+  supplierName: text("supplier_name").notNull(),
+  supplierCode: text("supplier_code"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  submittedAt: timestamp("submitted_at"),
+  totalQuoted: numeric("total_quoted", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+});
+
+export const partsRfqResponseItemsTable = pgTable("parts_rfq_response_items", {
+  id: serial("id").primaryKey(),
+  rfqSupplierId: integer("rfq_supplier_id").notNull(),
+  rfqItemId: integer("rfq_item_id").notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }),
+  currency: text("currency").default("USD"),
+  leadTimeDays: integer("lead_time_days"),
+  notes: text("notes"),
+  available: integer("available"),
 });
 
 export const partsBillStatusEnum = pgEnum("parts_bill_status", [
