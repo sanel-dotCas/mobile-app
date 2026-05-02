@@ -209,15 +209,17 @@ export default function JobDetailScreen() {
                 <Text style={styles.partsChipText}>{pendingParts}</Text>
               </View>
             )}
-            <Pressable
-              onPress={() => Alert.alert("Mark Complete", "Mark all tasks in this job as complete?", [
-                { text: "Cancel", style: "cancel" },
-                { text: "Complete", onPress: () => { markJobComplete(job.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
-              ])}
-              style={[styles.headerBtn, { borderColor: colors.success }]}
-            >
-              <Text style={[styles.headerBtnText, { color: colors.success }]}>Complete</Text>
-            </Pressable>
+            {role === "supervisor" && (
+              <Pressable
+                onPress={() => Alert.alert("Mark Complete", "Mark this job as fully complete?", [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Complete", onPress: () => { markJobComplete(job.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
+                ])}
+                style={[styles.headerBtn, { borderColor: colors.success }]}
+              >
+                <Text style={[styles.headerBtnText, { color: colors.success }]}>Complete</Text>
+              </Pressable>
+            )}
           </View>
         }
       />
@@ -335,48 +337,71 @@ export default function JobDetailScreen() {
               </View>
             </ScrollView>
 
-            {/* QC manual banner — shown to technicians when at QC stage */}
-            {currentStage?.isManual && role !== "supervisor" && (
-              <View style={[styles.qcBanner, { backgroundColor: "#f5f3ff", borderColor: "#c4b5fd" }]}>
-                <View style={[styles.qcIconWrap, { backgroundColor: "#7c3aed" }]}>
-                  <Feather name="shield" size={13} color="#fff" />
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.qcBannerTitle}>{t.qcRequired}</Text>
-                  <Text style={styles.qcBannerSub}>{t.qcManual}</Text>
-                </View>
-              </View>
+            {/* ── TECHNICIAN view ── */}
+            {role !== "supervisor" && (
+              <>
+                {/* At a non-QC stage: show Submit for QC button only when all tasks done */}
+                {!currentStage?.isManual && nextStage && allTasksDone && (
+                  <Pressable
+                    onPress={handleAdvanceStage}
+                    style={[styles.advanceBtn, { backgroundColor: "#7c3aed" }]}
+                  >
+                    <Feather name="send" size={14} color="#fff" />
+                    <Text style={styles.advanceBtnText}>{t.submitForQC}</Text>
+                    <Feather name="arrow-right" size={14} color="#fff" />
+                  </Pressable>
+                )}
+
+                {/* At a non-QC stage with tasks still pending: info only */}
+                {!currentStage?.isManual && nextStage && !allTasksDone && (
+                  <View style={[styles.autoAdvanceBanner, { backgroundColor: "#f0fdf4", borderColor: "#86efac" }]}>
+                    <Feather name="clock" size={13} color="#16a34a" />
+                    <Text style={[styles.autoAdvanceBannerText, { color: "#166534" }]}>
+                      Complete all tasks to submit for QC
+                    </Text>
+                  </View>
+                )}
+
+                {/* At the QC stage: awaiting supervisor banner */}
+                {currentStage?.isManual && (
+                  <View style={[styles.qcBanner, { backgroundColor: "#f5f3ff", borderColor: "#c4b5fd" }]}>
+                    <View style={[styles.qcIconWrap, { backgroundColor: "#7c3aed" }]}>
+                      <Feather name="shield" size={13} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.qcBannerTitle}>{t.qcRequired}</Text>
+                      <Text style={styles.qcBannerSub}>{t.qcManual}</Text>
+                    </View>
+                  </View>
+                )}
+              </>
             )}
 
-            {/* Auto-advance notice — shown when all tasks done and stage advances automatically */}
-            {allTasksDone && !currentStage?.isManual && nextStage && (
-              <View style={[styles.autoAdvanceBanner, { backgroundColor: "#f0fdf4", borderColor: "#86efac" }]}>
-                <Feather name="check-circle" size={13} color="#16a34a" />
-                <Text style={[styles.autoAdvanceBannerText, { color: "#166534" }]}>{t.awaitingQC}</Text>
-              </View>
-            )}
-
-            {/* Advance button — hidden for technicians on manual (QC) stages */}
-            {nextStage && (!currentStage?.isManual || role === "supervisor") && !allTasksDone && (
-              <Pressable
-                onPress={handleAdvanceStage}
-                style={[styles.advanceBtn, { backgroundColor: nextStage.color }]}
-              >
-                <Feather name={nextStage.icon as any} size={14} color="#fff" />
-                <Text style={styles.advanceBtnText}>{t.moveTo} {nextStage.name}</Text>
-                <Feather name="arrow-right" size={14} color="#fff" />
-              </Pressable>
-            )}
-            {/* Supervisor advance button always available */}
-            {nextStage && currentStage?.isManual && role === "supervisor" && (
-              <Pressable
-                onPress={handleAdvanceStage}
-                style={[styles.advanceBtn, { backgroundColor: nextStage.color }]}
-              >
-                <Feather name="check-square" size={14} color="#fff" />
-                <Text style={styles.advanceBtnText}>{t.qcCheck} — {t.moveTo} {nextStage.name}</Text>
-                <Feather name="arrow-right" size={14} color="#fff" />
-              </Pressable>
+            {/* ── SUPERVISOR view ── */}
+            {role === "supervisor" && nextStage && (
+              <>
+                {/* At QC stage: Pass QC button */}
+                {currentStage?.isManual ? (
+                  <Pressable
+                    onPress={handleAdvanceStage}
+                    style={[styles.advanceBtn, { backgroundColor: "#7c3aed" }]}
+                  >
+                    <Feather name="check-square" size={14} color="#fff" />
+                    <Text style={styles.advanceBtnText}>{t.qcCheck} — {t.moveTo} {nextStage.name}</Text>
+                    <Feather name="arrow-right" size={14} color="#fff" />
+                  </Pressable>
+                ) : (
+                  /* At any other stage: normal advance */
+                  <Pressable
+                    onPress={handleAdvanceStage}
+                    style={[styles.advanceBtn, { backgroundColor: nextStage.color }]}
+                  >
+                    <Feather name={nextStage.icon as any} size={14} color="#fff" />
+                    <Text style={styles.advanceBtnText}>{t.moveTo} {nextStage.name}</Text>
+                    <Feather name="arrow-right" size={14} color="#fff" />
+                  </Pressable>
+                )}
+              </>
             )}
 
             {!nextStage && (
