@@ -80,6 +80,14 @@ export default function SupervisorLayout() {
             isIOS ? <SymbolView name="building.2" tintColor={color} size={24} /> : <Feather name="grid" size={22} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="stages"
+        options={{
+          title: "Stages",
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="slider.horizontal.3" tintColor={color} size={24} /> : <Feather name="layers" size={22} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

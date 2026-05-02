@@ -23,6 +23,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { TaskCard } from "@/components/TaskCard";
 import type { InspectionItem, NoteAttachment } from "@/context/JobsContext";
 import { useJobs } from "@/context/JobsContext";
+import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
 
 type TabKey = "tasks" | "notes" | "inspections";
@@ -85,7 +86,8 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getJob, clockIn, clockOut, addNote, markJobComplete } = useJobs();
+  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage } = useJobs();
+  const { sortedStages, getStage } = useStages();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -116,6 +118,43 @@ export default function JobDetailScreen() {
   }
 
   const activeClockedTask = job.tasks.find((t) => t.clockedIn);
+
+  // Stage data
+  const currentStage = getStage(job.currentStageId);
+  const currentStageIdx = sortedStages.findIndex((s) => s.id === job.currentStageId);
+  const nextStage = currentStageIdx < sortedStages.length - 1 ? sortedStages[currentStageIdx + 1] : null;
+
+  const isStageCompleted = (stageId: string) => {
+    const history = job.stageHistory ?? [];
+    const idx = history.findIndex((e) => e.stageId === stageId);
+    if (idx < 0) return false;
+    return history.some((e, i) => i > idx);
+  };
+
+  const stageCurrentEntry = (job.stageHistory ?? []).slice().reverse().find((e) => e.stageId === job.currentStageId);
+  const hoursInCurrentStage = stageCurrentEntry
+    ? (Date.now() - new Date(stageCurrentEntry.enteredAt).getTime()) / 3600000
+    : 0;
+  const isStageDelayed = currentStage ? hoursInCurrentStage > currentStage.expectedHours : false;
+  const overdueHours = currentStage ? Math.max(0, hoursInCurrentStage - currentStage.expectedHours) : 0;
+
+  const handleAdvanceStage = () => {
+    if (!nextStage) return;
+    Alert.alert(
+      "Advance Stage",
+      `Move this job from "${currentStage?.name ?? "current stage"}" to "${nextStage.name}"?\n\nThis will notify the supervisor and technician.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Advance",
+          onPress: () => {
+            advanceStage(job.id, nextStage.id, nextStage.name);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+        },
+      ]
+    );
+  };
 
   const handleClockIn = (taskId: string, taskTitle: string) => {
     if (activeClockedTask && activeClockedTask.id !== taskId) {
@@ -170,7 +209,6 @@ export default function JobDetailScreen() {
     { key: "inspections", label: "Inspections" },
   ];
 
-  // Parts summary across all tasks (null-safe for legacy data)
   const totalParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).length, 0);
   const pendingParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).filter((p) => p.status !== "received").length, 0);
 
@@ -224,6 +262,126 @@ export default function JobDetailScreen() {
             <ProgressBar progress={job.progress} showLabel height={7} />
           </View>
         </View>
+
+        {/* ── Stage Progress Stepper ── */}
+        {job.status !== "completed" && sortedStages.length > 0 && (
+          <View style={[styles.stageCard, {
+            backgroundColor: colors.card,
+            borderColor: isStageDelayed ? "#f97316" : currentStage ? currentStage.color + "30" : colors.border,
+            shadowColor: "#000",
+          }]}>
+            {/* Header row */}
+            <View style={styles.stageHeader}>
+              <View style={styles.stageHeaderLeft}>
+                {currentStage && (
+                  <View style={[styles.stageIconBadge, { backgroundColor: currentStage.color }]}>
+                    <Feather name={currentStage.icon as any} size={14} color="#fff" />
+                  </View>
+                )}
+                <View>
+                  <Text style={[styles.stageTitle, { color: colors.foreground }]}>
+                    {currentStage?.name ?? "Unknown Stage"}
+                  </Text>
+                  <Text style={[styles.stageSubtitle, { color: isStageDelayed ? "#f97316" : colors.mutedForeground }]}>
+                    {isStageDelayed
+                      ? `${overdueHours.toFixed(1)}h overdue — action needed`
+                      : `${hoursInCurrentStage.toFixed(1)}h / ${currentStage?.expectedHours ?? 0}h expected`}
+                  </Text>
+                </View>
+              </View>
+              {isStageDelayed && (
+                <View style={styles.delayBadge}>
+                  <Feather name="alert-triangle" size={12} color="#f97316" />
+                  <Text style={styles.delayBadgeText}>Delayed</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Stepper */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stepperScroll}>
+              <View style={styles.stepper}>
+                {sortedStages.map((stage, i) => {
+                  const isCurrent = stage.id === job.currentStageId;
+                  const isDone = isStageCompleted(stage.id);
+                  const isUpcoming = !isCurrent && !isDone;
+                  return (
+                    <React.Fragment key={stage.id}>
+                      <View style={styles.stepperItem}>
+                        <View style={[
+                          styles.stepDot,
+                          {
+                            backgroundColor: isDone ? stage.color : isCurrent ? stage.color : colors.border,
+                            borderColor: isCurrent ? stage.color : "transparent",
+                            borderWidth: isCurrent ? 3 : 0,
+                          },
+                        ]}>
+                          {isDone
+                            ? <Feather name="check" size={10} color="#fff" />
+                            : isCurrent
+                              ? <Feather name={stage.icon as any} size={10} color="#fff" />
+                              : <View style={[styles.stepDotInner, { backgroundColor: colors.mutedForeground + "50" }]} />
+                          }
+                        </View>
+                        <Text
+                          style={[
+                            styles.stepLabel,
+                            {
+                              color: isDone ? stage.color : isCurrent ? stage.color : colors.mutedForeground,
+                              fontFamily: isCurrent ? "Inter_700Bold" : "Inter_400Regular",
+                            },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {stage.name}
+                        </Text>
+                        {isCurrent && (
+                          <View style={[styles.stepCurrent, { backgroundColor: stage.color + "20" }]}>
+                            <Text style={[styles.stepCurrentText, { color: stage.color }]}>Now</Text>
+                          </View>
+                        )}
+                      </View>
+                      {i < sortedStages.length - 1 && (
+                        <View style={[
+                          styles.stepConnector,
+                          { backgroundColor: isDone ? sortedStages[i].color : colors.border },
+                        ]} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            {/* Advance button */}
+            {nextStage && (
+              <Pressable
+                onPress={handleAdvanceStage}
+                style={[styles.advanceBtn, { backgroundColor: nextStage.color }]}
+              >
+                <Feather name={nextStage.icon as any} size={14} color="#fff" />
+                <Text style={styles.advanceBtnText}>Move to {nextStage.name}</Text>
+                <Feather name="arrow-right" size={14} color="#fff" />
+              </Pressable>
+            )}
+
+            {!nextStage && (
+              <View style={[styles.finalStageNote, { backgroundColor: "#dcfce7", borderColor: "#86efac" }]}>
+                <Feather name="check-circle" size={14} color="#16a34a" />
+                <Text style={[styles.finalStageNoteText, { color: "#166534" }]}>Final stage reached — ready to complete job</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Completed stage summary */}
+        {job.status === "completed" && (
+          <View style={[styles.completedStageCard, { backgroundColor: "#dcfce7", borderColor: "#86efac" }]}>
+            <Feather name="check-circle" size={16} color="#16a34a" />
+            <Text style={[styles.completedStageText, { color: "#166534" }]}>
+              Job completed — passed through {job.stageHistory.length} stage{job.stageHistory.length !== 1 ? "s" : ""}
+            </Text>
+          </View>
+        )}
 
         {/* Parts summary banner */}
         {totalParts > 0 && (
@@ -314,7 +472,6 @@ export default function JobDetailScreen() {
         {/* ── Notes Tab ────────────────────────────────────── */}
         {activeTab === "notes" && (
           <View style={styles.tabContent}>
-            {/* Create Note form */}
             <View style={[styles.noteForm, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.noteFormTitle, { color: colors.foreground }]}>Create Note</Text>
               <TextInput value={noteSubject} onChangeText={setNoteSubject} placeholder="Subject"
@@ -324,7 +481,6 @@ export default function JobDetailScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 style={[styles.noteTextInput, { color: colors.foreground, borderColor: colors.border }]}
                 multiline textAlignVertical="top" />
-              {/* Attachment row */}
               <View style={styles.attachRow}>
                 <Pressable onPress={handleCamera} style={[styles.attachPickerBtn, { borderColor: colors.border }]}>
                   <Feather name="paperclip" size={16} color={colors.mutedForeground} />
@@ -336,7 +492,6 @@ export default function JobDetailScreen() {
                   placeholderTextColor={colors.mutedForeground}
                   style={[styles.attachLabelInput, { color: colors.foreground, borderColor: colors.border }]} />
               </View>
-              {/* Attachment options */}
               {attachLabel.length > 0 && (
                 <View style={styles.attachOptions}>
                   <Pressable onPress={handleCamera} style={[styles.attachOptionBtn, { borderColor: colors.border }]}>
@@ -382,7 +537,6 @@ export default function JobDetailScreen() {
               </View>
             </View>
 
-            {/* Note history */}
             {job.notes.length === 0 ? (
               <View style={styles.emptyNotes}>
                 <Feather name="message-square" size={36} color={colors.mutedForeground} />
@@ -478,6 +632,33 @@ const styles = StyleSheet.create({
   metaFooter: { gap: 10 },
   metaStatusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   metaAppt: { fontSize: 12, fontFamily: "Inter_400Regular" },
+
+  stageCard: { borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 12, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  stageHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  stageHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  stageIconBadge: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  stageTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  stageSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  delayBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fff7ed", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  delayBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#f97316" },
+
+  stepperScroll: { marginHorizontal: -4 },
+  stepper: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 4, paddingBottom: 4 },
+  stepperItem: { alignItems: "center", gap: 6, minWidth: 64, maxWidth: 72 },
+  stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  stepDotInner: { width: 10, height: 10, borderRadius: 5 },
+  stepLabel: { fontSize: 9, textAlign: "center", lineHeight: 13 },
+  stepCurrent: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  stepCurrentText: { fontSize: 8, fontFamily: "Inter_700Bold" },
+  stepConnector: { height: 2, width: 20, marginTop: 13, flexShrink: 0 },
+
+  advanceBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 12 },
+  advanceBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
+  finalStageNote: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
+  finalStageNoteText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  completedStageCard: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  completedStageText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+
   partsBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1.5 },
   partsBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
   activeTimerBanner: { borderRadius: 12, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -501,7 +682,6 @@ const styles = StyleSheet.create({
   taskSummaryValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   taskSummaryLabel: { fontSize: 10, fontFamily: "Inter_400Regular" },
 
-  /* Notes form */
   noteForm: { borderRadius: 14, borderWidth: 1.5, padding: 14, gap: 10, marginBottom: 14 },
   noteFormTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
   noteSubjectInput: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },

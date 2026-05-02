@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Image,
   Pressable,
@@ -12,6 +12,7 @@ import {
 
 import { useColors } from "@/hooks/useColors";
 import type { Job } from "@/context/JobsContext";
+import { useStages } from "@/context/StagesContext";
 import { StatusPill } from "./StatusPill";
 import { ProgressBar } from "./ProgressBar";
 
@@ -27,8 +28,18 @@ function formatDate(iso: string) {
 export function JobCard({ job }: JobCardProps) {
   const colors = useColors();
   const router = useRouter();
+  const { getStage } = useStages();
 
   const isActive = job.tasks.some((t) => t.clockedIn);
+  const currentStage = getStage(job.currentStageId);
+
+  const isDelayed = useMemo(() => {
+    if (!currentStage || job.status === "completed") return false;
+    const entry = [...(job.stageHistory ?? [])].reverse().find((e) => e.stageId === job.currentStageId);
+    if (!entry) return false;
+    const hoursElapsed = (Date.now() - new Date(entry.enteredAt).getTime()) / 3600000;
+    return hoursElapsed > currentStage.expectedHours;
+  }, [currentStage, job.currentStageId, job.stageHistory, job.status]);
 
   return (
     <Pressable
@@ -40,7 +51,7 @@ export function JobCard({ job }: JobCardProps) {
         styles.card,
         {
           backgroundColor: colors.card,
-          borderColor: isActive ? colors.primary : colors.border,
+          borderColor: isDelayed ? "#f97316" : isActive ? colors.primary : colors.border,
           opacity: pressed ? 0.95 : 1,
           shadowColor: "#000",
         },
@@ -50,6 +61,13 @@ export function JobCard({ job }: JobCardProps) {
         <View style={[styles.activeBanner, { backgroundColor: colors.primary }]}>
           <Feather name="clock" size={11} color="#fff" />
           <Text style={styles.activeBannerText}>Active Timer</Text>
+        </View>
+      )}
+
+      {isDelayed && !isActive && (
+        <View style={[styles.activeBanner, { backgroundColor: "#f97316" }]}>
+          <Feather name="alert-triangle" size={11} color="#fff" />
+          <Text style={styles.activeBannerText}>Stage Delay — Action Required</Text>
         </View>
       )}
 
@@ -70,6 +88,17 @@ export function JobCard({ job }: JobCardProps) {
             </Text>
             <StatusPill status={job.status} />
           </View>
+
+          {/* Stage badge */}
+          {currentStage && job.status !== "completed" && (
+            <View style={[styles.stageBadge, { backgroundColor: currentStage.color + "18", borderColor: currentStage.color + "40" }]}>
+              <View style={[styles.stageDot, { backgroundColor: currentStage.color }]} />
+              <Feather name={currentStage.icon as any} size={10} color={currentStage.color} />
+              <Text style={[styles.stageText, { color: currentStage.color }]}>{currentStage.name}</Text>
+              {isDelayed && <Feather name="alert-circle" size={10} color="#f97316" />}
+            </View>
+          )}
+
           <View style={styles.metaRow}>
             <Feather name="hash" size={11} color={colors.primary} />
             <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{job.licensePlate}</Text>
@@ -103,9 +132,9 @@ export function JobCard({ job }: JobCardProps) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.push(`/job/${job.id}`);
           }}
-          style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+          style={[styles.actionBtn, { backgroundColor: isDelayed ? "#f97316" : colors.primary }]}
         >
-          <Text style={styles.actionBtnText}>Take Action</Text>
+          <Text style={styles.actionBtnText}>{isDelayed ? "Urgent" : "Take Action"}</Text>
           <Feather name="arrow-right" size={12} color="#fff" />
         </Pressable>
       </View>
@@ -179,6 +208,26 @@ const styles = StyleSheet.create({
   estimateNumber: {
     fontSize: 15,
     fontFamily: "Inter_700Bold",
+  },
+  stageBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+    marginBottom: 2,
+  },
+  stageDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  stageText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
   },
   metaRow: {
     flexDirection: "row",

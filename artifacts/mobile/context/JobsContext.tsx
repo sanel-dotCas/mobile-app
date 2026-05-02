@@ -49,6 +49,11 @@ export interface InspectionItem {
   estimatedHours: number; notes: string;
 }
 
+export interface StageEntry {
+  stageId: string;
+  enteredAt: string;
+}
+
 export interface Job {
   id: string; estimateNumber: string; licensePlate: string; vehicle: string;
   serviceAdvisor: string; totalEstimatedHours: number; workedHours: number;
@@ -56,6 +61,8 @@ export interface Job {
   status: JobStatus; thumbnail: string | null; tasks: Task[];
   notes: JobNote[]; inspections: InspectionItem[]; progress: number;
   assignedTechnicianId?: string;
+  currentStageId: string;
+  stageHistory: StageEntry[];
 }
 
 export interface TimeRecord {
@@ -78,6 +85,7 @@ interface DashboardStats {
 interface Notification {
   id: string; title: string; message: string; read: boolean;
   timestamp: string; type: "info" | "warning" | "success";
+  jobId?: string; stageId?: string;
 }
 
 interface JobsState {
@@ -98,13 +106,16 @@ type Action =
   | { type: "MARK_JOB_COMPLETE"; payload: { jobId: string } }
   | { type: "SET_OFFLINE"; payload: boolean }
   | { type: "MARK_NOTIFICATION_READ"; payload: string }
+  | { type: "MARK_ALL_READ" }
   | { type: "TICK_CLOCK" }
   | { type: "START_SHIFT" }
   | { type: "END_SHIFT" }
   | { type: "ASSIGN_JOB"; payload: { jobId: string; technicianId: string } }
   | { type: "RECEIVE_PART"; payload: { jobId: string; taskId: string; partId: string } }
   | { type: "ADD_PART"; payload: { jobId: string; taskId: string; part: Part } }
-  | { type: "UPDATE_PART_STATUS"; payload: { jobId: string; taskId: string; partId: string; status: PartStatus } };
+  | { type: "UPDATE_PART_STATUS"; payload: { jobId: string; taskId: string; partId: string; status: PartStatus } }
+  | { type: "ADVANCE_STAGE"; payload: { jobId: string; nextStageId: string; stageName: string } }
+  | { type: "ADD_DELAY_NOTIFICATION"; payload: { jobId: string; estimateNumber: string; stageName: string; stageId: string; overdueHours: number } };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92 },
@@ -114,6 +125,10 @@ const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-005", name: "David Park", role: "Senior Technician", avatar: "DP", currentJobId: null, status: "absent", totalHoursToday: 0, efficiency: 0 },
 ];
 
+// Timestamps relative to now so delay detection fires immediately for demo
+const _now = Date.now();
+const hoursAgo = (h: number) => new Date(_now - h * 3600000).toISOString();
+
 const INITIAL_JOBS: Job[] = [
   {
     id: "job-001", estimateNumber: "#00095", licensePlate: "Sert432",
@@ -122,6 +137,12 @@ const INITIAL_JOBS: Job[] = [
     customerNotes: "Customer requested synthetic oil. Please check tire pressure.",
     odometer: 129500, appointmentDate: "2026-04-30T16:00:00Z",
     status: "in_progress", thumbnail: null, progress: 36, assignedTechnicianId: "tech-001",
+    currentStageId: "stage-003",
+    stageHistory: [
+      { stageId: "stage-001", enteredAt: hoursAgo(8) },
+      { stageId: "stage-002", enteredAt: hoursAgo(7) },
+      { stageId: "stage-003", enteredAt: hoursAgo(5) },
+    ],
     tasks: [
       {
         id: "task-001", title: "Oil Change", type: "Repair", laborType: "MECHANICAL",
@@ -170,6 +191,10 @@ const INITIAL_JOBS: Job[] = [
     customerNotes: "Squealing brakes when stopping.",
     odometer: 45200, appointmentDate: "2026-04-30T14:00:00Z",
     status: "pending", thumbnail: null, progress: 0, assignedTechnicianId: "tech-004",
+    currentStageId: "stage-001",
+    stageHistory: [
+      { stageId: "stage-001", enteredAt: hoursAgo(2) },
+    ],
     tasks: [
       {
         id: "task-004", title: "Brake Pad Replacement", type: "Repair", laborType: "MECHANICAL",
@@ -192,6 +217,14 @@ const INITIAL_JOBS: Job[] = [
     customerNotes: "Routine service.", odometer: 22100,
     appointmentDate: "2026-04-29T10:00:00Z",
     status: "completed", thumbnail: null, progress: 100, assignedTechnicianId: "tech-001",
+    currentStageId: "stage-005",
+    stageHistory: [
+      { stageId: "stage-001", enteredAt: "2026-04-29T08:00:00Z" },
+      { stageId: "stage-002", enteredAt: "2026-04-29T08:30:00Z" },
+      { stageId: "stage-003", enteredAt: "2026-04-29T09:00:00Z" },
+      { stageId: "stage-004", enteredAt: "2026-04-29T10:30:00Z" },
+      { stageId: "stage-005", enteredAt: "2026-04-29T11:00:00Z" },
+    ],
     tasks: [
       {
         id: "task-005", title: "Tire Rotation", type: "Repair", laborType: "MECHANICAL",
@@ -218,6 +251,10 @@ const INITIAL_JOBS: Job[] = [
     customerNotes: "Check engine light on. Rough idle.", odometer: 31800,
     appointmentDate: "2026-05-01T09:00:00Z",
     status: "pending", thumbnail: null, progress: 0,
+    currentStageId: "stage-001",
+    stageHistory: [
+      { stageId: "stage-001", enteredAt: hoursAgo(1) },
+    ],
     tasks: [
       {
         id: "task-007", title: "Diagnostic Scan", type: "Inspection", laborType: "ELECTRICAL",
@@ -246,6 +283,11 @@ const INITIAL_JOBS: Job[] = [
     customerNotes: "Charging port issue.", odometer: 8900,
     appointmentDate: "2026-04-30T11:00:00Z",
     status: "in_progress", thumbnail: null, progress: 50, assignedTechnicianId: "tech-002",
+    currentStageId: "stage-002",
+    stageHistory: [
+      { stageId: "stage-001", enteredAt: hoursAgo(4) },
+      { stageId: "stage-002", enteredAt: hoursAgo(3) },
+    ],
     tasks: [
       {
         id: "task-009", title: "Charging Port Inspection", type: "Inspection", laborType: "ELECTRICAL",
@@ -279,6 +321,8 @@ const INITIAL_NOTIFICATIONS: Notification[] = [
   { id: "notif-002", title: "New Assignment", message: "Estimate #00110 assigned to you", read: false, timestamp: "2026-04-30T08:30:00Z", type: "success" },
   { id: "notif-003", title: "Parts Ordered", message: "Spark plugs for #00110 ordered — ETA 2 hours", read: true, timestamp: "2026-04-29T15:00:00Z", type: "info" },
   { id: "notif-004", title: "Appointment Reminder", message: "Tesla Model 3 appointment in 30 minutes", read: true, timestamp: "2026-04-30T10:30:00Z", type: "warning" },
+  { id: "notif-005", title: "Stage Advanced", message: "Estimate #00095 moved to \"Repair\"", read: true, timestamp: hoursAgo(5), type: "info" },
+  { id: "notif-006", title: "Stage Advanced", message: "Estimate #00098 moved to \"Diagnosis\"", read: true, timestamp: hoursAgo(3), type: "info" },
 ];
 
 function computeProgress(job: Job): number {
@@ -353,6 +397,9 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "MARK_NOTIFICATION_READ":
       return { ...state, notifications: state.notifications.map((n) => n.id === action.payload ? { ...n, read: true } : n) };
 
+    case "MARK_ALL_READ":
+      return { ...state, notifications: state.notifications.map((n) => ({ ...n, read: true })) };
+
     case "TICK_CLOCK":
       return {
         ...state,
@@ -401,6 +448,52 @@ function reducer(state: JobsState, action: Action): JobsState {
         })),
       };
 
+    case "ADVANCE_STAGE": {
+      const { jobId, nextStageId, stageName } = action.payload;
+      const job = state.jobs.find((j) => j.id === jobId);
+      if (!job) return state;
+      const uid = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const notification: Notification = {
+        id: `notif-stage-${uid}`,
+        title: "Stage Advanced",
+        message: `Estimate ${job.estimateNumber} moved to "${stageName}"`,
+        read: false,
+        timestamp: new Date().toISOString(),
+        type: "info",
+        jobId,
+        stageId: nextStageId,
+      };
+      return {
+        ...state,
+        notifications: [notification, ...state.notifications],
+        jobs: mapJobs(state.jobs, jobId, (j) => ({
+          ...j,
+          currentStageId: nextStageId,
+          stageHistory: [...j.stageHistory, { stageId: nextStageId, enteredAt: new Date().toISOString() }],
+        })),
+      };
+    }
+
+    case "ADD_DELAY_NOTIFICATION": {
+      const { jobId, estimateNumber, stageName, stageId, overdueHours } = action.payload;
+      const alreadyExists = state.notifications.some(
+        (n) => n.type === "warning" && n.jobId === jobId && n.stageId === stageId && n.title === "Stage Delay"
+      );
+      if (alreadyExists) return state;
+      const uid = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const notification: Notification = {
+        id: `notif-delay-${uid}`,
+        title: "Stage Delay",
+        message: `Estimate ${estimateNumber} is ${overdueHours}h overdue in "${stageName}" — action required`,
+        read: false,
+        timestamp: new Date().toISOString(),
+        type: "warning",
+        jobId,
+        stageId,
+      };
+      return { ...state, notifications: [notification, ...state.notifications] };
+    }
+
     default: return state;
   }
 }
@@ -414,6 +507,7 @@ interface JobsContextValue {
   markTaskDone: (jobId: string, taskId: string) => void;
   markJobComplete: (jobId: string) => void;
   markNotificationRead: (id: string) => void;
+  markAllRead: () => void;
   getJob: (id: string) => Job | undefined;
   startShift: () => void;
   endShift: () => void;
@@ -421,6 +515,8 @@ interface JobsContextValue {
   receivePart: (jobId: string, taskId: string, partId: string) => void;
   addPart: (jobId: string, taskId: string, part: Omit<Part, "id">) => void;
   updatePartStatus: (jobId: string, taskId: string, partId: string, status: PartStatus) => void;
+  advanceStage: (jobId: string, nextStageId: string, stageName: string) => void;
+  addDelayNotification: (jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) => void;
   unreadCount: number;
 }
 
@@ -443,9 +539,10 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         try {
           const parsed: Job[] = JSON.parse(data);
-          // Migrate: ensure every task has a parts array
           const migrated = parsed.map((job) => ({
             ...job,
+            currentStageId: job.currentStageId ?? "stage-001",
+            stageHistory: job.stageHistory ?? [{ stageId: "stage-001", enteredAt: job.appointmentDate }],
             tasks: job.tasks.map((t) => ({ ...t, parts: t.parts ?? [] })),
           }));
           dispatch({ type: "SET_JOBS", payload: migrated });
@@ -472,6 +569,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const markTaskDone = useCallback((jobId: string, taskId: string) => dispatch({ type: "MARK_TASK_DONE", payload: { jobId, taskId } }), []);
   const markJobComplete = useCallback((jobId: string) => dispatch({ type: "MARK_JOB_COMPLETE", payload: { jobId } }), []);
   const markNotificationRead = useCallback((id: string) => dispatch({ type: "MARK_NOTIFICATION_READ", payload: id }), []);
+  const markAllRead = useCallback(() => dispatch({ type: "MARK_ALL_READ" }), []);
   const getJob = useCallback((id: string) => state.jobs.find((j) => j.id === id), [state.jobs]);
   const startShift = useCallback(() => dispatch({ type: "START_SHIFT" }), []);
   const endShift = useCallback(() => dispatch({ type: "END_SHIFT" }), []);
@@ -486,10 +584,16 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const updatePartStatus = useCallback((jobId: string, taskId: string, partId: string, status: PartStatus) =>
     dispatch({ type: "UPDATE_PART_STATUS", payload: { jobId, taskId, partId, status } }), []);
 
+  const advanceStage = useCallback((jobId: string, nextStageId: string, stageName: string) =>
+    dispatch({ type: "ADVANCE_STAGE", payload: { jobId, nextStageId, stageName } }), []);
+
+  const addDelayNotification = useCallback((jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) =>
+    dispatch({ type: "ADD_DELAY_NOTIFICATION", payload: { jobId, estimateNumber, stageName, stageId, overdueHours } }), []);
+
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );
