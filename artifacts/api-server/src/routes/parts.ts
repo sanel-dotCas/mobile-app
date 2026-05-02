@@ -587,6 +587,42 @@ router.post("/parts/orders/:id/receive", async (req, res) => {
           .set({ qtyOnHand: inv.qtyOnHand + receipt.qtyReceived, binCode: receipt.binCode ?? inv.binCode })
           .where(eq(partsItemsTable.id, inv.id));
       }
+
+      // ── Auto-issue to linked RO request ─────────────────────────────────────
+      if (orderItem.roRequestItemId && orderItem.qtyForRo > 0) {
+        const [roReqItem] = await db.select().from(partsRoRequestItemsTable).where(eq(partsRoRequestItemsTable.id, orderItem.roRequestItemId));
+        if (roReqItem) {
+          const stillNeeded = roReqItem.qtyRequested - roReqItem.qtyIssued;
+          const issueToRo = Math.min(receipt.qtyReceived, Math.max(0, stillNeeded));
+          if (issueToRo > 0) {
+            // Deduct the RO portion from inventory (we just added it above)
+            if (inv) {
+              await db.update(partsItemsTable)
+                .set({ qtyOnHand: inv.qtyOnHand + receipt.qtyReceived - issueToRo })
+                .where(eq(partsItemsTable.id, inv.id));
+            }
+            const newQtyIssued = roReqItem.qtyIssued + issueToRo;
+            const isFullyIssued = newQtyIssued >= roReqItem.qtyRequested;
+            await db.update(partsRoRequestItemsTable)
+              .set({ qtyIssued: newQtyIssued, itemStatus: isFullyIssued ? "issued" : "partially_issued" })
+              .where(eq(partsRoRequestItemsTable.id, roReqItem.id));
+            // Check if all items in the RO request are now issued
+            if (orderItem.roRequestId) {
+              const allRoItems = await db.select().from(partsRoRequestItemsTable).where(eq(partsRoRequestItemsTable.requestId, orderItem.roRequestId));
+              const allIssued = allRoItems.every((i) => (i.id === roReqItem.id ? newQtyIssued : i.qtyIssued) >= i.qtyRequested);
+              if (allIssued) {
+                await db.update(partsRoRequestsTable)
+                  .set({ status: "issued", issuedAt: new Date() } as Partial<typeof partsRoRequestsTable.$inferInsert>)
+                  .where(eq(partsRoRequestsTable.id, orderItem.roRequestId));
+              } else {
+                await db.update(partsRoRequestsTable)
+                  .set({ status: "picking" } as Partial<typeof partsRoRequestsTable.$inferInsert>)
+                  .where(eq(partsRoRequestsTable.id, orderItem.roRequestId));
+              }
+            }
+          }
+        }
+      }
     }
 
     const allItems = await db.select().from(partsOrderItemsTable).where(eq(partsOrderItemsTable.orderId, orderId));
@@ -1151,6 +1187,127 @@ router.post("/parts/ro-requests/:id/issue", async (req, res) => {
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to issue parts" });
+  }
+});
+
+// ── Smart RO Issue (check stock → issue or auto-PO) ────────────────────────────
+router.post("/parts/ro-requests/:id/smart-issue", async (req, res) => {
+  await ensureSeeded();
+  try {
+    const requestId = parseInt(req.params.id);
+    const { issuedBy, supplierName, supplierCode } = req.body as { issuedBy?: string; supplierName?: string; supplierCode?: string };
+
+    const [request] = await db.select().from(partsRoRequestsTable).where(eq(partsRoRequestsTable.id, requestId));
+    if (!request) return res.status(404).json({ error: "Request not found" });
+
+    const reqItems = await db.select().from(partsRoRequestItemsTable).where(eq(partsRoRequestItemsTable.requestId, requestId));
+
+    const issuedNow: { partNumber: string; partName: string; qty: number }[] = [];
+    const needsPo: { partNumber: string; partName: string; qtyNeeded: number; unitCost?: string | null }[] = [];
+
+    for (const item of reqItems) {
+      const remaining = item.qtyRequested - item.qtyIssued;
+      if (remaining <= 0) continue;
+
+      const [inv] = await db.select().from(partsItemsTable).where(eq(partsItemsTable.partNumber, item.partNumber));
+      const stock = inv?.qtyOnHand ?? 0;
+
+      if (stock >= remaining) {
+        // Issue all from stock
+        await db.update(partsRoRequestItemsTable)
+          .set({ qtyIssued: item.qtyIssued + remaining, itemStatus: "issued" })
+          .where(eq(partsRoRequestItemsTable.id, item.id));
+        if (inv) {
+          await db.update(partsItemsTable)
+            .set({ qtyOnHand: inv.qtyOnHand - remaining })
+            .where(eq(partsItemsTable.id, inv.id));
+        }
+        issuedNow.push({ partNumber: item.partNumber, partName: item.partName, qty: remaining });
+      } else {
+        // Issue partial from stock, order the rest
+        const issueNow = stock;
+        const orderQty = remaining - issueNow;
+        if (issueNow > 0) {
+          await db.update(partsRoRequestItemsTable)
+            .set({ qtyIssued: item.qtyIssued + issueNow, itemStatus: "partially_issued", qtyFromPo: orderQty })
+            .where(eq(partsRoRequestItemsTable.id, item.id));
+          if (inv) {
+            await db.update(partsItemsTable).set({ qtyOnHand: 0 }).where(eq(partsItemsTable.id, inv.id));
+          }
+          issuedNow.push({ partNumber: item.partNumber, partName: item.partName, qty: issueNow });
+        } else {
+          await db.update(partsRoRequestItemsTable)
+            .set({ itemStatus: "po_pending", qtyFromPo: orderQty })
+            .where(eq(partsRoRequestItemsTable.id, item.id));
+        }
+        needsPo.push({ partNumber: item.partNumber, partName: item.partName, qtyNeeded: orderQty, unitCost: inv?.unitCost });
+      }
+    }
+
+    // Create a single draft PO for all items that need ordering
+    let createdPo: typeof partsOrdersTable.$inferSelect & { itemCount: number } | null = null;
+    if (needsPo.length > 0) {
+      const existingOrders = await db.select({ orderNumber: partsOrdersTable.orderNumber }).from(partsOrdersTable);
+      const orderNumber = nextNumber("PO", existingOrders.map((o) => o.orderNumber));
+
+      const [po] = await db.insert(partsOrdersTable).values({
+        orderNumber,
+        supplierCode: supplierCode ?? "TBD",
+        supplierName: supplierName ?? `RO ${request.roNumber} Supplier`,
+        status: "draft",
+        currency: "AED",
+        notes: `Auto-created for RO ${request.roNumber} · ${request.requestNumber}`,
+        createdBy: issuedBy ?? null,
+      } as typeof partsOrdersTable.$inferInsert).returning();
+
+      for (const needed of needsPo) {
+        const reqItem = reqItems.find((i) => i.partNumber === needed.partNumber);
+        const [orderItem] = await db.insert(partsOrderItemsTable).values({
+          orderId: po.id,
+          partNumber: needed.partNumber,
+          partName: needed.partName,
+          qtyOrdered: needed.qtyNeeded,
+          qtyReceived: 0,
+          unitCost: needed.unitCost ? String(needed.unitCost) : null,
+          roRequestItemId: reqItem?.id ?? null,
+          roRequestId: requestId,
+          qtyForRo: needed.qtyNeeded,
+        } as typeof partsOrderItemsTable.$inferInsert).returning();
+
+        if (reqItem) {
+          await db.update(partsRoRequestItemsTable)
+            .set({ linkedPoId: po.id, linkedPoItemId: orderItem.id })
+            .where(eq(partsRoRequestItemsTable.id, reqItem.id));
+        }
+      }
+      createdPo = { ...po, itemCount: needsPo.length };
+    }
+
+    // Update request status
+    const updatedItems = await db.select().from(partsRoRequestItemsTable).where(eq(partsRoRequestItemsTable.requestId, requestId));
+    const allIssued = updatedItems.every((i) => i.qtyIssued >= i.qtyRequested);
+    const anyIssued = updatedItems.some((i) => i.qtyIssued > 0);
+    const newStatus: "pending" | "picking" | "issued" | "cancelled" =
+      allIssued ? "issued" : (anyIssued || needsPo.length > 0) ? "picking" : "pending";
+
+    const [updatedRequest] = await db.update(partsRoRequestsTable)
+      .set({ status: newStatus, issuedAt: allIssued ? new Date() : undefined } as Partial<typeof partsRoRequestsTable.$inferInsert>)
+      .where(eq(partsRoRequestsTable.id, requestId))
+      .returning();
+
+    res.json({
+      request: { ...updatedRequest, items: updatedItems },
+      issuedNow,
+      createdPo,
+      summary: {
+        totalItems: reqItems.length,
+        issuedFromStock: issuedNow.length,
+        orderedViaPo: needsPo.length,
+      },
+    });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to smart-issue" });
   }
 });
 

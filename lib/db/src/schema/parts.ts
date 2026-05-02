@@ -96,6 +96,10 @@ export const partsOrderItemsTable = pgTable("parts_order_items", {
   discountPct: numeric("discount_pct", { precision: 5, scale: 2 }).default("0"),
   markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).default("0"),
   vatPct: numeric("vat_pct", { precision: 5, scale: 2 }).default("5"),
+  // RO linkage — when this PO item was created to fulfil an RO request
+  roRequestItemId: integer("ro_request_item_id"),
+  roRequestId: integer("ro_request_id"),
+  qtyForRo: integer("qty_for_ro").notNull().default(0),
 });
 
 export const partsCountSessionsTable = pgTable("parts_count_sessions", {
@@ -193,6 +197,11 @@ export const partsRoRequestItemsTable = pgTable("parts_ro_request_items", {
   qtyIssued: integer("qty_issued").notNull().default(0),
   unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
+  // Smart fulfillment tracking
+  itemStatus: text("item_status").notNull().default("pending"),
+  linkedPoId: integer("linked_po_id"),
+  linkedPoItemId: integer("linked_po_item_id"),
+  qtyFromPo: integer("qty_from_po").notNull().default(0),
 });
 
 // ── Sales Returns (Credit Notes) ───────────────────────────────────────────────

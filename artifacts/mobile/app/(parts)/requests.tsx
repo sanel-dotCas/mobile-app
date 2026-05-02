@@ -27,6 +27,8 @@ const BASE =
 type RoStatus = "pending" | "picking" | "issued" | "cancelled";
 type TrfStatus = "requested" | "approved" | "shipped" | "received" | "cancelled";
 
+type ItemStatus = "pending" | "issued" | "partially_issued" | "po_pending";
+
 interface RoRequestItem {
   id: number;
   partNumber: string;
@@ -35,7 +37,17 @@ interface RoRequestItem {
   qtyIssued: number;
   unitCost: string | null;
   notes: string | null;
+  itemStatus?: ItemStatus;
+  linkedPoId?: number | null;
+  linkedPoItemId?: number | null;
+  qtyFromPo?: number;
   issuing?: number;
+}
+
+interface SmartIssueResult {
+  issuedNow: { partNumber: string; partName: string; qty: number }[];
+  createdPo: { orderNumber: string; itemCount: number } | null;
+  summary: { totalItems: number; issuedFromStock: number; orderedViaPo: number };
 }
 
 interface RoRequest {
@@ -108,6 +120,11 @@ export default function PartsRequests() {
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueSuccess, setIssueSuccess] = useState(false);
   const [newRoModal, setNewRoModal] = useState(false);
+  const [smartIssueLoading, setSmartIssueLoading] = useState(false);
+  const [smartIssueResult, setSmartIssueResult] = useState<SmartIssueResult | null>(null);
+  const [smartResultModal, setSmartResultModal] = useState(false);
+  const [smartSupplierName, setSmartSupplierName] = useState("");
+  const [showSupplierInput, setShowSupplierInput] = useState(false);
 
   // New RO form
   const [roNumber, setRoNumber] = useState("");
@@ -228,6 +245,39 @@ export default function PartsRequests() {
       //
     } finally {
       setIssueLoading(false);
+    }
+  };
+
+  const submitSmartIssue = async () => {
+    if (!selectedRo) return;
+    setSmartIssueLoading(true);
+    try {
+      const res = await fetch(`${BASE}/parts/ro-requests/${selectedRo.id}/smart-issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issuedBy: userCode,
+          supplierName: smartSupplierName.trim() || `RO ${selectedRo.roNumber} Supplier`,
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setSmartIssueResult(result);
+        setSmartResultModal(true);
+        setShowSupplierInput(false);
+        setSmartSupplierName("");
+        loadRo();
+        if (result.request) {
+          setSelectedRo({
+            ...result.request,
+            items: result.request.items.map((i: RoRequestItem) => ({ ...i, issuing: 0 })),
+          });
+        }
+      }
+    } catch {
+      //
+    } finally {
+      setSmartIssueLoading(false);
     }
   };
 
@@ -485,18 +535,38 @@ export default function PartsRequests() {
               <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Parts Required</Text>
               {selectedRo.items.map((item) => {
                 const remaining = item.qtyRequested - item.qtyIssued;
+                const ist = item.itemStatus ?? "pending";
+                const itemStatusMeta: Record<string, { color: string; bg: string; label: string; icon: string }> = {
+                  pending:          { color: "#64748b", bg: "#f1f5f9", label: "Pending",          icon: "clock" },
+                  issued:           { color: "#16a34a", bg: "#dcfce7", label: "Issued",            icon: "check-circle" },
+                  partially_issued: { color: "#d97706", bg: "#fef3c7", label: "Partial",           icon: "alert-circle" },
+                  po_pending:       { color: "#7c3aed", bg: "#ede9fe", label: "On Order",          icon: "shopping-cart" },
+                };
+                const sm = itemStatusMeta[ist] ?? itemStatusMeta.pending;
                 return (
-                  <View key={item.id} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View key={item.id} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: sm.color, borderLeftWidth: 3 }]}>
                     <View style={styles.cardRow}>
                       <View style={[styles.pnBadge, { backgroundColor: "#7c3aed20" }]}>
                         <Text style={[styles.pnText, { color: "#7c3aed" }]}>{item.partNumber}</Text>
+                      </View>
+                      <View style={[styles.badge, { backgroundColor: sm.bg }]}>
+                        <Feather name={sm.icon as any} size={10} color={sm.color} style={{ marginRight: 3 }} />
+                        <Text style={[styles.badgeText, { color: sm.color }]}>{sm.label}</Text>
                       </View>
                     </View>
                     <Text style={[styles.itemName, { color: colors.foreground }]}>{item.partName}</Text>
                     <Text style={[styles.qtyLabel, { color: colors.mutedForeground }]}>
                       Requested: {item.qtyRequested} · Issued: {item.qtyIssued} · Remaining: {remaining}
                     </Text>
-                    {remaining > 0 && selectedRo.status !== "issued" && selectedRo.status !== "cancelled" && (
+                    {item.linkedPoId ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 }}>
+                        <Feather name="package" size={11} color="#7c3aed" />
+                        <Text style={{ fontSize: 11, color: "#7c3aed", fontFamily: "Inter_500Medium" }}>
+                          {item.qtyFromPo ?? 0} unit{(item.qtyFromPo ?? 0) !== 1 ? "s" : ""} on PO order · waiting for delivery
+                        </Text>
+                      </View>
+                    ) : null}
+                    {remaining > 0 && selectedRo.status !== "issued" && selectedRo.status !== "cancelled" && ist === "pending" && (
                       <View style={styles.issueRow}>
                         <Text style={[styles.issueLabel, { color: colors.foreground }]}>Issue now:</Text>
                         <Pressable
@@ -524,24 +594,113 @@ export default function PartsRequests() {
               })}
             </ScrollView>
 
-            {selectedRo.status !== "issued" && selectedRo.status !== "cancelled" && totalIssuing > 0 && (
-              <View style={[styles.modalFooter, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+            {selectedRo.status !== "issued" && selectedRo.status !== "cancelled" && (
+              <View style={[styles.modalFooter, { borderTopColor: colors.border, backgroundColor: colors.card, gap: 8 }]}>
+                {showSupplierInput && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 2 }}>
+                    <Feather name="truck" size={14} color="#7c3aed" />
+                    <TextInput
+                      style={[styles.formInput, { flex: 1, marginBottom: 0, color: colors.foreground, borderColor: "#7c3aed", fontSize: 13 }]}
+                      placeholder="Supplier name (for auto-PO)"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={smartSupplierName}
+                      onChangeText={setSmartSupplierName}
+                    />
+                  </View>
+                )}
                 <Pressable
-                  style={[styles.actionBtn, { backgroundColor: issueLoading ? "#7c3aed80" : "#7c3aed" }]}
-                  onPress={submitIssue}
-                  disabled={issueLoading}
+                  style={[styles.actionBtn, { backgroundColor: smartIssueLoading ? "#7c3aed80" : "#7c3aed" }]}
+                  onPress={() => {
+                    if (!showSupplierInput) { setShowSupplierInput(true); return; }
+                    submitSmartIssue();
+                  }}
+                  disabled={smartIssueLoading}
                 >
-                  {issueLoading ? <ActivityIndicator size="small" color="#fff" /> : (
+                  {smartIssueLoading ? <ActivityIndicator size="small" color="#fff" /> : (
                     <>
-                      <Feather name="check" size={18} color="#fff" />
-                      <Text style={styles.actionBtnText}>Issue {totalIssuing} unit{totalIssuing !== 1 ? "s" : ""} to Workshop</Text>
+                      <Feather name="zap" size={18} color="#fff" />
+                      <Text style={styles.actionBtnText}>
+                        {showSupplierInput ? "Confirm Smart Fulfil" : "Smart Fulfil"}
+                      </Text>
                     </>
                   )}
                 </Pressable>
+                {totalIssuing > 0 && (
+                  <Pressable
+                    style={[styles.actionBtn, { backgroundColor: issueLoading ? "#64748b80" : "#64748b" }]}
+                    onPress={submitIssue}
+                    disabled={issueLoading}
+                  >
+                    {issueLoading ? <ActivityIndicator size="small" color="#fff" /> : (
+                      <>
+                        <Feather name="check" size={18} color="#fff" />
+                        <Text style={styles.actionBtnText}>Manual Issue ({totalIssuing})</Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
               </View>
             )}
           </View>
         )}
+      </Modal>
+
+      {/* Smart Issue Result Modal */}
+      <Modal visible={smartResultModal} animationType="fade" transparent onRequestClose={() => setSmartResultModal(false)}>
+        <View style={{ flex: 1, backgroundColor: "#00000066", justifyContent: "center", padding: 24 }}>
+          <View style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 20, borderRadius: 16 }]}>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 16 }}>
+              Smart Fulfil Complete
+            </Text>
+            {smartIssueResult && (
+              <>
+                <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+                  <View style={[styles.badge, { backgroundColor: "#dcfce7", paddingVertical: 8, paddingHorizontal: 12, flex: 1, justifyContent: "center" }]}>
+                    <Text style={{ color: "#16a34a", fontFamily: "Inter_700Bold", fontSize: 20, textAlign: "center" }}>{smartIssueResult.summary.issuedFromStock}</Text>
+                    <Text style={{ color: "#16a34a", fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" }}>from stock</Text>
+                  </View>
+                  <View style={[styles.badge, { backgroundColor: "#ede9fe", paddingVertical: 8, paddingHorizontal: 12, flex: 1, justifyContent: "center" }]}>
+                    <Text style={{ color: "#7c3aed", fontFamily: "Inter_700Bold", fontSize: 20, textAlign: "center" }}>{smartIssueResult.summary.orderedViaPo}</Text>
+                    <Text style={{ color: "#7c3aed", fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" }}>via PO</Text>
+                  </View>
+                </View>
+
+                {smartIssueResult.issuedNow.length > 0 && (
+                  <>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <Feather name="check-circle" size={14} color="#16a34a" />
+                      <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#16a34a" }}>Issued from stock</Text>
+                    </View>
+                    {smartIssueResult.issuedNow.map((p, i) => (
+                      <Text key={i} style={{ fontSize: 12, color: colors.mutedForeground, marginLeft: 20, marginBottom: 2 }}>
+                        {p.qty}× {p.partName} ({p.partNumber})
+                      </Text>
+                    ))}
+                  </>
+                )}
+
+                {smartIssueResult.createdPo && (
+                  <View style={{ marginTop: 12, padding: 12, backgroundColor: "#ede9fe", borderRadius: 10 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <Feather name="shopping-cart" size={14} color="#7c3aed" />
+                      <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#7c3aed" }}>Draft PO Created</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, color: "#7c3aed", fontFamily: "Inter_700Bold" }}>{smartIssueResult.createdPo.orderNumber}</Text>
+                    <Text style={{ fontSize: 12, color: "#7c3aed80", marginTop: 2 }}>
+                      {smartIssueResult.createdPo.itemCount} item{smartIssueResult.createdPo.itemCount !== 1 ? "s" : ""} · Parts will auto-issue to this RO on receipt
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: "#7c3aed", marginTop: 20 }]}
+              onPress={() => setSmartResultModal(false)}
+            >
+              <Text style={styles.actionBtnText}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
       </Modal>
 
       {/* Transfer Detail Modal */}
