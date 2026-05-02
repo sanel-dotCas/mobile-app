@@ -15,21 +15,23 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { JobCard } from "@/components/JobCard";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 import type { JobStatus } from "@/context/JobsContext";
-
-const FILTERS: Array<{ label: string; value: JobStatus | "all" }> = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "in_progress" },
-  { label: "Pending", value: "pending" },
-  { label: "Completed", value: "completed" },
-];
 
 export default function JobsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { state } = useJobs();
+  const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const FILTERS: Array<{ label: string; value: JobStatus | "all" }> = [
+    { label: t.all,       value: "all" },
+    { label: t.active,    value: "in_progress" },
+    { label: t.pending,   value: "pending" },
+    { label: t.completed, value: "completed" },
+  ];
 
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<JobStatus | "all">("all");
@@ -59,7 +61,7 @@ export default function JobsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title="Assigned Jobs" subtitle="Technician Assigned Jobs" />
+      <AppHeader title={t.jobs} subtitle={t.activeJobs} />
 
       <View style={[styles.controls, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <View style={[styles.searchRow, { backgroundColor: colors.secondary, borderRadius: 10 }]}>
@@ -67,7 +69,7 @@ export default function JobsScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search estimate, plate, vehicle..."
+            placeholder={t.search}
             placeholderTextColor={colors.mutedForeground}
             style={[styles.searchInput, { color: colors.foreground }]}
           />

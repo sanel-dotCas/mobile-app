@@ -13,23 +13,25 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
-
-const STATUS_LABELS = { active: "Active", idle: "Idle", break: "On Break", absent: "Absent" };
 const STATUS_COLORS = { active: "#16a34a", idle: "#64748b", break: "#d97706", absent: "#ef4444" };
 
 export default function TechniciansScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { state } = useJobs();
+  const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const [filter, setFilter] = useState<"all" | "active" | "idle" | "break" | "absent">("all");
 
-  const filtered = filter === "all" ? state.technicians : state.technicians.filter((t) => t.status === filter);
+  const STATUS_LABELS = { active: t.active, idle: t.idle, break: t.onBreak, absent: t.absent };
+
+  const filtered = filter === "all" ? state.technicians : state.technicians.filter((tech) => tech.status === filter);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title="Technicians" subtitle="Team Overview" />
+      <AppHeader title={t.technicians} subtitle={t.teamOverview} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -46,7 +48,7 @@ export default function TechniciansScreen() {
             ]}
           >
             <Text style={[styles.filterText, { color: filter === f ? "#fff" : colors.mutedForeground }]}>
-              {f === "all" ? `All (${state.technicians.length})` : STATUS_LABELS[f]}
+              {f === "all" ? `${t.all} (${state.technicians.length})` : STATUS_LABELS[f]}
             </Text>
           </Pressable>
         ))}

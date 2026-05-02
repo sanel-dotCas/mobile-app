@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/AuthContext";
+import { EstimatesProvider } from "@/context/EstimatesContext";
 import { useJobs, JobsProvider } from "@/context/JobsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { useStages, StagesProvider } from "@/context/StagesContext";
@@ -120,19 +121,23 @@ export default function RootLayout() {
             <AuthProvider>
               <JobsProvider>
                 <StagesProvider>
-                  <GestureHandlerRootView>
-                    <KeyboardProvider>
-                      <DelayChecker />
-                      <StageAutoAdvancer />
-                      <Stack screenOptions={{ headerShown: false }}>
-                        <Stack.Screen name="login" />
-                        <Stack.Screen name="(tabs)" />
-                        <Stack.Screen name="(supervisor)" />
-                        <Stack.Screen name="job/[id]" options={{ presentation: "card" }} />
-                        <Stack.Screen name="notifications" options={{ presentation: "card" }} />
-                      </Stack>
-                    </KeyboardProvider>
-                  </GestureHandlerRootView>
+                  <EstimatesProvider>
+                    <GestureHandlerRootView>
+                      <KeyboardProvider>
+                        <DelayChecker />
+                        <StageAutoAdvancer />
+                        <Stack screenOptions={{ headerShown: false }}>
+                          <Stack.Screen name="login" />
+                          <Stack.Screen name="(tabs)" />
+                          <Stack.Screen name="(supervisor)" />
+                          <Stack.Screen name="(estimator)" />
+                          <Stack.Screen name="job/[id]" options={{ presentation: "card" }} />
+                          <Stack.Screen name="estimate/[id]" options={{ presentation: "card" }} />
+                          <Stack.Screen name="notifications" options={{ presentation: "card" }} />
+                        </Stack>
+                      </KeyboardProvider>
+                    </GestureHandlerRootView>
+                  </EstimatesProvider>
                 </StagesProvider>
               </JobsProvider>
             </AuthProvider>

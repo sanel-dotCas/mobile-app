@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -31,6 +32,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { attemptLogin } = useAuth();
+  const { t } = useLang();
   const { width: winW, height: winH } = useWindowDimensions();
 
   const [letterInput, setLetterInput] = useState<string[]>([]);
@@ -117,10 +119,12 @@ export default function LoginScreen() {
   };
 
   const tryLogin = async (pin: string) => {
-    const ok = await attemptLogin(letterInput.join(""), pin);
-    if (ok) {
+    const result = await attemptLogin(letterInput.join(""), pin);
+    if (result) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace("/(tabs)");
+      if (result === "supervisor") router.replace("/(supervisor)");
+      else if (result === "estimator") router.replace("/(estimator)");
+      else router.replace("/(tabs)");
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(true);
@@ -149,7 +153,7 @@ export default function LoginScreen() {
   const formContent = (
     <View style={styles.form}>
       <Text style={styles.logo}>IGMMA</Text>
-      <Text style={styles.subtitle}>Sign In</Text>
+      <Text style={styles.subtitle}>{t.signIn}</Text>
 
       {/* 6-box input: 2 letters + 4 digits */}
       <Animated.View style={[styles.inputRow, { transform: [{ translateX: shakeAnim }] }]}>
@@ -215,7 +219,7 @@ export default function LoginScreen() {
       </View>
 
       <Animated.Text style={[styles.errorText, { opacity: errorFade }]}>
-        Invalid credentials. Please try again.
+        {t.invalidCredentials}
       </Animated.Text>
 
       {/* Letter keyboard */}
@@ -283,14 +287,14 @@ export default function LoginScreen() {
             color="#1d4ed8"
           />
           <Text style={styles.biometricText}>
-            {biometricType === "face" ? "Sign in with Face ID" : "Sign in with Fingerprint"}
+            {biometricType === "face" ? t.signIn + " — Face ID" : t.signIn + " — Fingerprint"}
           </Text>
         </Pressable>
       )}
 
       <View style={styles.dividerRow}>
         <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>Or Sign in with</Text>
+        <Text style={styles.dividerText}>{t.orSignInWith}</Text>
         <View style={styles.dividerLine} />
       </View>
 
@@ -299,9 +303,7 @@ export default function LoginScreen() {
         <Text style={styles.emailBtnText}>Email</Text>
       </Pressable>
 
-      <Text style={styles.hintText}>
-        Demo: MR + 1234 (Tech) · SV + 5678 (Supervisor)
-      </Text>
+      <Text style={styles.hintText}>{t.demoHint}</Text>
     </View>
   );
 

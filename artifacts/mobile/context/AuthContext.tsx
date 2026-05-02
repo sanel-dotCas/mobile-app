@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 
-export type UserRole = "technician" | "supervisor";
+export type UserRole = "technician" | "supervisor" | "estimator";
 
 // Format: 2 letters + 4 digits  e.g. "MR1234" or "SV5678"
 const CREDENTIALS: Record<string, UserRole> = {
@@ -15,6 +15,8 @@ const CREDENTIALS: Record<string, UserRole> = {
   "JW1234": "technician",
   "SV5678": "supervisor",
   "AD0000": "supervisor",
+  "ET1234": "estimator",
+  "ET5678": "estimator",
 };
 
 const AUTH_KEY = "igmma_authed";
@@ -26,7 +28,7 @@ interface AuthContextValue {
   isLoading: boolean;
   role: UserRole;
   userCode: string;
-  attemptLogin: (letters: string, pin: string) => Promise<boolean>;
+  attemptLogin: (letters: string, pin: string) => Promise<UserRole | false>;
   logout: () => void;
 }
 
@@ -52,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const attemptLogin = useCallback(
-    async (letters: string, pin: string): Promise<boolean> => {
+    async (letters: string, pin: string): Promise<UserRole | false> => {
       const key = (letters + pin).toUpperCase();
       const matchedRole = CREDENTIALS[key];
       if (matchedRole) {
@@ -63,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRole(matchedRole);
         setUserCode(code);
         setIsAuthenticated(true);
-        return true;
+        return matchedRole;
       }
       return false;
     },

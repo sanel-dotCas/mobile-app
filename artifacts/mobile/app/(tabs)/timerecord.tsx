@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
 function formatTime(iso: string | null) {
@@ -48,6 +49,7 @@ export default function TimeRecordScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { state, startShift, endShift } = useJobs();
+  const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -57,13 +59,13 @@ export default function TimeRecordScreen() {
 
   const handleStartShift = () => {
     if (state.activeShift) {
-      Alert.alert("Shift Active", "You already have an active shift.");
+      Alert.alert(t.startShift, "You already have an active shift.");
       return;
     }
-    Alert.alert("Start Shift", "Clock in and start your shift now?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t.startShift, "Clock in and start your shift now?", [
+      { text: t.cancel, style: "cancel" },
       {
-        text: "Start Shift",
+        text: t.startShift,
         onPress: () => {
           startShift();
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -73,10 +75,10 @@ export default function TimeRecordScreen() {
   };
 
   const handleEndShift = () => {
-    Alert.alert("End Shift", "Are you sure you want to clock out?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t.endShift, "Are you sure you want to clock out?", [
+      { text: t.cancel, style: "cancel" },
       {
-        text: "Clock Out",
+        text: t.clockOut,
         style: "destructive",
         onPress: () => {
           endShift();
@@ -88,7 +90,7 @@ export default function TimeRecordScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title="Daily Time Record" subtitle="Attendance & Hours" />
+      <AppHeader title={t.timeRecord} subtitle={t.shiftHistory} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad + 24 }]}
@@ -103,8 +105,8 @@ export default function TimeRecordScreen() {
                   <View style={[styles.shiftDot, { backgroundColor: "#4ade80" }]} />
                 </View>
                 <View>
-                  <Text style={styles.shiftActiveLabel}>Shift Active</Text>
-                  <Text style={styles.shiftStartTime}>Started {formatTime(state.activeShift.shiftStart)}</Text>
+                  <Text style={styles.shiftActiveLabel}>{t.startShift}</Text>
+                  <Text style={styles.shiftStartTime}>{t.clockedIn} {formatTime(state.activeShift.shiftStart)}</Text>
                 </View>
               </View>
               <Text style={styles.shiftElapsed}>{formatDuration(state.activeShift.totalSeconds)}</Text>
@@ -113,7 +115,7 @@ export default function TimeRecordScreen() {
                 style={styles.endShiftBtn}
               >
                 <Feather name="square" size={14} color={colors.primary} />
-                <Text style={[styles.endShiftBtnText, { color: colors.primary }]}>End Shift</Text>
+                <Text style={[styles.endShiftBtnText, { color: colors.primary }]}>{t.endShift}</Text>
               </Pressable>
             </>
           ) : (
@@ -121,16 +123,16 @@ export default function TimeRecordScreen() {
               <View style={[styles.shiftIdleIcon, { backgroundColor: colors.accent }]}>
                 <Feather name="clock" size={28} color={colors.primary} />
               </View>
-              <Text style={[styles.shiftIdleTitle, { color: colors.foreground }]}>Not Clocked In</Text>
+              <Text style={[styles.shiftIdleTitle, { color: colors.foreground }]}>{t.clockOut}</Text>
               <Text style={[styles.shiftIdleSubtitle, { color: colors.mutedForeground }]}>
-                Start your shift to begin tracking time
+                {t.startShift}
               </Text>
               <Pressable
                 onPress={handleStartShift}
                 style={[styles.startShiftBtn, { backgroundColor: colors.primary }]}
               >
                 <Feather name="play" size={16} color="#fff" />
-                <Text style={styles.startShiftBtnText}>Start Shift</Text>
+                <Text style={styles.startShiftBtnText}>{t.startShift}</Text>
               </Pressable>
             </>
           )}

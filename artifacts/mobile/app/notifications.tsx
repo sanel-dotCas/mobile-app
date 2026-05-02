@@ -13,12 +13,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { useJobs } from "@/context/JobsContext";
+import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function NotificationsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { state, markNotificationRead, markAllRead } = useJobs();
+  const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const iconMap = {
@@ -44,7 +46,7 @@ export default function NotificationsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <AppHeader
-        title="Notifications"
+        title={t.notifications}
         showBack
         showNotifications={false}
         rightElement={
@@ -54,7 +56,7 @@ export default function NotificationsScreen() {
               style={[styles.markAllBtn, { borderColor: colors.primary + "50" }]}
             >
               <Feather name="check-circle" size={12} color={colors.primary} />
-              <Text style={[styles.markAllText, { color: colors.primary }]}>Mark all read</Text>
+              <Text style={[styles.markAllText, { color: colors.primary }]}>{t.markAllRead}</Text>
             </Pressable>
           ) : undefined
         }
@@ -76,7 +78,7 @@ export default function NotificationsScreen() {
         {state.notifications.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="bell-off" size={48} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No notifications</Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{t.noNotifications}</Text>
           </View>
         ) : (
           state.notifications.map((notif) => (
