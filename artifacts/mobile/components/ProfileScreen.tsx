@@ -61,17 +61,21 @@ const USER_PROFILES: Record<string, {
   SV: { name: "Sarah Mitchell",   employeeId: "EMP-010", department: "Management", email: "s.mitchell@igmma.com", phone: "+47 900 34 567", startDate: "10 Jan 2019", avatarColor: "#16a34a" },
   AD: { name: "Adam Davis",       employeeId: "EMP-011", department: "Management", email: "a.davis@igmma.com",   phone: "+47 900 45 678", startDate: "20 Jun 2018", avatarColor: "#dc2626" },
   ET: { name: "Emily Torres",     employeeId: "EMP-020", department: "Estimating", email: "e.torres@igmma.com",  phone: "+47 900 56 789", startDate: "14 Feb 2022", avatarColor: "#d97706" },
+  PT: { name: "Peter Thompson",   employeeId: "EMP-030", department: "Parts",      email: "p.thompson@igmma.com", phone: "+47 900 67 890", startDate: "05 Sep 2020", avatarColor: "#7c3aed" },
+  PD: { name: "Paula Davies",     employeeId: "EMP-031", department: "Parts",      email: "p.davies@igmma.com",   phone: "+47 900 78 901", startDate: "22 Nov 2021", avatarColor: "#6d28d9" },
 };
 
 const ROLE_LABEL: Record<string, string> = {
   technician: "Technician",
   supervisor: "Supervisor",
   estimator:  "Estimator",
+  parts:      "Parts",
 };
 const ROLE_COLOR: Record<string, string> = {
   technician: "#2563eb",
   supervisor: "#16a34a",
-  estimator:  "#7c3aed",
+  estimator:  "#d97706",
+  parts:      "#7c3aed",
 };
 
 const LEAVE_STATUS_CONFIG: Record<LeaveStatus, { color: string; bg: string; label: string }> = {
