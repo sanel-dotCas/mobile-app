@@ -66,6 +66,7 @@ type Action =
   | { type: "UPDATE_STATUS"; payload: { id: string; status: EstimateStatus } }
   | { type: "ADD_LINE"; payload: { estimateId: string; line: EstimateLine } }
   | { type: "REMOVE_LINE"; payload: { estimateId: string; lineId: string } }
+  | { type: "UPDATE_LINE"; payload: { estimateId: string; lineId: string; patch: Partial<EstimateLine> } }
   | { type: "SET_LINES"; payload: { estimateId: string; lines: EstimateLine[] } }
   | { type: "ADD_PHOTO"; payload: { estimateId: string; photo: EstimatePhoto } }
   | { type: "REMOVE_PHOTO"; payload: { estimateId: string; photoId: string } };
@@ -162,6 +163,20 @@ function reducer(state: EstimatesState, action: Action): EstimatesState {
             : e
         ),
       };
+    case "UPDATE_LINE":
+      return {
+        ...state,
+        estimates: state.estimates.map((e) =>
+          e.id === action.payload.estimateId
+            ? {
+                ...e,
+                lines: e.lines.map((l) =>
+                  l.id === action.payload.lineId ? { ...l, ...action.payload.patch } : l
+                ),
+              }
+            : e
+        ),
+      };
     case "SET_LINES":
       return {
         ...state,
@@ -200,6 +215,7 @@ interface EstimatesContextValue {
   updateStatus: (id: string, status: EstimateStatus) => void;
   addLine: (estimateId: string, line: Omit<EstimateLine, "id">) => void;
   removeLine: (estimateId: string, lineId: string) => void;
+  updateLine: (estimateId: string, lineId: string, patch: Partial<EstimateLine>) => void;
   setLines: (estimateId: string, lines: EstimateLine[]) => void;
   addPhoto: (estimateId: string, photo: Omit<EstimatePhoto, "id">) => void;
   removePhoto: (estimateId: string, photoId: string) => void;
@@ -252,6 +268,12 @@ export function EstimatesProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateLine = useCallback(
+    (estimateId: string, lineId: string, patch: Partial<EstimateLine>) =>
+      dispatch({ type: "UPDATE_LINE", payload: { estimateId, lineId, patch } }),
+    []
+  );
+
   const setLines = useCallback(
     (estimateId: string, lines: EstimateLine[]) =>
       dispatch({ type: "SET_LINES", payload: { estimateId, lines } }),
@@ -281,7 +303,7 @@ export function EstimatesProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <EstimatesContext.Provider
-      value={{ state, getEstimate, updateStatus, addLine, removeLine, setLines, addPhoto, removePhoto }}
+      value={{ state, getEstimate, updateStatus, addLine, removeLine, updateLine, setLines, addPhoto, removePhoto }}
     >
       {children}
     </EstimatesContext.Provider>

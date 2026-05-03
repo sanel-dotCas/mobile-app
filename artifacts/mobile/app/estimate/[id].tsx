@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -158,14 +158,58 @@ const PACKAGES: PackageDef[] = [
   },
 ];
 
-function LineRow({ line, onRemove, currency }: { line: EstimateLine; onRemove: () => void; currency: string }) {
+function LineRow({
+  line,
+  estimateId,
+  onRemove,
+  currency,
+}: {
+  line: EstimateLine;
+  estimateId: string;
+  onRemove: () => void;
+  currency: string;
+}) {
   const colors = useColors();
+  const { updateLine } = useEstimates();
   const isLabor = line.type === "labor";
   const catCfg = isLabor && line.laborCategory ? LABOR_CATEGORY_CONFIG[line.laborCategory] : null;
   const tagColor = catCfg?.color ?? (line.type === "part" ? "#7c3aed" : "#d97706");
   const tagBg    = catCfg?.bg    ?? (line.type === "part" ? "#f5f3ff" : "#fffbeb");
   const tagLabel = catCfg?.label ?? (line.type === "part" ? "Parts" : "Materials");
   const tagIcon  = (catCfg?.icon ?? (line.type === "part" ? "package" : "droplet")) as any;
+
+  const [editingHours, setEditingHours] = useState(false);
+  const [hoursInput, setHoursInput] = useState("");
+  const [hoursError, setHoursError] = useState(false);
+  const cancellingRef = useRef(false);
+
+  function startEditHours() {
+    cancellingRef.current = false;
+    setHoursInput(String(line.hours ?? ""));
+    setHoursError(false);
+    setEditingHours(true);
+  }
+
+  function commitHours() {
+    if (cancellingRef.current) return;
+    const trimmed = hoursInput.trim();
+    const isValid = /^\d+(\.\d+)?$/.test(trimmed);
+    const parsed = isValid ? Number(trimmed) : NaN;
+    if (!isValid || parsed <= 0) {
+      setHoursError(true);
+      return;
+    }
+    const newTotal = parseFloat((parsed * line.unitPrice).toFixed(2));
+    updateLine(estimateId, line.id, { hours: parsed, total: newTotal });
+    setEditingHours(false);
+    setHoursError(false);
+  }
+
+  function cancelEditHours() {
+    cancellingRef.current = true;
+    setEditingHours(false);
+    setHoursError(false);
+  }
 
   return (
     <View style={[styles.lineRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -194,9 +238,43 @@ function LineRow({ line, onRemove, currency }: { line: EstimateLine; onRemove: (
       </Text>
       <View style={styles.lineBottom}>
         {isLabor && line.hours !== undefined && (
-          <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
-            {line.hours}h × {currency}{line.unitPrice.toFixed(2)}/h
-          </Text>
+          <View style={styles.hoursEditRow}>
+            {editingHours ? (
+              <>
+                <TextInput
+                  style={[
+                    styles.hoursInput,
+                    { color: colors.foreground, borderColor: hoursError ? "#dc2626" : colors.border },
+                  ]}
+                  value={hoursInput}
+                  onChangeText={(v) => { setHoursInput(v); setHoursError(false); }}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  selectTextOnFocus
+                  onBlur={commitHours}
+                  onSubmitEditing={commitHours}
+                  returnKeyType="done"
+                />
+                <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
+                  h × {currency}{line.unitPrice.toFixed(2)}/h
+                </Text>
+                <Pressable onPress={cancelEditHours} hitSlop={8} style={{ marginLeft: 4 }}>
+                  <Feather name="x-circle" size={13} color={colors.mutedForeground} />
+                </Pressable>
+                {hoursError && (
+                  <Text style={styles.hoursErrorText}>!</Text>
+                )}
+              </>
+            ) : (
+              <Pressable onPress={startEditHours} style={styles.hoursDisplayBtn}>
+                <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
+                  <Text style={[styles.hoursValue, { color: tagColor }]}>{line.hours}h</Text>
+                  {" × "}{currency}{line.unitPrice.toFixed(2)}/h
+                </Text>
+                <Feather name="edit-2" size={10} color={tagColor} style={{ marginLeft: 4 }} />
+              </Pressable>
+            )}
+          </View>
         )}
         {!isLabor && line.quantity !== undefined && (
           <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
@@ -946,7 +1024,7 @@ export default function EstimateDetailScreen() {
                     <Text style={[styles.catGroupTotal, { color: catCfg.color }]}>{currency}{catTotal.toFixed(2)}</Text>
                   </View>
                   {catLines.map((l) => (
-                    <LineRow key={l.id} line={l} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
+                    <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
                   ))}
                 </View>
               );
@@ -965,7 +1043,7 @@ export default function EstimateDetailScreen() {
               <Text style={[styles.linesSectionTotal, { color: "#7c3aed" }]}>{currency}{partsTotal.toFixed(2)}</Text>
             </View>
             {partLines.map((l) => (
-              <LineRow key={l.id} line={l} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
+              <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
             ))}
           </View>
         )}
@@ -981,7 +1059,7 @@ export default function EstimateDetailScreen() {
               <Text style={[styles.linesSectionTotal, { color: "#d97706" }]}>{currency}{materialsTotal.toFixed(2)}</Text>
             </View>
             {materialLines.map((l) => (
-              <LineRow key={l.id} line={l} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
+              <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
             ))}
           </View>
         )}
@@ -1118,6 +1196,11 @@ const styles = StyleSheet.create({
   lineBottom:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   lineMeta:       { fontSize: 11, fontFamily: "Inter_400Regular" },
   lineTotal:      { fontSize: 13, fontFamily: "Inter_700Bold" },
+  hoursEditRow:   { flexDirection: "row", alignItems: "center", gap: 2, flex: 1 },
+  hoursDisplayBtn:{ flexDirection: "row", alignItems: "center" },
+  hoursValue:     { fontFamily: "Inter_600SemiBold" },
+  hoursInput:     { fontSize: 11, fontFamily: "Inter_600SemiBold", borderWidth: 1, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, minWidth: 38, textAlign: "center" },
+  hoursErrorText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#dc2626", marginLeft: 2 },
 
   addLineRow:     { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed" },
   addLineIconWrap:{ width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
