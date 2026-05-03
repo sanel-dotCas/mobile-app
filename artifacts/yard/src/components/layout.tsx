@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useYardLogout } from "@workspace/api-client-react";
-import { LayoutDashboard, MapPin, Car, ClipboardCheck, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, MapPin, Car, ClipboardCheck, Truck, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 const NAV = [
@@ -10,6 +10,7 @@ const NAV = [
   { href: "/locations", icon: MapPin, label: "Locations" },
   { href: "/inventory", icon: Car, label: "Inventory" },
   { href: "/inspections", icon: ClipboardCheck, label: "Inspections" },
+  { href: "/transfers", icon: Truck, label: "Transfers" },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -73,7 +74,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           <button
             data-testid="button-logout"
-            onClick={() => logoutMutation.mutate({})}
+            onClick={() => logoutMutation.mutate()}
             className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-sm text-[hsl(215,20%,65%)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
           >
             <LogOut className="w-4 h-4" />

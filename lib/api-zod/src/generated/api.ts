@@ -439,6 +439,7 @@ export const CreateYardInspectionBody = zod.object({
   notes: zod.string().optional(),
   bodyDamage: zod.string().optional(),
   fuelPercentage: zod.number().optional(),
+  assignedTo: zod.string().optional(),
 });
 
 /**
@@ -454,6 +455,7 @@ export const UpdateYardInspectionBody = zod.object({
   bodyDamage: zod.string().optional(),
   fuelPercentage: zod.number().optional(),
   completedAt: zod.string().optional(),
+  assignedTo: zod.string().optional(),
 });
 
 export const UpdateYardInspectionResponse = zod.object({

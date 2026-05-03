@@ -207,7 +207,7 @@ export default function LocationDetailPage() {
     },
   });
 
-  const { data: movements } = useGetLocationMovementFeed(locationId, {
+  const { data: movements } = useGetLocationMovementFeed(locationId, undefined, {
     query: {
       enabled: !!locationId,
       queryKey: getGetLocationMovementFeedQueryKey(locationId),
@@ -305,15 +305,16 @@ export default function LocationDetailPage() {
       <div className="flex flex-1 min-h-0">
         {/* Spot grid */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {(location.zones ?? []).map((zone: ZoneType) => {
-            const filtered = filterSpots(zone.spots as SpotType[]);
+          {(location.zones ?? []).map((zone) => {
+            const typedSpots = (zone.spots ?? []).map((s) => ({ ...s, vehicleId: s.vehicleId ?? null })) as SpotType[];
+            const filtered = filterSpots(typedSpots);
             if (filtered.length === 0 && activeTab !== ALL_TAB) return null;
             return (
               <div key={zone.id} data-testid={`zone-${zone.id}`}>
                 <div className="flex items-center gap-2 mb-2">
                   <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">{zone.name}</h3>
                   <span className="text-[10px] text-muted-foreground">
-                    {zone.spots.filter((s: SpotType) => s.status === "available").length} available / {zone.spots.length} total
+                    {typedSpots.filter((s) => s.status === "available").length} available / {typedSpots.length} total
                   </span>
                 </div>
                 <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))" }}>

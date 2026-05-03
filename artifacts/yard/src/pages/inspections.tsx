@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   useListYardInspections,
   getListYardInspectionsQueryKey,
@@ -10,7 +10,7 @@ import {
   useListYardLocations,
   getListYardLocationsQueryKey,
 } from "@workspace/api-client-react";
-import { Plus, X, ClipboardCheck } from "lucide-react";
+import { Plus, X, ClipboardCheck, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type InspStatus = "all" | "queued" | "in-progress" | "finished";
@@ -38,7 +38,7 @@ type Inspection = {
   id: number; inspectionNumber: string; vehicleId: number; stockVin: string;
   vehicleName: string; type: string; status: string; locationName: string | null;
   notes: string | null; bodyDamage: string | null; fuelPercentage: number | null;
-  createdAt: string; completedAt: string | null;
+  createdAt: string; completedAt: string | null; assignedTo: string | null;
 };
 
 function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -47,10 +47,17 @@ function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
     query: { queryKey: getListYardVehiclesQueryKey({}) },
   });
   const { data: locations } = useListYardLocations({ query: { queryKey: getListYardLocationsQueryKey() } });
+  const { data: usersData } = useQuery<{ id: number; name: string; role: string }[]>({
+    queryKey: ["yard-users"],
+    queryFn: async () => {
+      const r = await fetch("/api/yard/users", { credentials: "include" });
+      return r.json();
+    },
+  });
 
   const [form, setForm] = useState({
     vehicleId: "", type: "pre-inspection", locationId: "",
-    notes: "", bodyDamage: "", fuelPercentage: "100",
+    notes: "", bodyDamage: "", fuelPercentage: "100", assignedTo: "",
   });
 
   const create = useCreateYardInspection({
@@ -71,6 +78,7 @@ function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
         notes: form.notes || undefined,
         bodyDamage: form.bodyDamage || undefined,
         fuelPercentage: form.fuelPercentage ? Number(form.fuelPercentage) : undefined,
+        assignedTo: form.assignedTo || undefined,
       },
     });
   };
@@ -111,6 +119,19 @@ function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
               <option value="pre-inspection">Pre-Inspection</option>
               <option value="secondary">Secondary</option>
               <option value="final-quality">Final Quality</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Assign Technician</label>
+            <select
+              value={form.assignedTo}
+              onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            >
+              <option value="">— Unassigned —</option>
+              {(usersData ?? []).map((u) => (
+                <option key={u.id} value={u.name}>{u.name} ({u.role.replace("_", " ")})</option>
+              ))}
             </select>
           </div>
           <div>
@@ -181,6 +202,14 @@ export default function InspectionsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const { data: usersData } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["yard-users"],
+    queryFn: async () => {
+      const r = await fetch("/api/yard/users", { credentials: "include" });
+      return r.json();
+    },
+  });
+
   const params = { status: statusFilter === "all" ? undefined : statusFilter, page, limit: 15 };
   const { data, isLoading } = useListYardInspections(params, {
     query: { queryKey: getListYardInspectionsQueryKey(params) },
@@ -202,6 +231,10 @@ export default function InspectionsPage() {
 
   const markInProgress = (id: number) => {
     updateInspection.mutate({ inspectionId: id, data: { status: "in-progress" } });
+  };
+
+  const assignTech = (id: number, name: string) => {
+    updateInspection.mutate({ inspectionId: id, data: { assignedTo: name } });
   };
 
   return (
@@ -253,7 +286,7 @@ export default function InspectionsPage() {
             <p className="text-sm text-muted-foreground">No inspections found</p>
           </div>
         ) : (
-          (data?.inspections ?? []).map((insp) => (
+          (data?.inspections as Inspection[]).map((insp) => (
             <div
               key={insp.id}
               data-testid={`inspection-row-${insp.id}`}
@@ -272,6 +305,41 @@ export default function InspectionsPage() {
                 {insp.locationName && (
                   <p className="text-xs text-muted-foreground">{insp.locationName}</p>
                 )}
+
+                {/* Technician assignment */}
+                <div className="flex items-center gap-2 mt-2">
+                  <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  {insp.assignedTo ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-[hsl(221,83%,53%)]/15 flex items-center justify-center text-[9px] font-bold text-[hsl(221,83%,53%)]">
+                        {insp.assignedTo.charAt(0)}
+                      </div>
+                      <span className="text-xs text-foreground">{insp.assignedTo}</span>
+                      <select
+                        className="text-[10px] text-muted-foreground bg-transparent border-0 cursor-pointer focus:outline-none"
+                        defaultValue=""
+                        onChange={(e) => { if (e.target.value) assignTech(insp.id, e.target.value); }}
+                      >
+                        <option value="">(reassign)</option>
+                        {(usersData ?? []).map((u) => (
+                          <option key={u.id} value={u.name}>{u.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <select
+                      className="text-xs px-2 py-0.5 bg-muted border border-border rounded text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+                      defaultValue=""
+                      onChange={(e) => { if (e.target.value) assignTech(insp.id, e.target.value); }}
+                    >
+                      <option value="">Assign technician...</option>
+                      {(usersData ?? []).map((u) => (
+                        <option key={u.id} value={u.name}>{u.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
                 {insp.notes && (
                   <p className="text-xs text-muted-foreground mt-1 italic">{insp.notes}</p>
                 )}

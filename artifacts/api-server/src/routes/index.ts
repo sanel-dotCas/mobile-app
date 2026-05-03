@@ -8,6 +8,8 @@ import yardVehiclesRouter from "./yard-vehicles";
 import yardInspectionsRouter from "./yard-inspections";
 import yardDashboardRouter from "./yard-dashboard";
 import yardRecommendationsRouter from "./yard-recommendations";
+import yardUsersRouter from "./yard-users";
+import yardTransfersRouter from "./yard-transfers";
 import partsRouter from "./parts";
 
 const router: IRouter = Router();
@@ -21,6 +23,8 @@ router.use(yardVehiclesRouter);
 router.use(yardInspectionsRouter);
 router.use(yardDashboardRouter);
 router.use(yardRecommendationsRouter);
+router.use(yardUsersRouter);
+router.use(yardTransfersRouter);
 router.use(partsRouter);
 
 export default router;

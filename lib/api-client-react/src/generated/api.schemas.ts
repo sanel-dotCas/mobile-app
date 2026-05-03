@@ -315,6 +315,7 @@ export interface CreateYardInspectionBody {
   notes?: string;
   bodyDamage?: string;
   fuelPercentage?: number;
+  assignedTo?: string;
 }
 
 export type UpdateYardInspectionBodyStatus =
@@ -332,6 +333,7 @@ export interface UpdateYardInspectionBody {
   bodyDamage?: string;
   fuelPercentage?: number;
   completedAt?: string;
+  assignedTo?: string;
 }
 
 export type GetLocationMovementFeedParams = {

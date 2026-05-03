@@ -155,6 +155,29 @@ export const yardMovementsTable = pgTable("yard_movements", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const yardTransferStatusEnum = pgEnum("yard_transfer_status", [
+  "pending",
+  "approved",
+  "in_transit",
+  "completed",
+  "cancelled",
+]);
+
+export const yardTransfersTable = pgTable("yard_transfers", {
+  id: serial("id").primaryKey(),
+  transferNumber: text("transfer_number").notNull().unique(),
+  vehicleId: integer("vehicle_id").notNull(),
+  fromLocationId: integer("from_location_id").notNull(),
+  toLocationId: integer("to_location_id").notNull(),
+  status: yardTransferStatusEnum("status").notNull().default("pending"),
+  requestedBy: text("requested_by").notNull(),
+  approvedBy: text("approved_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
 // ── Insert schemas ────────────────────────────────────────────────────────────
 export const insertYardUserSchema = createInsertSchema(yardUsersTable).omit({
   id: true,

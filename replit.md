@@ -41,13 +41,15 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Port**: 21273
 - **Purpose**: Vehicle Yard & Parking Management for IGMMA DMS
 - **Login**: username `yard.manager` / password `yard123` OR `operator` / `op123`
+- **Login**: `admin` / `admin` (admin/yard_manager roles); `operator` / `op123` (operator)
 - **Pages**:
   - `/yard/login` — Login screen
-  - `/yard/` — Operations Dashboard (stats, movement feed)
-  - `/yard/locations` — All locations list with capacity bars
+  - `/yard/` — Operations Dashboard (stats, movement feed, **multi-branch vehicle search bar**)
+  - `/yard/locations` — **Split-panel multi-yard view**: left panel = checkable location cards with capacity bars + ARRIVED/IN YARD/READY PDI/READY SALE stats; right panel = OVERVIEW tab (KPI cards + movement feed) + INSPECTIONS & CHECKS tab (PDI table + tech assignment)
   - `/yard/locations/:id` — Location detail with zone tabs + visual spot grid + spot detail panel
-  - `/yard/inventory` — Vehicle inventory table with search, status filters, pagination, Add Vehicle modal
-  - `/yard/inspections` — PDI inspections list with Create PDI modal
+  - `/yard/inventory` — Vehicle inventory table with search, status filters, pagination, Add Vehicle modal, **Assign to Yard/Spot modal**
+  - `/yard/inspections` — PDI inspections list with Create PDI modal (**technician assignment dropdown**)
+  - `/yard/transfers` — **Transfer Requests** (yard → showroom): list, create modal, approve/transit/complete/cancel workflow
 - **Auth**: Stored in localStorage key `yard_user`
 
 ### 3. API Server (`artifacts/api-server`)

@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   useListYardVehicles,
   getListYardVehiclesQueryKey,
   useListYardLocations,
   getListYardLocationsQueryKey,
   useCreateYardVehicle,
+  useUpdateYardVehicle,
 } from "@workspace/api-client-react";
-import { Search, Plus, ChevronDown, ChevronUp, X, Lock } from "lucide-react";
+import { Search, Plus, ChevronDown, ChevronUp, X, Lock, MapPin, ArrowRightCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -151,8 +152,139 @@ function AddVehicleModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   );
 }
 
+type Spot = { id: number; code: string; zoneId: number; zoneName: string | null; isOccupied: boolean };
+
+function AssignToYardModal({
+  vehicle,
+  onClose,
+  onSuccess,
+}: {
+  vehicle: Vehicle;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: locations } = useListYardLocations({ query: { queryKey: getListYardLocationsQueryKey() } });
+
+  const [selectedLocationId, setSelectedLocationId] = useState(
+    vehicle.locationId ? String(vehicle.locationId) : ""
+  );
+  const [selectedSpotId, setSelectedSpotId] = useState(
+    vehicle.spotId ? String(vehicle.spotId) : ""
+  );
+
+  const { data: spotsData } = useQuery<{ spots: Spot[] }>({
+    queryKey: ["yard-spots-for-location", selectedLocationId],
+    queryFn: async () => {
+      if (!selectedLocationId) return { spots: [] };
+      const r = await fetch(`/api/yard/spots?locationId=${selectedLocationId}&limit=200`, {
+        credentials: "include",
+      });
+      return r.json();
+    },
+    enabled: Boolean(selectedLocationId),
+  });
+
+  const availableSpots = (spotsData?.spots ?? []).filter(
+    (s) => !s.isOccupied || String(s.id) === String(vehicle.spotId)
+  );
+
+  const update = useUpdateYardVehicle({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Vehicle assigned to yard" });
+        queryClient.invalidateQueries({ queryKey: getListYardVehiclesQueryKey() });
+        onSuccess();
+      },
+      onError: () => toast({ title: "Assignment failed", variant: "destructive" }),
+    },
+  });
+
+  const handleSave = () => {
+    if (!selectedLocationId) return;
+    update.mutate({
+      vehicleId: vehicle.id,
+      data: {
+        locationId: Number(selectedLocationId),
+        spotId: selectedSpotId ? Number(selectedSpotId) : undefined,
+      },
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-sm bg-card border border-card-border rounded-lg p-6 m-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Assign to Yard / Lot</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.stockNumber}</p>
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Yard / Location *</label>
+            <select
+              value={selectedLocationId}
+              onChange={(e) => {
+                setSelectedLocationId(e.target.value);
+                setSelectedSpotId("");
+              }}
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            >
+              <option value="">Select location...</option>
+              {(locations ?? []).map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedLocationId && (
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Parking Spot{" "}
+                <span className="text-muted-foreground font-normal">(optional — {availableSpots.length} available)</span>
+              </label>
+              <select
+                value={selectedSpotId}
+                onChange={(e) => setSelectedSpotId(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+              >
+                <option value="">— No specific spot —</option>
+                {availableSpots.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.code}{s.zoneName ? ` · ${s.zoneName}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2 border border-border rounded text-sm text-foreground hover:border-[hsl(221,83%,53%)] transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!selectedLocationId || update.isPending}
+              className="flex-1 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors disabled:opacity-50"
+            >
+              {update.isPending ? "Saving..." : "Assign"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const [showAssign, setShowAssign] = useState(false);
+  const queryClient = useQueryClient();
+
   return (
     <>
       <tr
@@ -181,7 +313,7 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
       {expanded && (
         <tr className="bg-muted/20 border-b border-border">
           <td colSpan={5} className="px-4 py-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-3">
               <div>
                 <p className="text-muted-foreground mb-0.5">VIN</p>
                 <p className="text-foreground font-mono">{vehicle.vin}</p>
@@ -221,8 +353,36 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
                 <p className="text-foreground">{vehicle.arrivedAt ? new Date(vehicle.arrivedAt).toLocaleDateString() : "—"}</p>
               </div>
             </div>
+            {/* Actions row */}
+            <div className="flex items-center gap-2 pt-2 border-t border-border">
+              <button
+                data-testid={`button-assign-yard-${vehicle.id}`}
+                onClick={(e) => { e.stopPropagation(); setShowAssign(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-[hsl(221,83%,53%)] text-[hsl(221,83%,53%)] rounded hover:bg-[hsl(221,83%,53%)] hover:text-white transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                {vehicle.locationName ? "Reassign Yard/Spot" : "Assign to Yard/Lot"}
+              </button>
+              {vehicle.locationName && (
+                <span className="text-xs text-muted-foreground">
+                  Currently at <span className="text-foreground font-medium">{vehicle.locationName}</span>
+                  {vehicle.spotCode && <span className="font-mono"> · {vehicle.spotCode}</span>}
+                </span>
+              )}
+            </div>
           </td>
         </tr>
+      )}
+      {showAssign && (
+        <AssignToYardModal
+          vehicle={vehicle}
+          onClose={() => setShowAssign(false)}
+          onSuccess={() => {
+            setShowAssign(false);
+            setExpanded(false);
+            queryClient.invalidateQueries({ queryKey: getListYardVehiclesQueryKey() });
+          }}
+        />
       )}
     </>
   );

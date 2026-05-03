@@ -14,4 +14,5 @@ export interface CreateYardInspectionBody {
   notes?: string;
   bodyDamage?: string;
   fuelPercentage?: number;
+  assignedTo?: string;
 }

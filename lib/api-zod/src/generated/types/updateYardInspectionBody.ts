@@ -13,4 +13,5 @@ export interface UpdateYardInspectionBody {
   bodyDamage?: string;
   fuelPercentage?: number;
   completedAt?: string;
+  assignedTo?: string;
 }

@@ -752,6 +752,8 @@ components:
           type: string
         fuelPercentage:
           type: integer
+        assignedTo:
+          type: string
       required: [vehicleId, type]
 
     UpdateYardInspectionBody:
@@ -767,6 +769,8 @@ components:
         fuelPercentage:
           type: integer
         completedAt:
+          type: string
+        assignedTo:
           type: string
 
     # ── Movement ──────────────────────────────────────────────────────────────
