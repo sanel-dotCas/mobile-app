@@ -5,6 +5,7 @@ import React, {
   useContext,
   useEffect,
   useReducer,
+  useState,
 } from "react";
 
 export type EstimateStatus =
@@ -226,21 +227,26 @@ const STORAGE_KEY = "igmma_estimates_v1";
 
 export function EstimatesProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { estimates: SEED });
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
-        try {
-          const saved: Estimate[] = JSON.parse(raw);
-          if (saved.length) dispatch({ type: "SET_ESTIMATES", payload: saved });
-        } catch {}
-      }
-    });
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const saved: Estimate[] = JSON.parse(raw);
+            if (saved.length) dispatch({ type: "SET_ESTIMATES", payload: saved });
+          } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
+    if (!loaded) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state.estimates));
-  }, [state.estimates]);
+  }, [state.estimates, loaded]);
 
   const getEstimate = useCallback(
     (id: string) => state.estimates.find((e) => e.id === id),
