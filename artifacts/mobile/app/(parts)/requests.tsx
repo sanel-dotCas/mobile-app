@@ -145,7 +145,7 @@ export default function PartsRequests() {
   const [newTrfModal, setNewTrfModal] = useState(false);
 
   // New transfer form
-  const [trfFrom, setTrfFrom] = useState("Main Branch");
+  const [trfFrom, setTrfFrom] = useState("");
   const [trfTo, setTrfTo] = useState("");
   const [trfNotes, setTrfNotes] = useState("");
   const [trfItems, setTrfItems] = useState<Array<{ partNumber: string; partName: string; qty: string }>>([]);
@@ -154,6 +154,15 @@ export default function PartsRequests() {
   const [trfScanLoading, setTrfScanLoading] = useState(false);
   const [trfScanError, setTrfScanError] = useState("");
   const trfScanRef = useRef<TextInput>(null);
+
+  // Branches from API
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(true);
+
+  // Parts autocomplete
+  const [trfSuggest, setTrfSuggest] = useState<Array<{ partNumber: string; name: string }>>([]);
+  const [trfSuggestLoading, setTrfSuggestLoading] = useState(false);
+  const trfSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRo = useCallback(async () => {
     try {
@@ -185,7 +194,45 @@ export default function PartsRequests() {
     }
   }, []);
 
-  useEffect(() => { loadRo(); loadTransfers(); }, [loadRo, loadTransfers]);
+  const loadBranches = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/yard/locations`);
+      if (res.ok) {
+        const d = await res.json();
+        const names: string[] = (d.locations ?? d).map((l: { name: string }) => l.name);
+        setBranches(names);
+        setTrfFrom((prev) => prev || (names.length > 0 ? names[0] : ""));
+      }
+    } catch {
+      //
+    } finally {
+      setBranchesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadRo(); loadTransfers(); loadBranches(); }, [loadRo, loadTransfers, loadBranches]);
+
+  // Debounced parts autocomplete for transfer scan input
+  useEffect(() => {
+    if (trfSuggestTimer.current) clearTimeout(trfSuggestTimer.current);
+    const q = trfScanInput.trim();
+    if (q.length < 2) { setTrfSuggest([]); return; }
+    trfSuggestTimer.current = setTimeout(async () => {
+      setTrfSuggestLoading(true);
+      try {
+        const res = await fetch(`${BASE}/parts/items?search=${encodeURIComponent(q)}&limit=8`);
+        if (res.ok) {
+          const d = await res.json();
+          setTrfSuggest(d.items ?? []);
+        }
+      } catch {
+        //
+      } finally {
+        setTrfSuggestLoading(false);
+      }
+    }, 300);
+    return () => { if (trfSuggestTimer.current) clearTimeout(trfSuggestTimer.current); };
+  }, [trfScanInput]);
 
   const openRo = async (req: RoRequest) => {
     try {
@@ -452,7 +499,7 @@ export default function PartsRequests() {
         <>
           <Pressable
             style={[styles.newBtn, { backgroundColor: "#7c3aed" }]}
-            onPress={() => { setNewTrfModal(true); setTrfItems([]); }}
+            onPress={() => { setNewTrfModal(true); setTrfItems([]); setTrfTo(""); setTrfNotes(""); setTrfScanInput(""); setTrfSuggest([]); }}
           >
             <Feather name="plus" size={16} color="#fff" />
             <Text style={styles.newBtnText}>New Transfer Request</Text>
@@ -854,20 +901,59 @@ export default function PartsRequests() {
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Inter-Branch Transfer</Text>
           </View>
           <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: bottomPad + 100 }]} keyboardShouldPersistTaps="handled">
+
+            {/* From Branch */}
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>From Branch</Text>
-            <TextInput
-              style={[styles.formInput, { color: colors.foreground, borderColor: colors.border }]}
-              value={trfFrom}
-              onChangeText={setTrfFrom}
-            />
+            {branchesLoading ? (
+              <ActivityIndicator size="small" color="#7c3aed" style={{ alignSelf: "flex-start", marginBottom: 4 }} />
+            ) : (
+              <View style={styles.branchChipsWrap}>
+                {branches.map((b) => (
+                  <Pressable
+                    key={b}
+                    onPress={() => { setTrfFrom(b); if (trfTo === b) setTrfTo(""); }}
+                    style={[
+                      styles.branchChip,
+                      { backgroundColor: trfFrom === b ? "#7c3aed" : colors.secondary, borderColor: trfFrom === b ? "#7c3aed" : colors.border },
+                    ]}
+                  >
+                    <Feather name="map-pin" size={11} color={trfFrom === b ? "#fff" : colors.mutedForeground} />
+                    <Text style={[styles.branchChipText, { color: trfFrom === b ? "#fff" : colors.foreground }]}>{b}</Text>
+                  </Pressable>
+                ))}
+                {branches.length === 0 && (
+                  <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>No branches found</Text>
+                )}
+              </View>
+            )}
+
+            {/* To Branch */}
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>To Branch *</Text>
-            <TextInput
-              style={[styles.formInput, { color: colors.foreground, borderColor: colors.border }]}
-              placeholder="e.g. Airport Branch"
-              placeholderTextColor={colors.mutedForeground}
-              value={trfTo}
-              onChangeText={setTrfTo}
-            />
+            {branchesLoading ? (
+              <ActivityIndicator size="small" color="#7c3aed" style={{ alignSelf: "flex-start", marginBottom: 4 }} />
+            ) : (
+              <View style={styles.branchChipsWrap}>
+                {branches.filter((b) => b !== trfFrom).map((b) => (
+                  <Pressable
+                    key={b}
+                    onPress={() => setTrfTo(b)}
+                    style={[
+                      styles.branchChip,
+                      { backgroundColor: trfTo === b ? "#1d4ed8" : colors.secondary, borderColor: trfTo === b ? "#1d4ed8" : colors.border },
+                    ]}
+                  >
+                    <Feather name="map-pin" size={11} color={trfTo === b ? "#fff" : colors.mutedForeground} />
+                    <Text style={[styles.branchChipText, { color: trfTo === b ? "#fff" : colors.foreground }]}>{b}</Text>
+                  </Pressable>
+                ))}
+                {branches.filter((b) => b !== trfFrom).length === 0 && !branchesLoading && (
+                  <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                    {branches.length <= 1 ? "No other branches available" : "Select a From branch first"}
+                  </Text>
+                )}
+              </View>
+            )}
+
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Notes</Text>
             <TextInput
               style={[styles.formInput, { color: colors.foreground, borderColor: colors.border }]}
@@ -877,12 +963,14 @@ export default function PartsRequests() {
               onChangeText={setTrfNotes}
               multiline
             />
+
+            {/* Parts to Transfer with live autocomplete */}
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Parts to Transfer</Text>
             <View style={styles.scanRow}>
               <TextInput
                 ref={trfScanRef}
                 style={[styles.scanInputSmall, { color: colors.foreground, borderColor: colors.border, flex: 1 }]}
-                placeholder="Scan or type part number"
+                placeholder="Type part number or name…"
                 placeholderTextColor={colors.mutedForeground}
                 value={trfScanInput}
                 onChangeText={(v) => { setTrfScanInput(v); setTrfScanError(""); }}
@@ -890,15 +978,46 @@ export default function PartsRequests() {
                 onSubmitEditing={handleTrfScan}
                 returnKeyType="search"
               />
-              <Pressable
-                style={[styles.scanActionBtn, { backgroundColor: trfScanLoading ? "#7c3aed80" : "#7c3aed" }]}
-                onPress={handleTrfScan}
-                disabled={trfScanLoading}
-              >
-                {trfScanLoading ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="plus" size={18} color="#fff" />}
-              </Pressable>
+              {trfSuggestLoading
+                ? <ActivityIndicator size="small" color="#7c3aed" style={{ marginLeft: 8 }} />
+                : trfScanInput.trim().length > 0 && (
+                  <Pressable
+                    style={[styles.scanActionBtn, { backgroundColor: trfScanLoading ? "#7c3aed80" : "#7c3aed" }]}
+                    onPress={handleTrfScan}
+                    disabled={trfScanLoading}
+                  >
+                    <Feather name="plus" size={18} color="#fff" />
+                  </Pressable>
+                )}
             </View>
             {trfScanError ? <Text style={styles.scanError}>{trfScanError}</Text> : null}
+
+            {/* Autocomplete suggestions */}
+            {trfSuggest.length > 0 && (
+              <View style={[styles.suggestBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                {trfSuggest.map((s, i) => (
+                  <Pressable
+                    key={s.partNumber}
+                    onPress={() => {
+                      setTrfItems((prev) => [...prev, { partNumber: s.partNumber, partName: s.name, qty: "1" }]);
+                      setTrfScanInput("");
+                      setTrfSuggest([]);
+                    }}
+                    style={[
+                      styles.suggestRow,
+                      { borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border },
+                    ]}
+                  >
+                    <View style={[styles.pnBadge, { backgroundColor: "#7c3aed20" }]}>
+                      <Text style={[styles.pnText, { color: "#7c3aed" }]}>{s.partNumber}</Text>
+                    </View>
+                    <Text style={[styles.suggestName, { color: colors.foreground }]} numberOfLines={1}>{s.name}</Text>
+                    <Feather name="plus-circle" size={16} color="#7c3aed" />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
             {trfItems.map((item, idx) => (
               <View key={idx} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.cardRow}>
@@ -1002,4 +1121,29 @@ const styles = StyleSheet.create({
   scanError: { color: "#ef4444", fontSize: 12, fontFamily: "Inter_400Regular" },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   qtyInputSmall: { width: 50, height: 32, borderWidth: 1, borderRadius: 8, textAlign: "center", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  branchChipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
+  branchChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  branchChipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  suggestBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  suggestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  suggestName: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
 });
