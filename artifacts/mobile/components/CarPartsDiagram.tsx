@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import Svg, {
   Circle,
@@ -292,13 +291,15 @@ const GLASS_ZONES = new Set(["windshield", "rear-windshield"]);
 function CarSvgDiagram({
   selectedZoneId,
   onZonePress,
+  containerWidth,
 }: {
   selectedZoneId: string | null;
   onZonePress: (id: string) => void;
+  containerWidth: number;
 }) {
-  const { width } = useWindowDimensions();
-  // Explicit pixel dimensions — fixes the "0 height" collapse on React Native
-  const svgW = Math.min(width - 32, 340);
+  // Use the measured container width so the diagram fills the modal correctly
+  // on all screen sizes (phone, tablet, iPad split-view, etc.)
+  const svgW = containerWidth > 0 ? containerWidth : 280;
   const svgH = Math.round(svgW * 340 / 200);
 
   return (
@@ -457,6 +458,7 @@ export function CarPartsDiagram({
   const colors = useColors();
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [diagramWidth, setDiagramWidth] = useState(0);
 
   const zone = selectedZone ? DIAGRAM_ZONES.find((z) => z.id === selectedZone) : null;
   const parts = selectedZone ? (ZONE_CATALOG[selectedZone] ?? []) : [];
@@ -487,9 +489,18 @@ export function CarPartsDiagram({
         <Text style={st.vehicleHint}>Tap a zone · select parts</Text>
       </View>
 
-      {/* SVG diagram */}
-      <View style={st.svgWrap}>
-        <CarSvgDiagram selectedZoneId={selectedZone} onZonePress={setSelectedZone} />
+      {/* SVG diagram — measures its own container so it fills correctly on any screen size */}
+      <View
+        style={st.svgWrap}
+        onLayout={(e) => setDiagramWidth(e.nativeEvent.layout.width)}
+      >
+        {diagramWidth > 0 && (
+          <CarSvgDiagram
+            selectedZoneId={selectedZone}
+            onZonePress={setSelectedZone}
+            containerWidth={diagramWidth}
+          />
+        )}
       </View>
 
       {/* Zone label + parts list */}
