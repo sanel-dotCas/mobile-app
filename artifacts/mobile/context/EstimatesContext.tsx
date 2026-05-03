@@ -34,6 +34,7 @@ export interface EstimateLine {
 export interface EstimatePhoto {
   id: string;
   uri: string;
+  base64?: string;
   capturedAt: string;
 }
 
@@ -66,7 +67,8 @@ type Action =
   | { type: "ADD_LINE"; payload: { estimateId: string; line: EstimateLine } }
   | { type: "REMOVE_LINE"; payload: { estimateId: string; lineId: string } }
   | { type: "SET_LINES"; payload: { estimateId: string; lines: EstimateLine[] } }
-  | { type: "ADD_PHOTO"; payload: { estimateId: string; photo: EstimatePhoto } };
+  | { type: "ADD_PHOTO"; payload: { estimateId: string; photo: EstimatePhoto } }
+  | { type: "REMOVE_PHOTO"; payload: { estimateId: string; photoId: string } };
 
 const SEED: Estimate[] = [
   {
@@ -178,6 +180,15 @@ function reducer(state: EstimatesState, action: Action): EstimatesState {
             : e
         ),
       };
+    case "REMOVE_PHOTO":
+      return {
+        ...state,
+        estimates: state.estimates.map((e) =>
+          e.id === action.payload.estimateId
+            ? { ...e, photos: e.photos.filter((p) => p.id !== action.payload.photoId) }
+            : e
+        ),
+      };
     default:
       return state;
   }
@@ -191,6 +202,7 @@ interface EstimatesContextValue {
   removeLine: (estimateId: string, lineId: string) => void;
   setLines: (estimateId: string, lines: EstimateLine[]) => void;
   addPhoto: (estimateId: string, photo: Omit<EstimatePhoto, "id">) => void;
+  removePhoto: (estimateId: string, photoId: string) => void;
 }
 
 const EstimatesContext = createContext<EstimatesContextValue | null>(null);
@@ -252,15 +264,24 @@ export function EstimatesProvider({ children }: { children: React.ReactNode }) {
         type: "ADD_PHOTO",
         payload: {
           estimateId,
-          photo: { ...photo, id: `photo-${Date.now()}` },
+          photo: {
+            ...photo,
+            id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          },
         },
       }),
     []
   );
 
+  const removePhoto = useCallback(
+    (estimateId: string, photoId: string) =>
+      dispatch({ type: "REMOVE_PHOTO", payload: { estimateId, photoId } }),
+    []
+  );
+
   return (
     <EstimatesContext.Provider
-      value={{ state, getEstimate, updateStatus, addLine, removeLine, setLines, addPhoto }}
+      value={{ state, getEstimate, updateStatus, addLine, removeLine, setLines, addPhoto, removePhoto }}
     >
       {children}
     </EstimatesContext.Provider>

@@ -512,13 +512,13 @@ export default function EstimateDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { getEstimate, updateStatus, removeLine, setLines, addLine, addPhoto } = useEstimates();
+  const { getEstimate, updateStatus, removeLine, setLines, addLine, addPhoto, removePhoto: ctxRemovePhoto } = useEstimates();
   const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 24 : insets.bottom;
 
   const estimate = getEstimate(id ?? "");
-  const [photoUris, setPhotoUris] = useState<string[]>([]);
-  const [photoBase64s, setPhotoBase64s] = useState<string[]>([]);
+  const photoUris = estimate?.photos.map((p) => p.uri) ?? [];
+  const photoBase64s = estimate?.photos.map((p) => p.base64 ?? "") ?? [];
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -566,18 +566,25 @@ export default function EstimateDetailScreen() {
   const canApprove  = estimate.status === "review" || (estimate.lines.length > 0 && estimate.status === "inspection_in_progress");
 
   const applyAsset = useCallback((uri: string, base64: string | null) => {
-    setPhotoUris((prev) => [...prev, uri]);
-    setPhotoBase64s((prev) => [...prev, base64 ?? ""]);
+    // Prefer a self-contained data URL so the photo survives app restarts.
+    // If the uri is already a data URL (web), use it as-is to preserve the
+    // correct MIME type.  Otherwise (native file URI), construct one from the
+    // base64 payload; fall back to the original URI only if base64 is absent.
+    const durableUri = uri.startsWith("data:")
+      ? uri
+      : base64
+      ? `data:image/jpeg;base64,${base64}`
+      : uri;
     setAnalysisError(null);
     if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
-    addPhoto(estimate.id, { uri, capturedAt: new Date().toISOString() });
+    addPhoto(estimate.id, { uri: durableUri, base64: base64 ?? undefined, capturedAt: new Date().toISOString() });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [estimate, updateStatus, addPhoto]);
 
   const removePhoto = useCallback((index: number) => {
-    setPhotoUris((prev) => prev.filter((_, i) => i !== index));
-    setPhotoBase64s((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    const photo = estimate.photos[index];
+    if (photo) ctxRemovePhoto(estimate.id, photo.id);
+  }, [estimate, ctxRemovePhoto]);
 
   const handleWebFilePick = useCallback(() => {
     if (Platform.OS !== "web") return;
@@ -589,12 +596,13 @@ export default function EstimateDetailScreen() {
       const files = input.files ? Array.from(input.files) : [];
       if (files.length === 0) return;
       files.forEach((file) => {
-        const objectUrl = URL.createObjectURL(file);
         const reader = new FileReader();
         reader.onload = () => {
+          // Use the data URL directly as the URI — blob URLs are ephemeral
+          // and become invalid after a page reload/restart.
           const dataUrl = reader.result as string;
           const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-          applyAsset(objectUrl, base64);
+          applyAsset(dataUrl, base64);
         };
         reader.onerror = () => setAnalysisError("Could not read the selected file.");
         reader.readAsDataURL(file);
