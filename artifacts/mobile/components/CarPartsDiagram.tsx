@@ -8,12 +8,13 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Svg, {
   Circle,
   G,
   Path,
-  Rect,
+  Polygon,
   Text as SvgText,
 } from "react-native-svg";
 
@@ -246,6 +247,47 @@ const ZONE_LABEL_MAP: Record<string, string> = {
 };
 
 // ─── SVG Car Diagram Component ────────────────────────────────────────────────
+//
+// ViewBox: 0 0 200 340  |  REAR = top (y≈0)  FRONT = bottom (y≈340)
+// Car silhouette has realistic wheel-arch bumps on the sides.
+// Zones are proper car-panel polygons, not plain rectangles.
+
+// Polygon point strings for each zone (top-down sedan view)
+const ZONE_POLYS: Record<string, string> = {
+  "rear-bumper":      "30,6 170,6 180,22 20,22",
+  "boot-lid":         "20,22 180,22 186,78 14,78",
+  "left-rear-door":   "14,78 46,78 46,165 14,165",
+  "rear-windshield":  "46,78 154,78 156,108 44,108",
+  "right-rear-door":  "186,78 154,78 154,165 186,165",
+  "roof":             "44,108 156,108 156,165 44,165",
+  "left-front-door":  "14,165 46,165 46,230 14,230",
+  "windshield":       "44,165 156,165 150,195 50,195",
+  "right-front-door": "186,165 154,165 154,230 186,230",
+  "left-fender":      "14,230 46,230 44,308 22,308",
+  "hood":             "50,195 150,195 156,308 44,308",
+  "right-fender":     "186,230 154,230 156,308 178,308",
+  "front-bumper":     "22,308 178,308 170,330 30,330",
+};
+
+// [x, y, fontSize] for each zone label
+const ZONE_LABEL_POS: Record<string, [number, number, number]> = {
+  "rear-bumper":      [100, 15,  5.5],
+  "boot-lid":         [100, 50,  6.5],
+  "left-rear-door":   [30,  118, 5.0],
+  "rear-windshield":  [100, 93,  6.0],
+  "right-rear-door":  [170, 118, 5.0],
+  "roof":             [100, 137, 7.0],
+  "left-front-door":  [30,  197, 5.0],
+  "windshield":       [100, 178, 6.0],
+  "right-front-door": [170, 197, 5.0],
+  "left-fender":      [30,  268, 5.0],
+  "hood":             [100, 252, 7.0],
+  "right-fender":     [170, 268, 5.0],
+  "front-bumper":     [100, 319, 5.5],
+};
+
+// Zones that represent glass (get a blue glass tint when unselected)
+const GLASS_ZONES = new Set(["windshield", "rear-windshield"]);
 
 function CarSvgDiagram({
   selectedZoneId,
@@ -254,49 +296,68 @@ function CarSvgDiagram({
   selectedZoneId: string | null;
   onZonePress: (id: string) => void;
 }) {
+  const { width } = useWindowDimensions();
+  // Explicit pixel dimensions — fixes the "0 height" collapse on React Native
+  const svgW = Math.min(width - 32, 340);
+  const svgH = Math.round(svgW * 340 / 200);
+
   return (
-    <Svg width="100%" viewBox="0 0 200 340" style={{ maxHeight: 280 }}>
-      {/* Car body outline */}
+    <Svg width={svgW} height={svgH} viewBox="0 0 200 340">
+
+      {/* ── Realistic car body outline with wheel-arch bumps ── */}
       <Path
-        d="M22 15 Q22 4 34 4 L166 4 Q178 4 178 15 L178 320 Q178 332 166 332 L34 332 Q22 332 22 320 Z"
-        fill="#f8fafc"
-        stroke="#cbd5e1"
+        d={[
+          "M30,6 C100,2 100,2 170,6",          // rear bumper curve
+          "Q188,8 190,22 L190,76",              // rear-right corner → right side
+          "C196,82 198,91 198,100",             // right rear arch (out)
+          "C198,109 196,118 190,124",           // right rear arch (in)
+          "L190,216",                           // right side, between arches
+          "C196,222 198,231 198,240",           // right front arch (out)
+          "C198,249 196,258 190,264",           // right front arch (in)
+          "L190,314 Q188,328 170,330",          // right side → front-right corner
+          "C100,334 100,334 30,330",            // front bumper curve
+          "Q12,328 10,314 L10,264",             // front-left corner → left side
+          "C4,258 2,249 2,240",                 // left front arch (out)
+          "C2,231 4,222 10,216",               // left front arch (in)
+          "L10,124",                            // left side, between arches
+          "C4,118 2,109 2,100",                 // left rear arch (out)
+          "C2,91 4,82 10,76",                   // left rear arch (in)
+          "L10,22 Q12,8 30,6 Z",               // rear-left corner → close
+        ].join(" ")}
+        fill="#f1f5f9"
+        stroke="#64748b"
         strokeWidth="1.5"
       />
-      {/* Wheel wells */}
-      <Circle cx="18"  cy="100" r="14" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1" />
-      <Circle cx="182" cy="100" r="14" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1" />
-      <Circle cx="18"  cy="240" r="14" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1" />
-      <Circle cx="182" cy="240" r="14" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1" />
 
-      {/* Direction arrow — REAR label */}
-      <SvgText x="100" y="1.5" textAnchor="middle" fontSize="5" fill="#94a3b8">▲ REAR</SvgText>
-
-      {/* Zone rects */}
+      {/* ── Panel zones ── */}
       {DIAGRAM_ZONES.map((zone) => {
+        const pts = ZONE_POLYS[zone.id];
+        if (!pts) return null;
         const isSelected = zone.id === selectedZoneId;
+        const isGlass    = GLASS_ZONES.has(zone.id);
+        const lp         = ZONE_LABEL_POS[zone.id];
+
+        const fillColor   = isSelected ? zone.color : isGlass ? "#bfdbfe" : zone.bg;
+        const strokeColor = isGlass && !isSelected ? "#93c5fd" : zone.color;
+
         return (
           <G key={zone.id} onPress={() => onZonePress(zone.id)}>
-            <Rect
-              x={zone.x}
-              y={zone.y}
-              width={zone.w}
-              height={zone.h}
-              rx={4}
-              fill={isSelected ? zone.color : zone.bg}
-              stroke={zone.color}
-              strokeWidth={isSelected ? 2 : 1}
-              opacity={isSelected ? 1 : 0.85}
+            <Polygon
+              points={pts}
+              fill={fillColor}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2.5 : 1}
+              opacity={isSelected ? 1 : 0.88}
             />
-            {zone.label.split("\n").map((line, i, arr) => (
+            {lp && zone.label.split("\n").map((line, i, arr) => (
               <SvgText
                 key={i}
-                x={zone.x + zone.w / 2}
-                y={zone.y + zone.h / 2 + (i - (arr.length - 1) / 2) * 7}
+                x={lp[0]}
+                y={lp[1] + (i - (arr.length - 1) / 2) * 7}
                 textAnchor="middle"
-                fontSize={zone.w < 60 ? 5.5 : 6.5}
+                fontSize={lp[2]}
                 fontWeight={isSelected ? "700" : "600"}
-                fill={isSelected ? "#fff" : zone.color}
+                fill={isSelected ? "#fff" : isGlass ? "#1e40af" : zone.color}
               >
                 {line}
               </SvgText>
@@ -305,8 +366,30 @@ function CarSvgDiagram({
         );
       })}
 
-      {/* FRONT label */}
-      <SvgText x="100" y="339" textAnchor="middle" fontSize="5" fill="#94a3b8">▼ FRONT</SvgText>
+      {/* ── Structural detail lines ── */}
+      {/* B-pillar (front/rear door split) */}
+      <Path d="M14,165 L46,165"   stroke="#64748b" strokeWidth="1.5" />
+      <Path d="M154,165 L186,165" stroke="#64748b" strokeWidth="1.5" />
+      {/* Hood centre crease */}
+      <Path d="M100,200 L100,305" stroke="#94a3b8" strokeWidth="0.8" strokeDasharray="4,3" />
+      {/* Boot lid centre crease */}
+      <Path d="M100,26 L100,75"   stroke="#94a3b8" strokeWidth="0.8" strokeDasharray="4,3" />
+
+      {/* ── Wheel arches (drawn over panels so they always show) ── */}
+      {/* Tyres */}
+      <Circle cx="12"  cy="100" r="13" fill="#334155" stroke="#1e293b" strokeWidth="1" opacity={0.9} />
+      <Circle cx="188" cy="100" r="13" fill="#334155" stroke="#1e293b" strokeWidth="1" opacity={0.9} />
+      <Circle cx="12"  cy="240" r="13" fill="#334155" stroke="#1e293b" strokeWidth="1" opacity={0.9} />
+      <Circle cx="188" cy="240" r="13" fill="#334155" stroke="#1e293b" strokeWidth="1" opacity={0.9} />
+      {/* Rims */}
+      <Circle cx="12"  cy="100" r="6.5" fill="#64748b" stroke="#475569" strokeWidth="0.8" />
+      <Circle cx="188" cy="100" r="6.5" fill="#64748b" stroke="#475569" strokeWidth="0.8" />
+      <Circle cx="12"  cy="240" r="6.5" fill="#64748b" stroke="#475569" strokeWidth="0.8" />
+      <Circle cx="188" cy="240" r="6.5" fill="#64748b" stroke="#475569" strokeWidth="0.8" />
+
+      {/* ── Direction labels ── */}
+      <SvgText x="100" y="3.5" textAnchor="middle" fontSize="4" fill="#94a3b8" fontWeight="600">▲ REAR</SvgText>
+      <SvgText x="100" y="337" textAnchor="middle" fontSize="4" fill="#94a3b8" fontWeight="600">▼ FRONT</SvgText>
     </Svg>
   );
 }
