@@ -183,6 +183,11 @@ function LineRow({
   const [hoursError, setHoursError] = useState(false);
   const cancellingRef = useRef(false);
 
+  const [editingQty, setEditingQty] = useState(false);
+  const [qtyInput, setQtyInput] = useState("");
+  const [qtyError, setQtyError] = useState(false);
+  const cancellingQtyRef = useRef(false);
+
   function startEditHours() {
     cancellingRef.current = false;
     setHoursInput(String(line.hours ?? ""));
@@ -209,6 +214,34 @@ function LineRow({
     cancellingRef.current = true;
     setEditingHours(false);
     setHoursError(false);
+  }
+
+  function startEditQty() {
+    cancellingQtyRef.current = false;
+    setQtyInput(String(line.quantity ?? ""));
+    setQtyError(false);
+    setEditingQty(true);
+  }
+
+  function commitQty() {
+    if (cancellingQtyRef.current) return;
+    const trimmed = qtyInput.trim();
+    const isValid = /^\d+(\.\d+)?$/.test(trimmed);
+    const parsed = isValid ? Number(trimmed) : NaN;
+    if (!isValid || parsed <= 0) {
+      setQtyError(true);
+      return;
+    }
+    const newTotal = parseFloat((parsed * line.unitPrice).toFixed(2));
+    updateLine(estimateId, line.id, { quantity: parsed, total: newTotal });
+    setEditingQty(false);
+    setQtyError(false);
+  }
+
+  function cancelEditQty() {
+    cancellingQtyRef.current = true;
+    setEditingQty(false);
+    setQtyError(false);
   }
 
   return (
@@ -258,7 +291,7 @@ function LineRow({
                 <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
                   h × {currency}{line.unitPrice.toFixed(2)}/h
                 </Text>
-                <Pressable onPress={cancelEditHours} hitSlop={8} style={{ marginLeft: 4 }}>
+                <Pressable onPressIn={cancelEditHours} hitSlop={8} style={{ marginLeft: 4 }}>
                   <Feather name="x-circle" size={13} color={colors.mutedForeground} />
                 </Pressable>
                 {hoursError && (
@@ -277,9 +310,43 @@ function LineRow({
           </View>
         )}
         {!isLabor && line.quantity !== undefined && (
-          <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
-            Qty {line.quantity} × {currency}{line.unitPrice.toFixed(2)}
-          </Text>
+          <View style={styles.hoursEditRow}>
+            {editingQty ? (
+              <>
+                <TextInput
+                  style={[
+                    styles.hoursInput,
+                    { color: colors.foreground, borderColor: qtyError ? "#dc2626" : colors.border },
+                  ]}
+                  value={qtyInput}
+                  onChangeText={(v) => { setQtyInput(v); setQtyError(false); }}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  selectTextOnFocus
+                  onBlur={commitQty}
+                  onSubmitEditing={commitQty}
+                  returnKeyType="done"
+                />
+                <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
+                  {" × "}{currency}{line.unitPrice.toFixed(2)}
+                </Text>
+                <Pressable onPressIn={cancelEditQty} hitSlop={8} style={{ marginLeft: 4 }}>
+                  <Feather name="x-circle" size={13} color={colors.mutedForeground} />
+                </Pressable>
+                {qtyError && (
+                  <Text style={styles.hoursErrorText}>!</Text>
+                )}
+              </>
+            ) : (
+              <Pressable onPress={startEditQty} style={styles.hoursDisplayBtn}>
+                <Text style={[styles.lineMeta, { color: colors.mutedForeground }]}>
+                  <Text style={[styles.hoursValue, { color: tagColor }]}>Qty {line.quantity}</Text>
+                  {" × "}{currency}{line.unitPrice.toFixed(2)}
+                </Text>
+                <Feather name="edit-2" size={10} color={tagColor} style={{ marginLeft: 4 }} />
+              </Pressable>
+            )}
+          </View>
         )}
         <Text style={[styles.lineTotal, { color: tagColor }]}>
           {currency}{line.total.toFixed(2)}
