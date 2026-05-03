@@ -517,8 +517,8 @@ export default function EstimateDetailScreen() {
   const bottomPad = Platform.OS === "web" ? 24 : insets.bottom;
 
   const estimate = getEstimate(id ?? "");
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photoUris, setPhotoUris] = useState<string[]>([]);
+  const [photoBase64s, setPhotoBase64s] = useState<string[]>([]);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -565,31 +565,39 @@ export default function EstimateDetailScreen() {
   const canApprove  = estimate.status === "review" || (estimate.lines.length > 0 && estimate.status === "inspection_in_progress");
 
   const applyAsset = useCallback((uri: string, base64: string | null) => {
-    setPhotoUri(uri);
-    setPhotoBase64(base64);
+    setPhotoUris((prev) => [...prev, uri]);
+    setPhotoBase64s((prev) => [...prev, base64 ?? ""]);
     setAnalysisError(null);
     if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
     addPhoto(estimate.id, { uri, capturedAt: new Date().toISOString() });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [estimate, updateStatus, addPhoto]);
 
+  const removePhoto = useCallback((index: number) => {
+    setPhotoUris((prev) => prev.filter((_, i) => i !== index));
+    setPhotoBase64s((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   const handleWebFilePick = useCallback(() => {
     if (Platform.OS !== "web") return;
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
+    input.multiple = true;
     input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const objectUrl = URL.createObjectURL(file);
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-        applyAsset(objectUrl, base64);
-      };
-      reader.onerror = () => setAnalysisError("Could not read the selected file.");
-      reader.readAsDataURL(file);
+      const files = input.files ? Array.from(input.files) : [];
+      if (files.length === 0) return;
+      files.forEach((file) => {
+        const objectUrl = URL.createObjectURL(file);
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+          applyAsset(objectUrl, base64);
+        };
+        reader.onerror = () => setAnalysisError("Could not read the selected file.");
+        reader.readAsDataURL(file);
+      });
     };
     input.click();
   }, [applyAsset]);
@@ -626,12 +634,10 @@ export default function EstimateDetailScreen() {
         mediaTypes: ["images"],
         quality: 0.75,
         base64: true,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsMultipleSelection: true,
       });
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        applyAsset(asset.uri, asset.base64 ?? null);
+      if (!result.canceled) {
+        result.assets.forEach((asset) => applyAsset(asset.uri, asset.base64 ?? null));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not open photo library.";
@@ -645,13 +651,14 @@ export default function EstimateDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const apiBase = BASE_URL || "http://localhost:80";
+      const validBase64s = photoBase64s.filter(Boolean);
       const response = await fetch(`${apiBase}/api/estimates/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vehicleInfo: `${estimate.year} ${estimate.make} ${estimate.model} (${estimate.odometer})`,
           damageNotes: estimate.damageNotes,
-          imageBase64: photoBase64 ?? undefined,
+          imagesBase64: validBase64s.length > 0 ? validBase64s : undefined,
         }),
       });
       if (!response.ok) {
@@ -669,7 +676,7 @@ export default function EstimateDetailScreen() {
     } finally {
       setIsAnalysing(false);
     }
-  }, [estimate, photoBase64, setLines, updateStatus]);
+  }, [estimate, photoBase64s, setLines, updateStatus]);
 
   const handleAdvanceStatus = useCallback(() => {
     const next = STATUS_NEXT[estimate.status];
@@ -832,26 +839,29 @@ export default function EstimateDetailScreen() {
               </View>
             </View>
 
-            {photoUri ? (
-              <View style={styles.photoContainer}>
-                <Image source={{ uri: photoUri }} style={styles.photoPreview} contentFit="cover" />
-                <Pressable
-                  onPress={handlePickPhoto}
-                  style={[styles.retakeBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
-                >
-                  <Feather name={Platform.OS === "web" ? "upload" : "refresh-cw"} size={12} color={colors.mutedForeground} />
-                  <Text style={[styles.retakeBtnText, { color: colors.mutedForeground }]}>
-                    {Platform.OS === "web" ? "Replace Photo" : t.retakePhoto}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : Platform.OS === "web" ? (
+            {photoUris.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbnailStrip} contentContainerStyle={styles.thumbnailStripContent}>
+                {photoUris.map((uri, index) => (
+                  <View key={index} style={styles.thumbnailWrapper}>
+                    <Image source={{ uri }} style={styles.thumbnail} contentFit="cover" />
+                    <Pressable
+                      onPress={() => removePhoto(index)}
+                      style={[styles.thumbnailRemoveBtn, { backgroundColor: "rgba(0,0,0,0.6)" }]}
+                    >
+                      <Feather name="x" size={10} color="#fff" />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {Platform.OS === "web" ? (
               <Pressable
                 onPress={handleWebFilePick}
                 style={({ pressed }) => [styles.photoBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
               >
                 <Feather name="upload" size={16} color="#fff" />
-                <Text style={styles.photoBtnText}>Upload Photo</Text>
+                <Text style={styles.photoBtnText}>{photoUris.length > 0 ? "Add More Photos" : "Upload Photos"}</Text>
               </Pressable>
             ) : (
               <View style={styles.photoActions}>
@@ -881,10 +891,10 @@ export default function EstimateDetailScreen() {
 
             <Pressable
               onPress={handleAnalyse}
-              disabled={isAnalysing}
+              disabled={isAnalysing || photoBase64s.filter(Boolean).length === 0}
               style={({ pressed }) => [
                 styles.analyseBtn,
-                { backgroundColor: isAnalysing ? "#94a3b8" : "#1d4ed8", opacity: pressed ? 0.85 : 1 },
+                { backgroundColor: (isAnalysing || photoBase64s.filter(Boolean).length === 0) ? "#94a3b8" : "#1d4ed8", opacity: pressed ? 0.85 : 1 },
               ]}
             >
               {isAnalysing ? (
@@ -1055,10 +1065,11 @@ const styles = StyleSheet.create({
   aiPoweredBadge:{ backgroundColor: "#dbeafe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 2 },
   aiPoweredText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#2563eb" },
 
-  photoContainer:{ gap: 8 },
-  photoPreview:  { width: "100%", height: 200, borderRadius: 10 },
-  retakeBtn:     { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
-  retakeBtnText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  thumbnailStrip:        { marginBottom: 4 },
+  thumbnailStripContent: { gap: 8, paddingVertical: 4 },
+  thumbnailWrapper:      { width: 80, height: 80, borderRadius: 8, overflow: "hidden", position: "relative" },
+  thumbnail:             { width: 80, height: 80 },
+  thumbnailRemoveBtn:    { position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
 
   photoActions:  { flexDirection: "row", gap: 10 },
   photoBtn:      { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 10 },

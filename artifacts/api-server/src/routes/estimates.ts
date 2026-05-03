@@ -11,7 +11,7 @@ const openai = new OpenAI({
 interface AnalyzeRequestBody {
   vehicleInfo: string;
   damageNotes: string;
-  imageBase64?: string;
+  imagesBase64?: string[];
 }
 
 const SCHEMA_DESCRIPTION = `Return a JSON array of repair estimate lines. Each element must follow this exact shape:
@@ -43,7 +43,7 @@ Include:
 Return ONLY the JSON array — no markdown, no commentary.`;
 
 router.post("/estimates/analyze", async (req, res) => {
-  const { vehicleInfo, damageNotes, imageBase64 } = req.body as AnalyzeRequestBody;
+  const { vehicleInfo, damageNotes, imagesBase64 } = req.body as AnalyzeRequestBody;
 
   if (!vehicleInfo || !damageNotes) {
     res.status(400).json({ error: "vehicleInfo and damageNotes are required" });
@@ -54,15 +54,17 @@ router.post("/estimates/analyze", async (req, res) => {
 Your job is to produce detailed, accurate repair estimates based on vehicle damage photos and notes.
 Always respond with ONLY a valid JSON array of estimate lines. No preamble, no explanation, no markdown.`;
 
-  const userContent: OpenAI.ChatCompletionMessageParam["content"] = imageBase64
+  const validImages = (imagesBase64 ?? []).filter(Boolean);
+
+  const userContent: OpenAI.ChatCompletionMessageParam["content"] = validImages.length > 0
     ? [
+        ...validImages.map((b64) => ({
+          type: "image_url" as const,
+          image_url: { url: `data:image/jpeg;base64,${b64}`, detail: "high" as const },
+        })),
         {
-          type: "image_url",
-          image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: "high" },
-        },
-        {
-          type: "text",
-          text: `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nAnalyse the damage visible in the photo combined with the notes above.\n\n${SCHEMA_DESCRIPTION}`,
+          type: "text" as const,
+          text: `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nAnalyse the damage visible in the ${validImages.length > 1 ? `${validImages.length} photos` : "photo"} combined with the notes above.\n\n${SCHEMA_DESCRIPTION}`,
         },
       ]
     : `Vehicle: ${vehicleInfo}\n\nDMS Damage Notes: ${damageNotes}\n\nBased on the damage description, generate a detailed repair estimate.\n\n${SCHEMA_DESCRIPTION}`;
