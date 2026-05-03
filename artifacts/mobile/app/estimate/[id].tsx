@@ -549,6 +549,7 @@ export default function EstimateDetailScreen() {
   const partsTotal    = partLines.reduce((s, l) => s + l.total, 0);
   const materialsTotal= materialLines.reduce((s, l) => s + l.total, 0);
   const grandTotal    = laborTotal + partsTotal + materialsTotal;
+  const selectedPhotoCount = photoBase64s.filter(Boolean).length;
 
   // Group labor lines by category
   const laborByCategory = ALL_LABOR_CATEGORIES.reduce<Record<LaborCategory, EstimateLine[]>>(
@@ -891,10 +892,10 @@ export default function EstimateDetailScreen() {
 
             <Pressable
               onPress={handleAnalyse}
-              disabled={isAnalysing || photoBase64s.filter(Boolean).length === 0}
+              disabled={isAnalysing || selectedPhotoCount === 0}
               style={({ pressed }) => [
                 styles.analyseBtn,
-                { backgroundColor: (isAnalysing || photoBase64s.filter(Boolean).length === 0) ? "#94a3b8" : "#1d4ed8", opacity: pressed ? 0.85 : 1 },
+                { backgroundColor: (isAnalysing || selectedPhotoCount === 0) ? "#94a3b8" : "#1d4ed8", opacity: pressed ? 0.85 : 1 },
               ]}
             >
               {isAnalysing ? (
@@ -907,6 +908,7 @@ export default function EstimateDetailScreen() {
                   <Text style={styles.analyseBtnIcon}>✦</Text>
                   <Text style={styles.analyseBtnText}>
                     {estimate.lines.length > 0 ? "Regenerate with AI" : t.aiDamageAnalysis}
+                    {selectedPhotoCount >= 1 ? ` (${selectedPhotoCount} ${selectedPhotoCount === 1 ? "photo" : "photos"})` : ""}
                   </Text>
                 </>
               )}
