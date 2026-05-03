@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import { CarPartsDiagram, useVinDecoder } from "@/components/CarPartsDiagram";
 import type { EstimateLine, EstimateStatus, LaborCategory } from "@/context/EstimatesContext";
 import { useEstimates } from "@/context/EstimatesContext";
 import { useLang } from "@/context/LanguageContext";
@@ -210,19 +211,29 @@ function LineRow({ line, onRemove, currency }: { line: EstimateLine; onRemove: (
   );
 }
 
-type AddMode = "manual" | "package";
+type AddMode = "manual" | "package" | "diagram";
 
 function AddLineSheet({
   visible,
   onClose,
   onAddManual,
   onAddPackage,
+  onAddDiagram,
+  vehicle,
+  make,
+  model,
+  year,
   currency,
 }: {
   visible: boolean;
   onClose: () => void;
   onAddManual: (line: Omit<EstimateLine, "id">) => void;
   onAddPackage: (pkg: PackageDef) => void;
+  onAddDiagram: (line: Omit<EstimateLine, "id">) => void;
+  vehicle: string;
+  make: string;
+  model: string;
+  year: string;
   currency: string;
 }) {
   const colors = useColors();
@@ -293,20 +304,37 @@ function AddLineSheet({
 
             {/* Mode tab */}
             <View style={[styles.modeTabs, { backgroundColor: colors.secondary }]}>
-              {(["manual","package"] as AddMode[]).map((m) => (
+              {([
+                { id: "manual",  icon: "edit-3", label: "Manual" },
+                { id: "package", icon: "layers",  label: "Package" },
+                { id: "diagram", icon: "grid",    label: "Car Parts" },
+              ] as { id: AddMode; icon: string; label: string }[]).map(({ id: m, icon, label }) => (
                 <Pressable
                   key={m}
                   onPress={() => setMode(m)}
-                  style={[styles.modeTab, mode === m && [styles.modeTabActive, { backgroundColor: colors.primary }]]}
+                  style={[styles.modeTab, mode === m && [styles.modeTabActive, { backgroundColor: m === "diagram" ? "#7c3aed" : colors.primary }]]}
                 >
-                  <Feather name={m === "manual" ? "edit-3" : "layers"} size={13} color={mode === m ? "#fff" : colors.mutedForeground} />
+                  <Feather name={icon as any} size={13} color={mode === m ? "#fff" : colors.mutedForeground} />
                   <Text style={[styles.modeTabText, { color: mode === m ? "#fff" : colors.mutedForeground }]}>
-                    {m === "manual" ? "Manual Line" : "Package"}
+                    {label}
                   </Text>
                 </Pressable>
               ))}
             </View>
 
+            {mode === "diagram" && (
+              <View style={{ height: 530 }}>
+                <CarPartsDiagram
+                  vehicle={vehicle}
+                  make={make}
+                  model={model}
+                  year={year}
+                  currency={currency}
+                  onAddPart={(line) => { onAddDiagram(line); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}
+                />
+              </View>
+            )}
+            {mode !== "diagram" && (
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
               {mode === "manual" ? (
                 <View style={styles.manualForm}>
@@ -470,7 +498,9 @@ function AddLineSheet({
                 </View>
               )}
             </ScrollView>
+            )}
           </Pressable>
+
         </KeyboardAvoidingView>
       </Pressable>
     </Modal>
@@ -492,6 +522,10 @@ export default function EstimateDetailScreen() {
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const { decode: decodeVin, loading: vinLoading, error: vinError, vinInfo, clear: clearVin } = useVinDecoder();
+  const [vinInput, setVinInput] = useState("");
+  const [showVinInput, setShowVinInput] = useState(false);
 
   if (!estimate) {
     return (
@@ -654,6 +688,11 @@ export default function EstimateDetailScreen() {
     setShowAddModal(false);
   }, [estimate.id, addLine]);
 
+  const handleAddDiagram = useCallback((line: Omit<EstimateLine, "id">) => {
+    addLine(estimate.id, line);
+    // intentionally keep modal open so user can add multiple parts
+  }, [estimate.id, addLine]);
+
   const handleAddPackage = useCallback((pkg: PackageDef) => {
     pkg.lines.forEach((l) => addLine(estimate.id, l));
     setShowAddModal(false);
@@ -676,7 +715,10 @@ export default function EstimateDetailScreen() {
 
         {/* Vehicle card */}
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.vehicle}</Text>
+          <View style={styles.sectionHeader}>
+            <Feather name="truck" size={14} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.vehicle}</Text>
+          </View>
           <View style={styles.vehicleGrid}>
             {[
               { label: t.make,  value: estimate.make },
@@ -691,6 +733,82 @@ export default function EstimateDetailScreen() {
                 <Text style={[styles.vehicleCellValue, { color: colors.foreground }]}>{value}</Text>
               </View>
             ))}
+          </View>
+
+          {/* VIN Decoder */}
+          <View style={[styles.vinSection, { borderTopColor: colors.border }]}>
+            {!showVinInput && !vinInfo && (
+              <Pressable
+                onPress={() => setShowVinInput(true)}
+                style={[styles.vinTrigger, { backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }]}
+              >
+                <Feather name="search" size={13} color="#1d4ed8" />
+                <Text style={styles.vinTriggerText}>VIN Lookup — link parts to this vehicle</Text>
+                <Feather name="chevron-right" size={13} color="#93c5fd" />
+              </Pressable>
+            )}
+
+            {showVinInput && (
+              <View style={styles.vinInputRow}>
+                <TextInput
+                  value={vinInput}
+                  onChangeText={(t) => setVinInput(t.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ""))}
+                  placeholder="Enter 17-char VIN (e.g. 1HGCM82633A004352)"
+                  placeholderTextColor={colors.mutedForeground}
+                  maxLength={17}
+                  autoCapitalize="characters"
+                  style={[styles.vinInput, { backgroundColor: colors.secondary, borderColor: vinError ? "#dc2626" : colors.border, color: colors.foreground }]}
+                />
+                <Pressable
+                  onPress={() => decodeVin(vinInput)}
+                  disabled={vinLoading}
+                  style={[styles.vinDecodeBtn, { backgroundColor: vinLoading ? "#94a3b8" : "#1d4ed8" }]}
+                >
+                  {vinLoading
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Feather name="search" size={14} color="#fff" />}
+                </Pressable>
+                <Pressable
+                  onPress={() => { setShowVinInput(false); setVinInput(""); clearVin(); }}
+                  style={styles.vinCancelBtn}
+                  hitSlop={8}
+                >
+                  <Feather name="x" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+            )}
+
+            {vinError && (
+              <Text style={styles.vinError}>{vinError}</Text>
+            )}
+
+            {vinInfo && (
+              <View style={[styles.vinResult, { backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }]}>
+                <View style={styles.vinResultHeader}>
+                  <Feather name="check-circle" size={13} color="#1d4ed8" />
+                  <Text style={styles.vinResultTitle}>
+                    VIN Decoded — {vinInfo.year} {vinInfo.make} {vinInfo.model}
+                    {vinInfo.trim ? ` · ${vinInfo.trim}` : ""}
+                  </Text>
+                  <Pressable onPress={() => { clearVin(); setShowVinInput(false); }} hitSlop={8}>
+                    <Feather name="x" size={13} color="#93c5fd" />
+                  </Pressable>
+                </View>
+                <View style={styles.vinResultGrid}>
+                  {[
+                    { label: "Body",   value: vinInfo.bodyClass || "—" },
+                    { label: "Fuel",   value: vinInfo.fuelType || "—" },
+                    { label: "Engine", value: vinInfo.engineSize || "—" },
+                    { label: "Drive",  value: vinInfo.driveType || "—" },
+                  ].map(({ label, value }) => (
+                    <View key={label} style={styles.vehicleCell}>
+                      <Text style={[styles.vehicleCellLabel, { color: "#93c5fd" }]}>{label}</Text>
+                      <Text style={[styles.vehicleCellValue, { color: "#1e40af" }]}>{value}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
@@ -901,6 +1019,11 @@ export default function EstimateDetailScreen() {
         onClose={() => setShowAddModal(false)}
         onAddManual={handleAddManual}
         onAddPackage={handleAddPackage}
+        onAddDiagram={handleAddDiagram}
+        vehicle={estimate.vehicle}
+        make={estimate.make}
+        model={estimate.model}
+        year={estimate.year}
         currency={currency}
       />
     </View>
@@ -1036,4 +1159,17 @@ const styles = StyleSheet.create({
 
   addPkgBtn:     { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, margin: 12, paddingVertical: 11, borderRadius: 10 },
   addPkgBtnText: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+
+  vinSection:      { borderTopWidth: 1, paddingTop: 10, gap: 8 },
+  vinTrigger:      { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
+  vinTriggerText:  { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#1d4ed8" },
+  vinInputRow:     { flexDirection: "row", alignItems: "center", gap: 8 },
+  vinInput:        { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_500Medium", letterSpacing: 1 },
+  vinDecodeBtn:    { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  vinCancelBtn:    { padding: 4 },
+  vinError:        { fontSize: 11, fontFamily: "Inter_400Regular", color: "#dc2626", paddingHorizontal: 2 },
+  vinResult:       { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  vinResultHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  vinResultTitle:  { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#1d4ed8" },
+  vinResultGrid:   { flexDirection: "row", flexWrap: "wrap" },
 });
