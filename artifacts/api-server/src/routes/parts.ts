@@ -1597,19 +1597,28 @@ router.post("/parts/rfq", async (req, res) => {
   }
 });
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 router.get("/parts/rfq/:token/form", async (req, res) => {
   try {
     const [rfq] = await db.select().from(partsRfqTable).where(eq(partsRfqTable.token, req.params.token));
     if (!rfq) { res.status(404).send("<h1>RFQ not found or expired</h1>"); return; }
     const items = await db.select().from(partsRfqItemsTable).where(eq(partsRfqItemsTable.rfqId, rfq.id));
-    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RFQ ${rfq.rfqNumber}</title>
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RFQ ${escapeHtml(rfq.rfqNumber)}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:16px;color:#1e293b}h1{color:#7c3aed}h2{color:#475569;font-size:15px;font-weight:600;margin-top:24px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#f1f5f9;padding:10px 12px;text-align:left;font-size:13px;color:#475569;border:1px solid #e2e8f0}td{padding:10px 12px;border:1px solid #e2e8f0;font-size:14px}input[type=number],input[type=text]{width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box}button{background:#7c3aed;color:#fff;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:20px}button:hover{background:#6d28d9}.badge{display:inline-block;background:#ede9fe;color:#7c3aed;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}.meta{color:#64748b;font-size:13px;margin-top:4px}.success{background:#dcfce7;color:#16a34a;padding:20px;border-radius:10px;text-align:center;font-size:16px;font-weight:600;display:none}input[name=supplierName]{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:8px;box-sizing:border-box}label{display:block;font-size:13px;color:#64748b;margin-bottom:4px;font-weight:500}</style></head>
 <body>
 <h1>📋 Request for Quotation</h1>
-<span class="badge">${rfq.rfqNumber}</span>
-${rfq.subject ? `<p style="margin-top:12px;font-size:16px;font-weight:600">${rfq.subject}</p>` : ""}
+<span class="badge">${escapeHtml(rfq.rfqNumber)}</span>
+${rfq.subject ? `<p style="margin-top:12px;font-size:16px;font-weight:600">${escapeHtml(rfq.subject)}</p>` : ""}
 ${rfq.dueDate ? `<p class="meta">⏰ Response required by: <strong>${new Date(rfq.dueDate).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</strong></p>` : ""}
-${rfq.notes ? `<p class="meta">📝 ${rfq.notes}</p>` : ""}
+${rfq.notes ? `<p class="meta">📝 ${escapeHtml(rfq.notes)}</p>` : ""}
 
 <div id="form-area">
 <h2>Your Company</h2>
@@ -1626,10 +1635,10 @@ ${rfq.notes ? `<p class="meta">📝 ${rfq.notes}</p>` : ""}
 <tbody>
 ${items.map((item, idx) => `<tr>
   <td>${idx + 1}</td>
-  <td>${item.partNumber ?? "—"}</td>
-  <td>${item.partName}${item.description ? `<br><small style="color:#64748b">${item.description}</small>` : ""}</td>
+  <td>${item.partNumber != null ? escapeHtml(item.partNumber) : "—"}</td>
+  <td>${escapeHtml(item.partName)}${item.description ? `<br><small style="color:#64748b">${escapeHtml(item.description)}</small>` : ""}</td>
   <td>${item.qtyRequired}</td>
-  <td>${item.unitOfMeasure ?? "EA"}</td>
+  <td>${item.unitOfMeasure != null ? escapeHtml(item.unitOfMeasure) : "EA"}</td>
   <td><input type="number" id="price_${item.id}" min="0" step="0.01" placeholder="0.00"></td>
   <td><input type="number" id="lead_${item.id}" min="0" step="1" placeholder="7"></td>
   <td><select id="avail_${item.id}"><option value="yes">Yes</option><option value="partial">Partial</option><option value="no">No</option></select></td>
