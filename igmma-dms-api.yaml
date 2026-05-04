@@ -1,0 +1,2414 @@
+openapi: 3.1.0
+info:
+  title: IGMMA DMS API
+  version: 1.0.0
+  description: |
+    Complete REST API for the IGMMA Dealer Management System.
+
+    ## Authentication
+    Most endpoints require the `x-yard-user-id` header containing the integer user ID
+    obtained from `POST /api/yard/auth/login`.
+
+    ## Base URL
+    All paths below are relative to `/api` (e.g. `https://your-domain.replit.app/api`).
+
+servers:
+  - url: /api
+    description: Production (relative)
+
+security:
+  - yardUserId: []
+
+components:
+  securitySchemes:
+    yardUserId:
+      type: apiKey
+      in: header
+      name: x-yard-user-id
+      description: Integer user ID returned by the login endpoint
+
+  schemas:
+
+    # ── Common ────────────────────────────────────────────────────────────────
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    LoginBody:
+      type: object
+      properties:
+        username: { type: string }
+        password: { type: string }
+      required: [username, password]
+
+    YardUser:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        name: { type: string }
+        role:
+          type: string
+          enum: [yard_manager, yard_operator, admin]
+        locationId: { type: integer, nullable: true }
+      required: [id, username, name, role]
+
+    # ── Vehicles ──────────────────────────────────────────────────────────────
+    YardVehicle:
+      type: object
+      properties:
+        id: { type: integer }
+        stockNumber: { type: string }
+        make: { type: string }
+        model: { type: string }
+        year: { type: integer }
+        color: { type: string }
+        vin: { type: string }
+        status:
+          type: string
+          enum: [available, in_transit, pdi_pending, sold]
+        locationId: { type: integer, nullable: true }
+        locationName: { type: string, nullable: true }
+        spotCode: { type: string, nullable: true }
+        mileage: { type: integer, nullable: true }
+        price: { type: number, nullable: true }
+        inspectionIntervalDays: { type: integer, nullable: true }
+        createdAt: { type: string }
+      required: [id, stockNumber, make, model, year, color, vin, status]
+
+    CreateVehicleBody:
+      type: object
+      properties:
+        stockNumber: { type: string }
+        make: { type: string }
+        model: { type: string }
+        year: { type: integer }
+        color: { type: string }
+        vin: { type: string }
+        status: { type: string, enum: [available, in_transit, pdi_pending, sold] }
+        locationId: { type: integer }
+        mileage: { type: integer }
+        price: { type: number }
+        inspectionIntervalDays: { type: integer }
+      required: [stockNumber, make, model, year, color, vin]
+
+    UpdateVehicleBody:
+      type: object
+      properties:
+        status: { type: string, enum: [available, in_transit, pdi_pending, sold] }
+        locationId: { type: integer, nullable: true }
+        mileage: { type: integer }
+        price: { type: number }
+        color: { type: string }
+        inspectionIntervalDays: { type: integer }
+
+    VehicleList:
+      type: object
+      properties:
+        vehicles:
+          type: array
+          items: { $ref: "#/components/schemas/YardVehicle" }
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+      required: [vehicles, total, page, limit]
+
+    # ── Inspections ───────────────────────────────────────────────────────────
+    YardInspection:
+      type: object
+      properties:
+        id: { type: integer }
+        inspectionNumber: { type: string }
+        vehicleId: { type: integer }
+        vehicleName: { type: string }
+        stockVin: { type: string }
+        status: { type: string, enum: [queued, in-progress, finished] }
+        type: { type: string }
+        locationId: { type: integer, nullable: true }
+        locationName: { type: string, nullable: true }
+        assignedTo: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        bodyDamage: { type: string, nullable: true }
+        fuelPercentage: { type: integer, nullable: true }
+        createdAt: { type: string }
+        completedAt: { type: string, nullable: true }
+      required: [id, inspectionNumber, vehicleId, vehicleName, status, type]
+
+    CreateInspectionBody:
+      type: object
+      properties:
+        vehicleId: { type: integer }
+        type:
+          type: string
+          enum: [pre-inspection, secondary, final-quality, new-arrival, used-arrival, periodic-fluid, periodic-damage, start-and-run]
+        assignedTo: { type: string }
+        notes: { type: string }
+      required: [vehicleId, type]
+
+    UpdateInspectionBody:
+      type: object
+      properties:
+        status: { type: string, enum: [queued, in-progress, finished] }
+        notes: { type: string }
+        bodyDamage: { type: string }
+        fuelPercentage: { type: integer }
+        completedAt: { type: string }
+        assignedTo: { type: string }
+
+    InspectionList:
+      type: object
+      properties:
+        inspections:
+          type: array
+          items: { $ref: "#/components/schemas/YardInspection" }
+        total: { type: integer }
+      required: [inspections, total]
+
+    GenerateInspectionsBody:
+      type: object
+      properties:
+        intervalDays: { type: integer, description: "Include vehicles overdue or due within this many days" }
+        autoAssign: { type: boolean, default: true }
+        inspectionType:
+          type: string
+          enum: [periodic-fluid, periodic-damage, start-and-run]
+      required: [intervalDays]
+
+    GenerateInspectionsResponse:
+      type: object
+      properties:
+        created: { type: integer }
+        assigned: { type: integer }
+        skipped: { type: integer }
+      required: [created, assigned, skipped]
+
+    # ── Locations ─────────────────────────────────────────────────────────────
+    YardLocation:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string, enum: [DEALERSHIP_LOT, YARD, PARKING_AREA, PORT] }
+        city: { type: string }
+        address: { type: string, nullable: true }
+        totalCapacity: { type: integer }
+        occupied: { type: integer }
+        arrived: { type: integer }
+        inYard: { type: integer }
+        readyPDI: { type: integer }
+        readySale: { type: integer }
+        autoChecks: { type: boolean }
+      required: [id, name, type, city, totalCapacity, occupied]
+
+    MovementEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        locationId: { type: integer }
+        locationName: { type: string }
+        vehicleId: { type: integer, nullable: true }
+        vehicleName: { type: string, nullable: true }
+        action: { type: string }
+        actor: { type: string }
+        createdAt: { type: string }
+      required: [id, locationId, locationName, action, actor, createdAt]
+
+    # ── Transfers ─────────────────────────────────────────────────────────────
+    YardTransfer:
+      type: object
+      properties:
+        id: { type: integer }
+        transferNumber: { type: string }
+        vehicleId: { type: integer }
+        fromLocationId: { type: integer }
+        toLocationId: { type: integer }
+        fromLocationName: { type: string }
+        toLocationName: { type: string }
+        status: { type: string, enum: [pending, in_transit, completed, cancelled] }
+        requestedBy: { type: string }
+        notes: { type: string, nullable: true }
+        scheduledAt: { type: string, nullable: true }
+        completedAt: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, transferNumber, vehicleId, fromLocationId, toLocationId, status]
+
+    # ── Technicians ───────────────────────────────────────────────────────────
+    Technician:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string }
+        avatar: { type: string }
+        status: { type: string, enum: [active, idle, break, absent] }
+        currentJobId: { type: string, nullable: true }
+        totalHoursToday: { type: number }
+        efficiency: { type: integer }
+        weekHoursBooked: { type: number }
+        monthHoursBooked: { type: number }
+        specializations:
+          type: array
+          items: { type: string }
+        completedJobs: { type: integer }
+      required: [id, name, role, avatar, status]
+
+    # ── Jobs ──────────────────────────────────────────────────────────────────
+    Job:
+      type: object
+      properties:
+        id: { type: string }
+        estimateNumber: { type: string }
+        licensePlate: { type: string }
+        vehicleYear: { type: string }
+        vehicleMake: { type: string }
+        vehicleModel: { type: string }
+        serviceAdvisor: { type: string }
+        totalEstimatedHours: { type: string }
+        workedHours: { type: string }
+        customerNotes: { type: string, nullable: true }
+        odometer: { type: integer, nullable: true }
+        appointmentDate: { type: string, nullable: true }
+        status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+        progress: { type: integer, description: "Percentage 0-100" }
+        assignedTechnicianId: { type: string, nullable: true }
+        currentStageId: { type: string, nullable: true }
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/JobTask" }
+      required: [id, estimateNumber, status, progress]
+
+    JobTask:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        type: { type: string }
+        laborType: { type: string }
+        status: { type: string, enum: [pending, in_progress, done] }
+        estimatedHours: { type: number }
+        workedHours: { type: number }
+        description: { type: string, nullable: true }
+        technician: { type: string, nullable: true }
+        clockedIn: { type: boolean }
+        elapsedSeconds: { type: integer }
+        parts:
+          type: array
+          items: { $ref: "#/components/schemas/JobPart" }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/JobNote" }
+      required: [id, title, status]
+
+    JobPart:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        partNumber: { type: string }
+        quantity: { type: integer }
+        unit: { type: string }
+        status: { type: string, enum: [pending, ordered, received] }
+        price: { type: number }
+        receivedAt: { type: string, nullable: true }
+      required: [id, name, partNumber, quantity, status]
+
+    JobNote:
+      type: object
+      properties:
+        id: { type: string }
+        author: { type: string }
+        text: { type: string }
+        subject: { type: string, nullable: true }
+        timestamp: { type: string }
+      required: [id, author, text, timestamp]
+
+    # ── Parts ─────────────────────────────────────────────────────────────────
+    PartsItem:
+      type: object
+      properties:
+        id: { type: integer }
+        partNumber: { type: string }
+        name: { type: string }
+        category: { type: string }
+        binCode: { type: string, nullable: true }
+        qtyOnHand: { type: integer }
+        minStock: { type: integer }
+        maxStock: { type: integer }
+        unitCost: { type: string }
+        unitSalePrice: { type: string }
+        supplierCode: { type: string, nullable: true }
+        isActive: { type: boolean }
+      required: [id, partNumber, name, category, qtyOnHand, minStock, maxStock, unitCost, unitSalePrice]
+
+    PartsOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        orderNumber: { type: string }
+        supplier: { type: string }
+        status: { type: string, enum: [draft, pending, approved, received, partial, cancelled] }
+        totalAmount: { type: string }
+        notes: { type: string, nullable: true }
+        orderedAt: { type: string, nullable: true }
+        receivedAt: { type: string, nullable: true }
+        createdAt: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PartsOrderItem" }
+      required: [id, orderNumber, supplier, status]
+
+    PartsOrderItem:
+      type: object
+      properties:
+        id: { type: integer }
+        orderId: { type: integer }
+        partNumber: { type: string }
+        partName: { type: string }
+        qtyOrdered: { type: integer }
+        qtyReceived: { type: integer }
+        unitCost: { type: string }
+      required: [id, orderId, partNumber, partName, qtyOrdered]
+
+    PartsSale:
+      type: object
+      properties:
+        id: { type: integer }
+        saleNumber: { type: string }
+        customerName: { type: string, nullable: true }
+        roNumber: { type: string, nullable: true }
+        status: { type: string, enum: [open, paid, returned, cancelled] }
+        totalAmount: { type: string }
+        soldBy: { type: string }
+        createdAt: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              partNumber: { type: string }
+              partName: { type: string }
+              qtySold: { type: integer }
+              unitSalePrice: { type: string }
+      required: [id, saleNumber, status, totalAmount, soldBy]
+
+    PartsRfq:
+      type: object
+      properties:
+        id: { type: integer }
+        rfqNumber: { type: string }
+        subject: { type: string }
+        status: { type: string, enum: [draft, sent, responded, closed] }
+        dueDate: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+        suppliers:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              email: { type: string }
+              token: { type: string }
+              submittedAt: { type: string, nullable: true }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              partNumber: { type: string }
+              partName: { type: string }
+              qtyRequired: { type: integer }
+              description: { type: string, nullable: true }
+      required: [id, rfqNumber, subject, status]
+
+    # ── Estimates ─────────────────────────────────────────────────────────────
+    EstimateLine:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [labor, part, material] }
+        laborCategory:
+          type: string
+          enum: [body, refinish, mechanical, frame, glass, electrical, trim, other]
+          nullable: true
+        description: { type: string }
+        hours: { type: number, nullable: true }
+        quantity: { type: number, nullable: true }
+        unitPrice: { type: number }
+        total: { type: number }
+        operation: { type: string, nullable: true }
+        accountType: { type: string, nullable: true }
+      required: [id, type, description, unitPrice, total]
+
+    DmsAccountType:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        code: { type: string }
+        displayOrder: { type: integer }
+        isActive: { type: boolean }
+      required: [id, name, code, displayOrder, isActive]
+
+    # ── Admin ─────────────────────────────────────────────────────────────────
+    AdminStats:
+      type: object
+      properties:
+        vehicles:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+        inspections:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+        jobs:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+        technicians: { type: integer }
+        users: { type: integer }
+        locations: { type: integer }
+        servicePackages: { type: integer }
+      required: [vehicles, inspections, jobs, technicians, users, locations, servicePackages]
+
+tags:
+  - name: health
+    description: System health
+  - name: auth
+    description: Authentication
+  - name: vehicles
+    description: Vehicle inventory management
+  - name: inspections
+    description: PDI & periodic inspections
+  - name: locations
+    description: Yard locations & movement feed
+  - name: transfers
+    description: Vehicle transfers between locations
+  - name: technicians
+    description: Technician profiles & KPIs
+  - name: jobs
+    description: Service / repair order jobs
+  - name: parts
+    description: Parts inventory, orders, sales, RFQ
+  - name: estimates
+    description: AI-powered damage estimate analysis & DMS submission
+  - name: service-packages
+    description: Service package templates
+  - name: admin
+    description: Admin — users, roles, system monitor (requires admin role)
+
+paths:
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # HEALTH
+  # ════════════════════════════════════════════════════════════════════════════
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # AUTH
+  # ════════════════════════════════════════════════════════════════════════════
+  /yard/auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login — returns user object; store `id` and send as `x-yard-user-id` header
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginBody" }
+            example:
+              username: admin
+              password: admin123
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardUser" }
+        "401":
+          description: Invalid credentials
+
+  /yard/auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout / invalidate session
+      responses:
+        "200":
+          description: Logged out
+
+  /yard/auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get currently authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardUser" }
+        "401":
+          description: Not authenticated
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # VEHICLES
+  # ════════════════════════════════════════════════════════════════════════════
+  /yard/vehicles:
+    get:
+      operationId: listVehicles
+      tags: [vehicles]
+      summary: List vehicle inventory (paginated, filterable)
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Search by make, model, stock #, or VIN
+        - name: status
+          in: query
+          schema: { type: string, enum: [available, in_transit, pdi_pending, sold, all] }
+        - name: locationId
+          in: query
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 15 }
+      responses:
+        "200":
+          description: Vehicle list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleList" }
+    post:
+      operationId: createVehicle
+      tags: [vehicles]
+      summary: Add a new vehicle to inventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVehicleBody" }
+      responses:
+        "201":
+          description: Vehicle created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardVehicle" }
+
+  /yard/vehicles/{vehicleId}:
+    get:
+      operationId: getVehicle
+      tags: [vehicles]
+      summary: Get vehicle detail
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Vehicle detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardVehicle" }
+        "404":
+          description: Not found
+    patch:
+      operationId: updateVehicle
+      tags: [vehicles]
+      summary: Update vehicle fields (status, location, price, mileage, etc.)
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVehicleBody" }
+      responses:
+        "200":
+          description: Updated vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardVehicle" }
+
+  /yard/vehicles/{vehicleId}/inspection-history:
+    get:
+      operationId: getVehicleInspectionHistory
+      tags: [vehicles]
+      summary: Get inspection history for a specific vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Inspection history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inspections:
+                    type: array
+                    items: { $ref: "#/components/schemas/YardInspection" }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # INSPECTIONS
+  # ════════════════════════════════════════════════════════════════════════════
+  /yard/inspections:
+    get:
+      operationId: listInspections
+      tags: [inspections]
+      summary: List PDI inspections (filterable by status, location, page)
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [queued, in-progress, finished, all] }
+        - name: locationId
+          in: query
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 15 }
+      responses:
+        "200":
+          description: Inspection list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InspectionList" }
+    post:
+      operationId: createInspection
+      tags: [inspections]
+      summary: Create a new PDI or periodic inspection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInspectionBody" }
+      responses:
+        "201":
+          description: Created inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardInspection" }
+
+  /yard/inspections/{inspectionId}:
+    patch:
+      operationId: updateInspection
+      tags: [inspections]
+      summary: Update inspection status, notes, fuel level, body damage, assignment
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateInspectionBody" }
+      responses:
+        "200":
+          description: Updated inspection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardInspection" }
+
+  /yard/inspections/generate:
+    post:
+      operationId: generateInspections
+      tags: [inspections]
+      summary: Batch-generate periodic inspections for vehicles due within an interval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateInspectionsBody" }
+      responses:
+        "200":
+          description: Generation result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerateInspectionsResponse" }
+
+  /yard/inspections/auto-assign:
+    post:
+      operationId: autoAssignInspections
+      tags: [inspections]
+      summary: Distribute unassigned queued inspections evenly across available technicians
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inspectionIds:
+                  type: array
+                  items: { type: integer }
+                  description: Optional — defaults to all unassigned queued inspections
+      responses:
+        "200":
+          description: Assignment result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assigned: { type: integer }
+                  total: { type: integer }
+
+  /yard/inspection-recommendations:
+    get:
+      operationId: getInspectionRecommendations
+      tags: [inspections]
+      summary: AI-generated inspection schedule recommendations per vehicle
+      responses:
+        "200":
+          description: Recommendations list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recommendations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        vehicleId: { type: integer }
+                        vehicleName: { type: string }
+                        stockNumber: { type: string }
+                        urgency: { type: string, enum: [overdue, due-soon, ok] }
+                        daysRemaining: { type: integer }
+                        daysSinceArrival: { type: integer }
+                        lastInspectedAt: { type: string, nullable: true }
+                        nextDueDate: { type: string }
+                        aiRecommendation: { type: string }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # LOCATIONS
+  # ════════════════════════════════════════════════════════════════════════════
+  /yard/locations:
+    get:
+      operationId: listLocations
+      tags: [locations]
+      summary: List all yard locations with occupancy stats
+      responses:
+        "200":
+          description: Locations list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/YardLocation" }
+    post:
+      operationId: createLocation
+      tags: [locations]
+      summary: Create a new yard location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                type: { type: string, enum: [DEALERSHIP_LOT, YARD, PARKING_AREA, PORT] }
+                city: { type: string }
+                address: { type: string }
+                totalCapacity: { type: integer }
+              required: [name, type, city, totalCapacity]
+      responses:
+        "201":
+          description: Created location
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardLocation" }
+
+  /yard/locations/{locationId}:
+    get:
+      operationId: getLocation
+      tags: [locations]
+      summary: Get location detail including zones and spots
+      parameters:
+        - name: locationId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Location detail
+
+  /yard/locations/{locationId}/movement:
+    get:
+      operationId: getLocationMovement
+      tags: [locations]
+      summary: Get recent movement feed for a location
+      parameters:
+        - name: locationId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Movement feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MovementEntry" }
+
+  /yard/dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [locations]
+      summary: Global yard dashboard statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalCapacity: { type: integer }
+                  totalOccupied: { type: integer }
+                  readyForPDI: { type: integer }
+                  readyForSale: { type: integer }
+                  expectedInbound: { type: integer }
+                  arrivingToday: { type: integer }
+                  totalLocations: { type: integer }
+                  recentMovements:
+                    type: array
+                    items: { $ref: "#/components/schemas/MovementEntry" }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # TRANSFERS
+  # ════════════════════════════════════════════════════════════════════════════
+  /yard/transfers:
+    get:
+      operationId: listTransfers
+      tags: [transfers]
+      summary: List vehicle transfers between locations
+      responses:
+        "200":
+          description: Transfers list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transfers:
+                    type: array
+                    items: { $ref: "#/components/schemas/YardTransfer" }
+    post:
+      operationId: createTransfer
+      tags: [transfers]
+      summary: Create a vehicle transfer request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vehicleId: { type: integer }
+                fromLocationId: { type: integer }
+                toLocationId: { type: integer }
+                notes: { type: string }
+                scheduledAt: { type: string }
+              required: [vehicleId, fromLocationId, toLocationId]
+      responses:
+        "201":
+          description: Created transfer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardTransfer" }
+
+  /yard/transfers/{transferId}:
+    patch:
+      operationId: updateTransfer
+      tags: [transfers]
+      summary: Update transfer status (pending → in_transit → completed)
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [pending, in_transit, completed, cancelled] }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated transfer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/YardTransfer" }
+
+  /yard/spots/{spotId}:
+    patch:
+      operationId: updateSpot
+      tags: [locations]
+      summary: Assign, release, or reserve a parking spot
+      parameters:
+        - name: spotId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [available, occupied, reserved, disabled] }
+                vehicleId: { type: integer, nullable: true }
+                reservedUntil: { type: string, nullable: true }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated spot
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # TECHNICIANS
+  # ════════════════════════════════════════════════════════════════════════════
+  /technicians:
+    get:
+      operationId: listTechnicians
+      tags: [technicians]
+      summary: List all technicians with live status derived from active jobs
+      responses:
+        "200":
+          description: Technician list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  technicians:
+                    type: array
+                    items: { $ref: "#/components/schemas/Technician" }
+
+  /technicians/me/stats:
+    get:
+      operationId: getTechnicianStats
+      tags: [technicians]
+      summary: KPI stats for a technician (hours tracked, productivity, working pattern)
+      parameters:
+        - name: userCode
+          in: query
+          schema: { type: string }
+          description: Two-letter technician code (e.g. MR). Defaults to MR.
+      responses:
+        "200":
+          description: Technician KPI stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTimeTracked: { type: string, description: "e.g. 12h 30m" }
+                  productivity: { type: integer, description: "Percentage 0-100" }
+                  workingPattern:
+                    type: object
+                    additionalProperties: { type: string, enum: [worked, partial, off] }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOBS (Repair Orders)
+  # ════════════════════════════════════════════════════════════════════════════
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List all service/repair jobs
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, in_progress, completed, cancelled] }
+        - name: technicianId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Jobs list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items: { $ref: "#/components/schemas/Job" }
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new service job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                estimateNumber: { type: string }
+                licensePlate: { type: string }
+                vehicleYear: { type: string }
+                vehicleMake: { type: string }
+                vehicleModel: { type: string }
+                serviceAdvisor: { type: string }
+                totalEstimatedHours: { type: string }
+                customerNotes: { type: string }
+                odometer: { type: integer }
+                appointmentDate: { type: string }
+                assignedTechnicianId: { type: string }
+      responses:
+        "201":
+          description: Created job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+
+  /jobs/odometer:
+    get:
+      operationId: getOdometerReadings
+      tags: [jobs]
+      summary: Get odometer correction history
+      responses:
+        "200":
+          description: Odometer records
+
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get full job detail including tasks, parts, and notes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Job detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "404":
+          description: Not found
+    patch:
+      operationId: patchJob
+      tags: [jobs]
+      summary: Partial update of a job (status, progress, assigned technician, stage, task clock-in)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+                progress: { type: integer }
+                assignedTechnicianId: { type: string }
+                currentStageId: { type: string }
+                taskId: { type: string }
+                clockedIn: { type: boolean }
+                taskStatus: { type: string, enum: [pending, in_progress, done] }
+                workedHours: { type: number }
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+    put:
+      operationId: replaceJob
+      tags: [jobs]
+      summary: Full replacement of a job record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Job" }
+      responses:
+        "200":
+          description: Replaced job
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /jobs/{id}/notes:
+    post:
+      operationId: addJobNote
+      tags: [jobs]
+      summary: Add a note to a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                author: { type: string }
+                text: { type: string }
+                subject: { type: string }
+              required: [author, text]
+      responses:
+        "201":
+          description: Note added
+
+  /jobs/{id}/tasks/{taskId}/notes:
+    post:
+      operationId: addTaskNote
+      tags: [jobs]
+      summary: Add a note to a specific task within a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: taskId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                author: { type: string }
+                text: { type: string }
+              required: [author, text]
+      responses:
+        "201":
+          description: Note added
+
+  /jobs/{id}/odometer:
+    patch:
+      operationId: updateJobOdometer
+      tags: [jobs]
+      summary: Record an odometer correction for a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                odometer: { type: integer }
+                reason: { type: string }
+              required: [odometer]
+      responses:
+        "200":
+          description: Updated
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PARTS
+  # ════════════════════════════════════════════════════════════════════════════
+  /parts/dashboard:
+    get:
+      operationId: getPartsDashboard
+      tags: [parts]
+      summary: Parts dashboard — stock summary, low-stock alerts, pending orders count
+      responses:
+        "200":
+          description: Dashboard data
+
+  /parts/items:
+    get:
+      operationId: listPartsItems
+      tags: [parts]
+      summary: List parts inventory (searchable, filterable by category, low-stock)
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: lowStock
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Parts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PartsItem" }
+    post:
+      operationId: createPartsItem
+      tags: [parts]
+      summary: Add a new part to inventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PartsItem" }
+      responses:
+        "201":
+          description: Created part
+
+  /parts/items/by-number/{partNumber}:
+    get:
+      operationId: getPartByNumber
+      tags: [parts]
+      summary: Look up a part by its part number
+      parameters:
+        - name: partNumber
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Part detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PartsItem" }
+
+  /parts/items/{id}:
+    get:
+      operationId: getPartsItem
+      tags: [parts]
+      summary: Get part detail by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Part detail
+    patch:
+      operationId: updatePartsItem
+      tags: [parts]
+      summary: Update part fields (qty, price, bin, supplier, etc.)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PartsItem" }
+      responses:
+        "200":
+          description: Updated part
+
+  /parts/suggestions:
+    get:
+      operationId: getPartsSuggestions
+      tags: [parts]
+      summary: Get AI reorder suggestions for low-stock items
+      responses:
+        "200":
+          description: Suggestions
+
+  /parts/ai/stock-review:
+    post:
+      operationId: aiStockReview
+      tags: [parts]
+      summary: AI-powered full inventory review with reorder recommendations
+      responses:
+        "200":
+          description: AI stock review report
+
+  # ── Parts Orders ──────────────────────────────────────────────────────────
+  /parts/orders:
+    get:
+      operationId: listPartsOrders
+      tags: [parts]
+      summary: List purchase orders (filterable by status, supplier)
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [draft, pending, approved, received, partial, cancelled] }
+        - name: supplier
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Orders list
+    post:
+      operationId: createPartsOrder
+      tags: [parts]
+      summary: Create a purchase order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                supplier: { type: string }
+                notes: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      partNumber: { type: string }
+                      partName: { type: string }
+                      qtyOrdered: { type: integer }
+                      unitCost: { type: string }
+              required: [supplier, items]
+      responses:
+        "201":
+          description: Created order
+
+  /parts/orders/{id}:
+    get:
+      operationId: getPartsOrder
+      tags: [parts]
+      summary: Get purchase order detail with line items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Order detail
+    patch:
+      operationId: updatePartsOrder
+      tags: [parts]
+      summary: Update order (status, notes)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated order
+
+  /parts/orders/{id}/approve:
+    patch:
+      operationId: approvePartsOrder
+      tags: [parts]
+      summary: Approve a purchase order (moves status from draft/pending → approved)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Approved
+
+  /parts/orders/{id}/receive:
+    post:
+      operationId: receivePartsOrder
+      tags: [parts]
+      summary: Record receipt of items against a purchase order; updates stock quantities
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      orderItemId: { type: integer }
+                      qtyReceived: { type: integer }
+              required: [items]
+      responses:
+        "200":
+          description: Receipt recorded
+
+  /parts/orders/{id}/supplier-return:
+    post:
+      operationId: createSupplierReturn
+      tags: [parts]
+      summary: Create a supplier return for items from a purchase order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Return created
+
+  /parts/supplier-returns:
+    get:
+      operationId: listSupplierReturns
+      tags: [parts]
+      summary: List all supplier returns
+      responses:
+        "200":
+          description: Supplier returns list
+
+  # ── Parts Sales ───────────────────────────────────────────────────────────
+  /parts/sales:
+    get:
+      operationId: listPartsSales
+      tags: [parts]
+      summary: List parts sales (counter sales, RO-linked)
+      responses:
+        "200":
+          description: Sales list
+    post:
+      operationId: createPartsSale
+      tags: [parts]
+      summary: Create a new parts sale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customerName: { type: string }
+                roNumber: { type: string }
+                soldBy: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      partNumber: { type: string }
+                      qtySold: { type: integer }
+                      unitSalePrice: { type: string }
+              required: [soldBy, items]
+      responses:
+        "201":
+          description: Created sale
+
+  /parts/sales/returns:
+    get:
+      operationId: listSalesReturns
+      tags: [parts]
+      summary: List all sales returns / credits
+      responses:
+        "200":
+          description: Returns list
+
+  /parts/sales/{id}:
+    get:
+      operationId: getPartsSale
+      tags: [parts]
+      summary: Get sale detail with line items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Sale detail
+
+  /parts/sales/{id}/payment:
+    post:
+      operationId: recordSalePayment
+      tags: [parts]
+      summary: Record payment for a sale (marks as paid)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [cash, card, transfer] }
+                amount: { type: string }
+              required: [method, amount]
+      responses:
+        "200":
+          description: Payment recorded
+
+  /parts/sales/{id}/return:
+    post:
+      operationId: returnSale
+      tags: [parts]
+      summary: Process a customer return for a sale; restores stock
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      saleItemId: { type: integer }
+                      qtyReturned: { type: integer }
+      responses:
+        "200":
+          description: Return processed
+
+  # ── Parts Transfers ───────────────────────────────────────────────────────
+  /parts/transfers:
+    get:
+      operationId: listPartsTransfers
+      tags: [parts]
+      summary: List inter-branch parts transfers
+      responses:
+        "200":
+          description: Transfers list
+    post:
+      operationId: createPartsTransfer
+      tags: [parts]
+      summary: Create a parts transfer request between branches
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromBranch: { type: string }
+                toBranch: { type: string }
+                requestedBy: { type: string }
+                notes: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      partNumber: { type: string }
+                      partName: { type: string }
+                      qtyRequested: { type: integer }
+      responses:
+        "201":
+          description: Created transfer
+
+  /parts/transfers/{id}:
+    get:
+      operationId: getPartsTransfer
+      tags: [parts]
+      summary: Get parts transfer detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Transfer detail
+    patch:
+      operationId: updatePartsTransfer
+      tags: [parts]
+      summary: Update transfer status (requested → in_transit → completed)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [requested, approved, in_transit, completed, cancelled] }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated transfer
+
+  # ── RO Requests ───────────────────────────────────────────────────────────
+  /parts/ro-requests:
+    get:
+      operationId: listRoRequests
+      tags: [parts]
+      summary: List Repair Order parts requests from service department
+      responses:
+        "200":
+          description: RO requests list
+    post:
+      operationId: createRoRequest
+      tags: [parts]
+      summary: Create a parts request for a Repair Order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                roNumber: { type: string }
+                department: { type: string }
+                requestedBy: { type: string }
+                notes: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      partNumber: { type: string }
+                      partName: { type: string }
+                      qtyRequested: { type: integer }
+                      unitCost: { type: string }
+              required: [roNumber, requestedBy, items]
+      responses:
+        "201":
+          description: Created RO request
+
+  /parts/ro-requests/{id}:
+    get:
+      operationId: getRoRequest
+      tags: [parts]
+      summary: Get RO request detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: RO request detail
+
+  /parts/ro-requests/{id}/issue:
+    post:
+      operationId: issueRoRequest
+      tags: [parts]
+      summary: Issue parts against an RO request (deducts from stock)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Parts issued
+
+  /parts/ro-requests/{id}/smart-issue:
+    post:
+      operationId: smartIssueRoRequest
+      tags: [parts]
+      summary: AI-assisted smart issue — auto-selects best matching parts from stock
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Smart issue result
+
+  # ── Stock Count Sessions ──────────────────────────────────────────────────
+  /parts/count-sessions:
+    get:
+      operationId: listCountSessions
+      tags: [parts]
+      summary: List physical stock count sessions
+      responses:
+        "200":
+          description: Sessions list
+    post:
+      operationId: createCountSession
+      tags: [parts]
+      summary: Start a new physical stock count session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                countedBy: { type: string }
+              required: [name, countedBy]
+      responses:
+        "201":
+          description: Session created
+
+  /parts/count-sessions/{id}:
+    get:
+      operationId: getCountSession
+      tags: [parts]
+      summary: Get count session detail with counted items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Session detail
+
+  /parts/count-sessions/{id}/items:
+    post:
+      operationId: addCountItem
+      tags: [parts]
+      summary: Record a counted quantity for a part in this session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                partNumber: { type: string }
+                qtyCounted: { type: integer }
+              required: [partNumber, qtyCounted]
+      responses:
+        "201":
+          description: Item recorded
+
+  /parts/count-sessions/{id}/complete:
+    patch:
+      operationId: completeCountSession
+      tags: [parts]
+      summary: Complete a count session; applies adjustments to stock quantities
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Session completed and stock adjusted
+
+  # ── RFQ (Request for Quotation) ───────────────────────────────────────────
+  /parts/rfq:
+    get:
+      operationId: listRfqs
+      tags: [parts]
+      summary: List supplier RFQs
+      responses:
+        "200":
+          description: RFQ list
+    post:
+      operationId: createRfq
+      tags: [parts]
+      summary: Create a new supplier RFQ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject: { type: string }
+                dueDate: { type: string }
+                notes: { type: string }
+                suppliers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      email: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      partNumber: { type: string }
+                      partName: { type: string }
+                      qtyRequired: { type: integer }
+                      description: { type: string }
+                      unitOfMeasure: { type: string }
+              required: [subject, suppliers, items]
+      responses:
+        "201":
+          description: RFQ created
+
+  /parts/rfq/{id}/send:
+    patch:
+      operationId: sendRfq
+      tags: [parts]
+      summary: Send the RFQ to all suppliers (emails supplier form links)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: RFQ sent
+
+  /parts/rfq/{token}/form:
+    get:
+      operationId: getRfqSupplierForm
+      tags: [parts]
+      summary: Public supplier quote submission form (HTML page, no auth required)
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+          description: Unique supplier token from the RFQ email link
+      responses:
+        "200":
+          description: HTML form page
+          content:
+            text/html:
+              schema: { type: string }
+
+  /parts/rfq/{token}/submit:
+    post:
+      operationId: submitRfqQuote
+      tags: [parts]
+      summary: Supplier submits their quoted prices via the form token
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      itemId: { type: integer }
+                      unitPrice: { type: string }
+                      notes: { type: string }
+      responses:
+        "200":
+          description: Quote submitted
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # ESTIMATES
+  # ════════════════════════════════════════════════════════════════════════════
+  /estimates/account-types:
+    get:
+      operationId: listAccountTypes
+      tags: [estimates]
+      summary: List available DMS account types (CP, WR, IN, SL, etc.)
+      responses:
+        "200":
+          description: Account types
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DmsAccountType" }
+
+  /estimates/analyze:
+    post:
+      operationId: analyzeEstimate
+      tags: [estimates]
+      summary: AI-powered damage estimate analysis — generates estimate lines from vehicle info and damage notes/images
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vehicleInfo: { type: string }
+                damageNotes: { type: string }
+                imagesBase64:
+                  type: array
+                  items: { type: string }
+              required: [vehicleInfo, damageNotes]
+      responses:
+        "200":
+          description: Generated estimate lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines:
+                    type: array
+                    items: { $ref: "#/components/schemas/EstimateLine" }
+
+  /estimates/submit:
+    post:
+      operationId: submitEstimate
+      tags: [estimates]
+      summary: Submit a finalized estimate to the DMS; returns a DMS Repair Order number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                estimateId: { type: string }
+                estimateNo: { type: string }
+                vehicle: { type: string }
+                customer: { type: string }
+                serviceAdvisor: { type: string }
+                odometer: { type: string }
+                lines:
+                  type: array
+                  items: { $ref: "#/components/schemas/EstimateLine" }
+              required: [estimateId, estimateNo, vehicle, lines]
+      responses:
+        "200":
+          description: DMS submission result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  dmsRoNumber: { type: string, nullable: true }
+                  message: { type: string }
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # SERVICE PACKAGES
+  # ════════════════════════════════════════════════════════════════════════════
+  /service-packages:
+    get:
+      operationId: listServicePackages
+      tags: [service-packages]
+      summary: List all service packages with line counts and active status
+      responses:
+        "200":
+          description: Service packages
+
+  /service-packages/template:
+    get:
+      operationId: getServicePackageTemplate
+      tags: [service-packages]
+      summary: Download a blank Excel template for bulk service package import
+      responses:
+        "200":
+          description: Excel file
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
+  /service-packages/{id}:
+    get:
+      operationId: getServicePackage
+      tags: [service-packages]
+      summary: Get service package detail with all line items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Service package detail
+
+  /service-packages/upload:
+    post:
+      operationId: uploadServicePackages
+      tags: [service-packages]
+      summary: Bulk import service packages via Excel file upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Import result
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # ADMIN  (requires admin role — x-yard-user-id must belong to admin user)
+  # ════════════════════════════════════════════════════════════════════════════
+  /admin/stats:
+    get:
+      operationId: adminStats
+      tags: [admin]
+      summary: System-wide statistics (vehicles, inspections, jobs, technicians, users)
+      parameters:
+        - name: locationId
+          in: query
+          schema: { type: integer }
+          description: Filter by location (omit for all locations)
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStats" }
+
+  /admin/activity:
+    get:
+      operationId: adminActivity
+      tags: [admin]
+      summary: Recent system activity feed (last 20 yard movements)
+      parameters:
+        - name: locationId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Activity feed
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [admin]
+      summary: List all yard system users
+      responses:
+        "200":
+          description: Users list
+    post:
+      operationId: adminCreateUser
+      tags: [admin]
+      summary: Create a new yard user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+                name: { type: string }
+                role: { type: string, enum: [yard_manager, yard_operator, admin] }
+                locationId: { type: integer }
+              required: [username, password, name, role]
+      responses:
+        "201":
+          description: Created user
+
+  /admin/users/{id}:
+    patch:
+      operationId: adminUpdateUser
+      tags: [admin]
+      summary: Update user fields (name, role, location, notifications)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                role: { type: string, enum: [yard_manager, yard_operator, admin] }
+                locationId: { type: integer, nullable: true }
+                notificationsEnabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated user
+    delete:
+      operationId: adminDeleteUser
+      tags: [admin]
+      summary: Delete a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/technicians:
+    get:
+      operationId: adminListTechnicians
+      tags: [admin]
+      summary: List all DMS technicians
+      responses:
+        "200":
+          description: Technicians list
+    post:
+      operationId: adminCreateTechnician
+      tags: [admin]
+      summary: Create a new technician profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
+                role: { type: string }
+                avatar: { type: string }
+                userCode: { type: string }
+                specializations:
+                  type: array
+                  items: { type: string }
+              required: [id, name, role, avatar, userCode]
+      responses:
+        "201":
+          description: Created technician
+
+  /admin/technicians/{id}:
+    patch:
+      operationId: adminUpdateTechnician
+      tags: [admin]
+      summary: Update technician profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Technician" }
+      responses:
+        "200":
+          description: Updated technician
+    delete:
+      operationId: adminDeleteTechnician
+      tags: [admin]
+      summary: Delete a technician profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/roles:
+    get:
+      operationId: adminGetRoles
+      tags: [admin]
+      summary: Get all role permission matrices (Yard roles + DMS mobile roles)
+      responses:
+        "200":
+          description: Role permissions map
+
+  /admin/locations:
+    get:
+      operationId: adminListLocations
+      tags: [admin]
+      summary: List all yard locations (admin view)
+      responses:
+        "200":
+          description: Locations list
+
+  /admin/service-packages:
+    get:
+      operationId: adminListServicePackages
+      tags: [admin]
+      summary: List service packages with line counts
+      responses:
+        "200":
+          description: Service packages
+
+  /admin/account-types:
+    get:
+      operationId: adminListAccountTypes
+      tags: [admin]
+      summary: List DMS account types
+      responses:
+        "200":
+          description: Account types list
+    post:
+      operationId: adminCreateAccountType
+      tags: [admin]
+      summary: Create a new DMS account type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                code: { type: string }
+                displayOrder: { type: integer }
+                isActive: { type: boolean }
+              required: [name, code]
+      responses:
+        "201":
+          description: Created
+
+  /admin/account-types/{id}:
+    patch:
+      operationId: adminUpdateAccountType
+      tags: [admin]
+      summary: Update a DMS account type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DmsAccountType" }
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: adminDeleteAccountType
+      tags: [admin]
+      summary: Delete a DMS account type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/monitor/vehicles:
+    get:
+      operationId: adminMonitorVehicles
+      tags: [admin]
+      summary: Vehicle inventory monitor — list with status breakdown
+      parameters:
+        - name: locationId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Vehicle monitor data
+
+  /admin/monitor/inspections:
+    get:
+      operationId: adminMonitorInspections
+      tags: [admin]
+      summary: Inspection monitor — list with status breakdown
+      parameters:
+        - name: locationId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Inspection monitor data
+
+  /admin/monitor/jobs:
+    get:
+      operationId: adminMonitorJobs
+      tags: [admin]
+      summary: Jobs monitor — list with status breakdown
+      responses:
+        "200":
+          description: Jobs monitor data
+
+  /admin/settings:
+    get:
+      operationId: adminGetSettings
+      tags: [admin]
+      summary: System settings — mobile credentials list, notification config, system info
+      responses:
+        "200":
+          description: System settings

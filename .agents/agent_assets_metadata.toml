@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "kWFSPuCNHIlUd1f0SU6GB"
@@ -18,3 +17,9 @@ id = "mzihuHAwZfZsK9C4ehc0o"
 uri = "file://artifacts/mobile/assets/images/car_hero.png"
 type = "image"
 title = "futuristic car hero image for login screen"
+
+[[outputs]]
+id = "Kj7CsQOyOBMZefaUT7Ccn"
+uri = "file://igmma-dms-api.yaml"
+type = "unspecified"
+title = "IGMMA DMS — OpenAPI Specification"
