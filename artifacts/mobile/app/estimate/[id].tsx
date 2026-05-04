@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
@@ -808,12 +809,14 @@ function AddLineSheet({
 function BulkSetSheet({
   visible,
   sectionLabel,
+  sectionType,
   onClose,
   onApply,
   accountTypes,
 }: {
   visible: boolean;
   sectionLabel: string;
+  sectionType: "labor" | "part" | "material" | null;
   onClose: () => void;
   onApply: (operation: string | null, accountType: string | null) => void;
   accountTypes: { id: number; name: string; code: string }[];
@@ -824,11 +827,27 @@ function BulkSetSheet({
   const resolvedAccountTypes = accountTypes.length > 0 ? accountTypes : DEFAULT_ACCOUNT_TYPES;
 
   React.useEffect(() => {
-    if (visible) {
-      setSelectedOp(null);
-      setSelectedAccType(null);
+    if (visible && sectionType) {
+      AsyncStorage.getItem(`bulk_set_${sectionType}`).then((raw) => {
+        if (raw) {
+          try {
+            const saved = JSON.parse(raw) as { op: string | null; accType: string | null };
+            setSelectedOp(saved.op ?? null);
+            setSelectedAccType(saved.accType ?? null);
+          } catch {
+            setSelectedOp(null);
+            setSelectedAccType(null);
+          }
+        } else {
+          setSelectedOp(null);
+          setSelectedAccType(null);
+        }
+      }).catch(() => {
+        setSelectedOp(null);
+        setSelectedAccType(null);
+      });
     }
-  }, [visible]);
+  }, [visible, sectionType]);
 
   const canApply = selectedOp !== null || selectedAccType !== null;
 
@@ -886,6 +905,12 @@ function BulkSetSheet({
           <Pressable
             onPress={() => {
               if (!canApply) return;
+              if (sectionType) {
+                AsyncStorage.setItem(
+                  `bulk_set_${sectionType}`,
+                  JSON.stringify({ op: selectedOp, accType: selectedAccType }),
+                ).catch(() => {});
+              }
               onApply(selectedOp, selectedAccType);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               onClose();
@@ -1496,6 +1521,7 @@ export default function EstimateDetailScreen() {
       <BulkSetSheet
         visible={bulkSection !== null}
         sectionLabel={bulkSection === "labor" ? "Labour" : bulkSection === "part" ? "Parts" : "Materials"}
+        sectionType={bulkSection}
         onClose={() => setBulkSection(null)}
         onApply={(op, accType) => {
           if (bulkSection) handleBulkApply(bulkSection, op, accType);
