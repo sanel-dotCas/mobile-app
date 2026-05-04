@@ -106,6 +106,9 @@ export default function LoginPage() {
         <p className="text-center text-xs text-muted-foreground mt-4">
           IGMMA Dealer Management System &mdash; Admin Access Only
         </p>
+        <div className="mt-3 bg-muted/60 border border-border rounded-lg px-3 py-2 text-center">
+          <p className="text-xs text-muted-foreground">Demo: <span className="font-mono font-medium text-foreground">admin</span> / <span className="font-mono font-medium text-foreground">admin123</span></p>
+        </div>
       </div>
     </div>
   );

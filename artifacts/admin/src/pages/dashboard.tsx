@@ -15,12 +15,11 @@ interface Stats {
 
 interface Movement {
   id: number;
-  vehicleId: number;
-  type: string;
-  fromLocationId: number | null;
-  toLocationId: number | null;
+  vehicleId: number | null;
+  vehicleName: string | null;
+  action: string;
+  actor: string;
   createdAt: string;
-  notes: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -157,14 +156,16 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-2">
             {activity.slice(0, 15).map((m) => (
-              <div key={m.id} className="flex items-center justify-between py-2 border-b border-border last:border-0" data-testid={`row-activity-${m.id}`}>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                  <span className="text-sm text-foreground capitalize">{m.type?.replace(/-/g, " ") ?? "Movement"}</span>
-                  <span className="text-xs text-muted-foreground">Vehicle #{m.vehicleId}</span>
+              <div key={m.id} className="flex items-start justify-between py-2.5 border-b border-border last:border-0 gap-3" data-testid={`row-activity-${m.id}`}>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 mt-1.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-foreground leading-snug">{m.action}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">by {m.actor}</p>
+                  </div>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(m.createdAt).toLocaleString()}
+                <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                  {new Date(m.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
             ))}
