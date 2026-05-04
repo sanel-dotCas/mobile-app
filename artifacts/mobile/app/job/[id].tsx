@@ -67,7 +67,7 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer } = useJobs();
+  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer, pendingOdometerUpdates } = useJobs();
   const { sortedStages, getStage } = useStages();
   const { role } = useAuth();
   const { t } = useLang();
@@ -201,19 +201,13 @@ export default function JobDetailScreen() {
       updateOdometer(job.id, parsed)
         .then(() => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        })
-        .catch(() => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Alert.alert(
-            "Failed to Save Odometer",
-            "The correction could not be saved to the server. Please check your connection and try again.",
-            [{ text: "OK" }]
-          );
         });
     } else {
       setMileageModalVisible(false);
     }
   };
+
+  const odometerPending = pendingOdometerUpdates.some((u) => u.jobId === job.id);
 
   const TABS: Array<{ key: TabKey; label: string; icon: string }> = [
     { key: "tasks", label: "Tasks", icon: "tool" },
@@ -268,7 +262,15 @@ export default function JobDetailScreen() {
                 <Feather name="activity" size={14} color={colors.primary} />
               </View>
               <View style={metaStyles.textBlock}>
-                <Text style={[metaStyles.label, { color: colors.mutedForeground }]}>Odometer</Text>
+                <View style={styles.odometerLabelRow}>
+                  <Text style={[metaStyles.label, { color: colors.mutedForeground }]}>Odometer</Text>
+                  {odometerPending && (
+                    <View style={styles.pendingSyncBadge}>
+                      <Feather name="clock" size={9} color="#d97706" />
+                      <Text style={styles.pendingSyncText}>Pending Sync</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.odometerRow}>
                   <Text style={[metaStyles.value, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>{job.odometer.toLocaleString()} km</Text>
                   <Pressable onPress={handleOpenMileageModal} style={[styles.takeActionBtn, { borderColor: colors.primary }]}>
@@ -997,6 +999,9 @@ const styles = StyleSheet.create({
   backButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   backButtonText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
 
+  odometerLabelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 1 },
+  pendingSyncBadge: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#fef3c7", borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
+  pendingSyncText: { fontSize: 9, fontFamily: "Inter_600SemiBold", color: "#d97706" },
   odometerRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "nowrap" },
   takeActionBtn: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, flexShrink: 0 },
   takeActionBtnText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },

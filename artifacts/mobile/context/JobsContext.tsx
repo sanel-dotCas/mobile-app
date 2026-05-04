@@ -107,6 +107,11 @@ interface Notification {
   jobId?: string; stageId?: string;
 }
 
+interface PendingOdometerUpdate {
+  jobId: string;
+  odometer: number;
+}
+
 interface JobsState {
   jobs: Job[]; stats: DashboardStats;
   activeClockIn: { jobId: string; taskId: string; startTime: string } | null;
@@ -116,6 +121,7 @@ interface JobsState {
   activeBreak: boolean;
   activeNonProd: { taskType: string; elapsedSeconds: number } | null;
   jobsLoaded: boolean;
+  pendingOdometerUpdates: PendingOdometerUpdate[];
 }
 
 type Action =
@@ -149,7 +155,10 @@ type Action =
   | { type: "END_BREAK" }
   | { type: "START_NONPROD"; payload: { taskType: string } }
   | { type: "END_NONPROD" }
-  | { type: "UPDATE_ODOMETER"; payload: { jobId: string; odometer: number } };
+  | { type: "UPDATE_ODOMETER"; payload: { jobId: string; odometer: number } }
+  | { type: "QUEUE_ODOMETER"; payload: PendingOdometerUpdate }
+  | { type: "DEQUEUE_ODOMETER"; payload: { jobId: string } }
+  | { type: "SET_ODOMETER_QUEUE"; payload: PendingOdometerUpdate[] };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128, specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"], completedJobs: 312 },
@@ -334,6 +343,17 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "UPDATE_ODOMETER":
       return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, odometer: action.payload.odometer })) };
 
+    case "QUEUE_ODOMETER": {
+      const filtered = state.pendingOdometerUpdates.filter((u) => u.jobId !== action.payload.jobId);
+      return { ...state, pendingOdometerUpdates: [...filtered, action.payload] };
+    }
+
+    case "DEQUEUE_ODOMETER":
+      return { ...state, pendingOdometerUpdates: state.pendingOdometerUpdates.filter((u) => u.jobId !== action.payload.jobId) };
+
+    case "SET_ODOMETER_QUEUE":
+      return { ...state, pendingOdometerUpdates: action.payload };
+
     case "ASSIGN_JOB":
       return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, assignedTechnicianId: action.payload.technicianId })) };
 
@@ -497,6 +517,7 @@ interface JobsContextValue {
   refreshJobs: () => Promise<void>;
   isRefreshing: boolean;
   unreadCount: number;
+  pendingOdometerUpdates: PendingOdometerUpdate[];
 }
 
 const JobsContext = createContext<JobsContextValue | null>(null);
@@ -515,12 +536,16 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     isOffline: false, notifications: INITIAL_NOTIFICATIONS,
     timeRecords: [], activeShift: null, technicians: INITIAL_TECHNICIANS,
     activeBreak: false, activeNonProd: null, jobsLoaded: false,
+    pendingOdometerUpdates: [],
   });
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const initialLoadDone = useRef(false);
   const prevJobsRef = useRef<Job[]>([]);
   const jobsLoadedRef = useRef(false);
+
+  const pendingOdometerRef = useRef(state.pendingOdometerUpdates);
+  pendingOdometerRef.current = state.pendingOdometerUpdates;
 
   useEffect(() => {
     const id = setInterval(() => dispatch({ type: "TICK_CLOCK" }), 1000);
@@ -563,6 +588,16 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       }
       fetchAndMergeJobs(true).finally(() => { initialLoadDone.current = true; });
+    });
+
+    AsyncStorage.getItem("odometer_queue_v1").then((raw) => {
+      if (!raw) return;
+      try {
+        const queue: PendingOdometerUpdate[] = JSON.parse(raw);
+        if (Array.isArray(queue) && queue.length > 0) {
+          dispatch({ type: "SET_ODOMETER_QUEUE", payload: queue });
+        }
+      } catch {}
     });
   }, [fetchAndMergeJobs]);
 
@@ -610,6 +645,35 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [state.jobs]);
+
+  useEffect(() => {
+    AsyncStorage.setItem("odometer_queue_v1", JSON.stringify(state.pendingOdometerUpdates)).catch(() => {});
+  }, [state.pendingOdometerUpdates]);
+
+  useEffect(() => {
+    const flushOdometerQueue = () => {
+      const queue = pendingOdometerRef.current;
+      if (queue.length === 0) return;
+      queue.forEach(({ jobId, odometer }) => {
+        fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/odometer`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ odometer }),
+        })
+          .then((r) => r.ok ? r.json() : Promise.reject(new Error(`Server error ${r.status}`)))
+          .then((data: { id: string; odometer: number }) => {
+            dispatch({ type: "DEQUEUE_ODOMETER", payload: { jobId } });
+            if (data.odometer !== odometer) {
+              dispatch({ type: "UPDATE_ODOMETER", payload: { jobId: data.id, odometer: data.odometer } });
+            }
+          })
+          .catch(() => {});
+      });
+    };
+
+    const id = setInterval(flushOdometerQueue, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   const clockIn = useCallback((jobId: string, taskId: string) => {
     dispatch({ type: "CLOCK_IN", payload: { jobId, taskId } });
@@ -770,16 +834,20 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     })
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(`Server error ${r.status}`)))
       .then((data: { id: string; odometer: number }) => {
+        dispatch({ type: "DEQUEUE_ODOMETER", payload: { jobId } });
         if (data.odometer !== odometer) {
           dispatch({ type: "UPDATE_ODOMETER", payload: { jobId: data.id, odometer: data.odometer } });
         }
+      })
+      .catch(() => {
+        dispatch({ type: "QUEUE_ODOMETER", payload: { jobId, odometer } });
       });
   }, []);
 
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount, pendingOdometerUpdates: state.pendingOdometerUpdates }}>
       {children}
     </JobsContext.Provider>
   );
