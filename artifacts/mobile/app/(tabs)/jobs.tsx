@@ -388,7 +388,7 @@ export default function JobsScreen() {
                             {insp.vehicleName}{insp.vehicleYear ? ` (${insp.vehicleYear})` : ""}
                           </Text>
                           <Text style={[styles.inspType, { color: colors.mutedForeground }]}>
-                            {TYPE_LABELS[insp.type] ?? insp.type}
+                            Inspection · {TYPE_LABELS[insp.type] ?? insp.type}
                           </Text>
                           {insp.locationName && (
                             <View style={styles.inspLocation}>
