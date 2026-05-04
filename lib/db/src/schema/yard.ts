@@ -178,6 +178,14 @@ export const yardTransfersTable = pgTable("yard_transfers", {
   completedAt: timestamp("completed_at"),
 });
 
+export const dmsAccountTypesTable = pgTable("dms_account_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  code: text("code").notNull().unique(),
+  displayOrder: integer("display_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
 // ── Insert schemas ────────────────────────────────────────────────────────────
 export const insertYardUserSchema = createInsertSchema(yardUsersTable).omit({
   id: true,
@@ -211,3 +219,4 @@ export type YardSpot = typeof yardSpotsTable.$inferSelect;
 export type YardVehicle = typeof yardVehiclesTable.$inferSelect;
 export type YardInspection = typeof yardInspectionsTable.$inferSelect;
 export type YardMovement = typeof yardMovementsTable.$inferSelect;
+export type DmsAccountType = typeof dmsAccountTypesTable.$inferSelect;

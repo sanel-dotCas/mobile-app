@@ -1,5 +1,7 @@
 import { Router } from "express";
 import OpenAI from "openai";
+import { db, dmsAccountTypesTable } from "@workspace/db";
+import { eq, asc } from "drizzle-orm";
 
 const router = Router();
 
@@ -41,6 +43,27 @@ Include:
 - All paint materials, consumables, and sundries
 
 Return ONLY the JSON array — no markdown, no commentary.`;
+
+const DEFAULT_ACCOUNT_TYPES = [
+  { id: 1, name: "Customer Pay", code: "CP", displayOrder: 1, isActive: true },
+  { id: 2, name: "Warranty",     code: "WR", displayOrder: 2, isActive: true },
+  { id: 3, name: "Internal",     code: "IN", displayOrder: 3, isActive: true },
+  { id: 4, name: "Sublet",       code: "SL", displayOrder: 4, isActive: true },
+];
+
+router.get("/estimates/account-types", async (req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(dmsAccountTypesTable)
+      .where(eq(dmsAccountTypesTable.isActive, true))
+      .orderBy(asc(dmsAccountTypesTable.displayOrder));
+    res.json(rows.length > 0 ? rows : DEFAULT_ACCOUNT_TYPES);
+  } catch (err) {
+    req.log.error(err, "Failed to fetch account types");
+    res.json(DEFAULT_ACCOUNT_TYPES);
+  }
+});
 
 router.post("/estimates/analyze", async (req, res) => {
   const { vehicleInfo, damageNotes, imagesBase64 } = req.body as AnalyzeRequestBody;

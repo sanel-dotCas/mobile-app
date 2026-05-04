@@ -18,6 +18,9 @@ export type EstimateStatus =
 export type EstimateLineType = "labor" | "part" | "material";
 export type LaborCategory = "body" | "refinish" | "mechanical" | "frame" | "glass" | "electrical" | "trim" | "other";
 
+export const OPERATION_OPTIONS = ["Repair", "Replace", "Refinish", "Supplement", "Other"] as const;
+export type OperationType = typeof OPERATION_OPTIONS[number];
+
 export interface EstimateLine {
   id: string;
   type: EstimateLineType;
@@ -30,6 +33,8 @@ export interface EstimateLine {
   aiGenerated?: boolean;
   isPackage?: boolean;
   packageName?: string;
+  operation?: string;
+  accountType?: string;
 }
 
 export interface EstimatePhoto {

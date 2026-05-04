@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { useVinDecoder } from "@/components/CarPartsDiagram";
 import type { EstimateLine, EstimateStatus, LaborCategory } from "@/context/EstimatesContext";
-import { useEstimates } from "@/context/EstimatesContext";
+import { useEstimates, OPERATION_OPTIONS } from "@/context/EstimatesContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -269,6 +269,20 @@ function LineRow({
       <Text style={[styles.lineDesc, { color: colors.foreground }]} numberOfLines={2}>
         {line.description}
       </Text>
+      {(line.operation || line.accountType) && (
+        <View style={styles.lineBadgeRow}>
+          {line.operation && (
+            <View style={[styles.lineBadge, { backgroundColor: "#ecfeff" }]}>
+              <Text style={[styles.lineBadgeText, { color: "#0891b2" }]}>{line.operation}</Text>
+            </View>
+          )}
+          {line.accountType && (
+            <View style={[styles.lineBadge, { backgroundColor: "#f0fdf4" }]}>
+              <Text style={[styles.lineBadgeText, { color: "#16a34a" }]}>{line.accountType}</Text>
+            </View>
+          )}
+        </View>
+      )}
       <View style={styles.lineBottom}>
         {isLabor && line.hours !== undefined && (
           <View style={styles.hoursEditRow}>
@@ -384,10 +398,38 @@ function AddLineSheet({
   const [qty, setQty] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [expandedPkg, setExpandedPkg] = useState<string | null>(null);
+  const [operation, setOperation] = useState<string>("Replace");
+  const [accountType, setAccountType] = useState<string>("Customer Pay");
+  const [accountTypes, setAccountTypes] = useState<{ id: number; name: string; code: string }[]>([]);
+  const [accountTypesLoading, setAccountTypesLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    setAccountTypesLoading(true);
+    const apiBase = BASE_URL || "http://localhost:80";
+    fetch(`${apiBase}/api/estimates/account-types`)
+      .then((r) => r.json())
+      .then((data: { id: number; name: string; code: string }[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setAccountTypes(data);
+          setAccountType(data[0].name);
+        }
+      })
+      .catch(() => {
+        setAccountTypes([
+          { id: 1, name: "Customer Pay", code: "CP" },
+          { id: 2, name: "Warranty",     code: "WR" },
+          { id: 3, name: "Internal",     code: "IN" },
+          { id: 4, name: "Sublet",       code: "SL" },
+        ]);
+      })
+      .finally(() => setAccountTypesLoading(false));
+  }, [visible]);
 
   const resetForm = () => {
     setLineType("labor"); setLaborCat("body");
     setDesc(""); setHours(""); setQty(""); setUnitPrice("");
+    setOperation("Replace"); setAccountType(accountTypes[0]?.name ?? "Customer Pay");
   };
 
   const handleClose = () => { resetForm(); onClose(); };
@@ -413,6 +455,8 @@ function AddLineSheet({
       quantity: lineType !== "labor" ? (parseFloat(qty) || 1) : undefined,
       unitPrice: price,
       total,
+      operation,
+      accountType,
     };
     onAddManual(line);
     resetForm();
@@ -500,6 +544,49 @@ function AddLineSheet({
                         })}
                       </View>
                     </>
+                  )}
+
+                  {/* Operation */}
+                  <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>Operation</Text>
+                  <View style={styles.categoryGrid}>
+                    {OPERATION_OPTIONS.map((op) => {
+                      const active = operation === op;
+                      return (
+                        <Pressable
+                          key={op}
+                          onPress={() => setOperation(op)}
+                          style={[styles.catBtn, { borderColor: active ? "#0891b2" : colors.border, backgroundColor: active ? "#ecfeff" : colors.secondary }]}
+                        >
+                          <Text style={[styles.catBtnText, { color: active ? "#0891b2" : colors.mutedForeground }]}>{op}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* Account Type */}
+                  <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>Account Type</Text>
+                  {accountTypesLoading ? (
+                    <ActivityIndicator size="small" color={colors.mutedForeground} style={{ alignSelf: "flex-start" }} />
+                  ) : (
+                    <View style={styles.categoryGrid}>
+                      {(accountTypes.length > 0 ? accountTypes : [
+                        { id: 1, name: "Customer Pay", code: "CP" },
+                        { id: 2, name: "Warranty",     code: "WR" },
+                        { id: 3, name: "Internal",     code: "IN" },
+                        { id: 4, name: "Sublet",       code: "SL" },
+                      ]).map((at) => {
+                        const active = accountType === at.name;
+                        return (
+                          <Pressable
+                            key={at.id}
+                            onPress={() => setAccountType(at.name)}
+                            style={[styles.catBtn, { borderColor: active ? "#16a34a" : colors.border, backgroundColor: active ? "#f0fdf4" : colors.secondary }]}
+                          >
+                            <Text style={[styles.catBtnText, { color: active ? "#16a34a" : colors.mutedForeground }]}>{at.name}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   )}
 
                   {/* Description */}
@@ -1235,6 +1322,9 @@ const styles = StyleSheet.create({
   aiTagText:      { fontSize: 9, fontFamily: "Inter_700Bold", color: "#2563eb" },
   lineRemoveBtn:  { marginLeft: "auto" },
   lineDesc:       { fontSize: 13, fontFamily: "Inter_500Medium", lineHeight: 17 },
+  lineBadgeRow:   { flexDirection: "row", gap: 5, flexWrap: "wrap" },
+  lineBadge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  lineBadgeText:  { fontSize: 9, fontFamily: "Inter_600SemiBold" },
   lineBottom:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   lineMeta:       { fontSize: 11, fontFamily: "Inter_400Regular" },
   lineTotal:      { fontSize: 13, fontFamily: "Inter_700Bold" },
