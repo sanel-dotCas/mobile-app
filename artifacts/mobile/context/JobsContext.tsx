@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { VEHICLE_CHECKLIST } from "@/constants/inspectionChecklist";
+import { Platform } from "react-native";
 import React, {
   createContext,
   useCallback,
@@ -7,6 +8,10 @@ import React, {
   useEffect,
   useReducer,
 } from "react";
+
+const API_BASE = Platform.OS === "web"
+  ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+  : "/api";
 
 export type JobStatus = "pending" | "in_progress" | "on_hold" | "completed";
 export type TaskStatus = "pending" | "in_progress" | "done";
@@ -699,6 +704,18 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const applyServerCorrections = () => {
+      fetch(`${API_BASE}/jobs/odometer`)
+        .then((r) => r.json())
+        .then((data: { corrections?: Record<string, number> }) => {
+          const corrections = data.corrections ?? {};
+          Object.entries(corrections).forEach(([jobId, odometer]) => {
+            dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } });
+          });
+        })
+        .catch(() => {});
+    };
+
     AsyncStorage.getItem("jobs_v2").then((data) => {
       if (data) {
         try {
@@ -712,6 +729,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "SET_JOBS", payload: migrated });
         } catch {}
       }
+      applyServerCorrections();
     });
   }, []);
 
@@ -799,7 +817,22 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
 
   const holdJob = useCallback((jobId: string) => dispatch({ type: "HOLD_JOB", payload: { jobId } }), []);
   const unholdJob = useCallback((jobId: string) => dispatch({ type: "UNHOLD_JOB", payload: { jobId } }), []);
-  const updateOdometer = useCallback((jobId: string, odometer: number) => dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } }), []);
+
+  const updateOdometer = useCallback((jobId: string, odometer: number) => {
+    dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } });
+    fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/odometer`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ odometer }),
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((data: { id: string; odometer: number }) => {
+        if (data.odometer !== odometer) {
+          dispatch({ type: "UPDATE_ODOMETER", payload: { jobId: data.id, odometer: data.odometer } });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 

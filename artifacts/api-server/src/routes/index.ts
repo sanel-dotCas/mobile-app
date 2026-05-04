@@ -11,6 +11,7 @@ import yardRecommendationsRouter from "./yard-recommendations";
 import yardUsersRouter from "./yard-users";
 import yardTransfersRouter from "./yard-transfers";
 import partsRouter from "./parts";
+import jobsRouter from "./jobs";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(yardRecommendationsRouter);
 router.use(yardUsersRouter);
 router.use(yardTransfersRouter);
 router.use(partsRouter);
+router.use(jobsRouter);
 
 export default router;
