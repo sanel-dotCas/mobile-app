@@ -676,18 +676,29 @@ export default function AdminMonitorScreen() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [locationFilter, setLocationFilter] = useState<number | null>(null);
 
   // Selected items for detail sheets
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [selectedInspectionId, setSelectedInspectionId] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // Load locations once
+  useEffect(() => {
+    fetch(`${BASE}/admin/locations`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setLocations(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  const load = useCallback(async (locId: number | null = locationFilter) => {
+    const locParam = locId != null ? `&locationId=${locId}` : "";
     try {
       const [vRes, iRes, jRes] = await Promise.all([
-        fetch(`${BASE}/admin/monitor/vehicles?limit=50`),
-        fetch(`${BASE}/admin/monitor/inspections?limit=50`),
-        fetch(`${BASE}/admin/monitor/jobs?limit=50`),
+        fetch(`${BASE}/admin/monitor/vehicles?limit=100${locParam}`),
+        fetch(`${BASE}/admin/monitor/inspections?limit=100${locParam}`),
+        fetch(`${BASE}/admin/monitor/jobs?limit=100`),
       ]);
       if (vRes.ok) { const d = await vRes.json(); setVehicles(d.vehicles ?? d); }
       if (iRes.ok) { const d = await iRes.json(); setInspections(d.inspections ?? d); }
@@ -696,10 +707,16 @@ export default function AdminMonitorScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [locationFilter]);
 
   useEffect(() => { load(); }, [load]);
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [load]);
+
+  const handleLocationFilter = (locId: number | null) => {
+    setLocationFilter(locId);
+    setLoading(true);
+    load(locId);
+  };
 
   const tabs: { key: Tab; label: string; count: number; icon: React.ComponentProps<typeof Feather>["name"] }[] = [
     { key: "vehicles", label: "Vehicles", count: vehicles.length, icon: "truck" },
@@ -708,6 +725,8 @@ export default function AdminMonitorScreen() {
   ];
 
   const formatDate2 = (d: string) => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  const showLocationFilter = tab !== "jobs";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -732,6 +751,46 @@ export default function AdminMonitorScreen() {
           </Pressable>
         ))}
       </View>
+
+      {/* Branch / Yard filter chips */}
+      {showLocationFilter && locations.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[s.filterBar, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8, flexDirection: "row", alignItems: "center" }}
+        >
+          <Pressable
+            onPress={() => handleLocationFilter(null)}
+            style={[s.filterChip, {
+              backgroundColor: locationFilter === null ? "#dc2626" : colors.card,
+              borderColor: locationFilter === null ? "#dc2626" : colors.border,
+            }]}
+          >
+            <Feather name="globe" size={11} color={locationFilter === null ? "#fff" : colors.mutedForeground} />
+            <Text style={[s.filterChipText, { color: locationFilter === null ? "#fff" : colors.mutedForeground }]}>All</Text>
+          </Pressable>
+          {locations.map(loc => (
+            <Pressable
+              key={loc.id}
+              onPress={() => handleLocationFilter(loc.id)}
+              style={[s.filterChip, {
+                backgroundColor: locationFilter === loc.id ? "#dc2626" : colors.card,
+                borderColor: locationFilter === loc.id ? "#dc2626" : colors.border,
+              }]}
+            >
+              <Feather
+                name={loc.type === "DEALERSHIP_LOT" ? "home" : loc.type === "YARD" ? "map-pin" : "archive"}
+                size={11}
+                color={locationFilter === loc.id ? "#fff" : colors.mutedForeground}
+              />
+              <Text style={[s.filterChipText, { color: locationFilter === loc.id ? "#fff" : colors.mutedForeground }]}>
+                {loc.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 100 + insets.bottom }}
@@ -839,6 +898,9 @@ const s = StyleSheet.create({
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 12 },
   tabLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
   tabCount: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10 },
+  filterBar: { borderBottomWidth: StyleSheet.hairlineWidth },
+  filterChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  filterChipText: { fontSize: 11, fontFamily: "Inter_500Medium" },
   row: {
     flexDirection: "row", alignItems: "center", gap: 10, padding: 12,
     borderRadius: 10, borderWidth: 1, marginBottom: 8,

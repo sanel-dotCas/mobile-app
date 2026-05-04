@@ -12,7 +12,7 @@ import {
 } from "@workspace/db";
 import { techniciansTable } from "@workspace/db";
 import { jobsTable } from "@workspace/db";
-import { eq, count, desc, sql } from "drizzle-orm";
+import { eq, count, desc, sql, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -446,14 +446,18 @@ router.delete("/admin/account-types/:id", async (req, res) => {
 // ── Vehicles monitor (summary) ────────────────────────────────────────────────
 router.get("/admin/monitor/vehicles", async (req, res) => {
   try {
-    const { limit = "20", page = "1" } = req.query as Record<string, string>;
+    const { limit = "20", page = "1", locationId, status } = req.query as Record<string, string>;
     const offset = (Number(page) - 1) * Number(limit);
+    const locFilter = locationId && locationId !== "all" ? eq(yardVehiclesTable.locationId, Number(locationId)) : undefined;
+    const statusFilter = status && status !== "all" ? eq(yardVehiclesTable.status, status) : undefined;
+    const whereClause = locFilter && statusFilter ? and(locFilter, statusFilter) : locFilter ?? statusFilter;
     const [vehicles, total] = await Promise.all([
       db.select().from(yardVehiclesTable)
+        .where(whereClause)
         .orderBy(desc(yardVehiclesTable.createdAt))
         .limit(Number(limit))
         .offset(offset),
-      db.select({ cnt: count() }).from(yardVehiclesTable),
+      db.select({ cnt: count() }).from(yardVehiclesTable).where(whereClause),
     ]);
     res.json({ vehicles, total: Number(total[0]?.cnt ?? 0) });
   } catch {
@@ -464,11 +468,15 @@ router.get("/admin/monitor/vehicles", async (req, res) => {
 // ── Inspections monitor (summary) ─────────────────────────────────────────────
 router.get("/admin/monitor/inspections", async (req, res) => {
   try {
-    const { limit = "20", page = "1", status } = req.query as Record<string, string>;
+    const { limit = "20", page = "1", status, locationId } = req.query as Record<string, string>;
     const offset = (Number(page) - 1) * Number(limit);
-    const whereClause = status && status !== "all"
+    const statusFilter = status && status !== "all"
       ? eq(yardInspectionsTable.status, status as "finished" | "in-progress" | "queued")
       : undefined;
+    const locFilter = locationId && locationId !== "all"
+      ? eq(yardInspectionsTable.locationId, Number(locationId))
+      : undefined;
+    const whereClause = statusFilter && locFilter ? and(statusFilter, locFilter) : statusFilter ?? locFilter;
     const [inspections, total] = await Promise.all([
       db.select().from(yardInspectionsTable)
         .where(whereClause)
