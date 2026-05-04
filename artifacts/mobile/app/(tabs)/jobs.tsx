@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,7 +23,7 @@ import type { JobStatus } from "@/context/JobsContext";
 export default function JobsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { state } = useJobs();
+  const { state, refreshJobs, isRefreshing } = useJobs();
   const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -164,6 +165,14 @@ export default function JobsScreen() {
           style={styles.list}
           contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={refreshJobs}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
         >
           <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
             {filtered.length} {filtered.length === 1 ? "job" : "jobs"}

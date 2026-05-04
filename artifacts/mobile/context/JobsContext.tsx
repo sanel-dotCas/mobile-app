@@ -1,12 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { VEHICLE_CHECKLIST } from "@/constants/inspectionChecklist";
-import { Platform } from "react-native";
+import { AppState, AppStateStatus, Platform } from "react-native";
 import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useReducer,
+  useRef,
+  useState,
 } from "react";
 
 const API_BASE = Platform.OS === "web"
@@ -117,6 +119,7 @@ interface JobsState {
 
 type Action =
   | { type: "SET_JOBS"; payload: Job[] }
+  | { type: "MERGE_JOBS"; payload: Job[] }
   | { type: "CLOCK_IN"; payload: { jobId: string; taskId: string } }
   | { type: "CLOCK_OUT"; payload: { jobId: string; taskId: string } }
   | { type: "ADD_NOTE"; payload: { jobId: string; note: JobNote } }
@@ -413,6 +416,35 @@ function computeProgress(job: Job): number {
   return Math.round((job.tasks.filter((t) => t.status === "done").length / job.tasks.length) * 100);
 }
 
+function mergeNoteArrays<T extends { id: string }>(serverNotes: T[], localNotes: T[]): T[] {
+  const serverIds = new Set(serverNotes.map((n) => n.id));
+  const localOnly = localNotes.filter((n) => !serverIds.has(n.id));
+  return [...serverNotes, ...localOnly];
+}
+
+function mergeJobsWithLocal(serverJobs: Job[], localJobs: Job[]): Job[] {
+  return serverJobs.map((serverJob) => {
+    const local = localJobs.find((j) => j.id === serverJob.id);
+    if (!local) return serverJob;
+    const tasks = serverJob.tasks.map((serverTask) => {
+      const localTask = local.tasks.find((t) => t.id === serverTask.id);
+      if (!localTask) return serverTask;
+      const elapsedSeconds = Math.max(serverTask.elapsedSeconds, localTask.elapsedSeconds);
+      const workedHours = Math.max(serverTask.workedHours, localTask.workedHours);
+      return {
+        ...serverTask,
+        clockedIn: localTask.clockedIn,
+        clockInStart: localTask.clockInStart,
+        elapsedSeconds,
+        workedHours,
+        notes: mergeNoteArrays(serverTask.notes, localTask.notes),
+      };
+    });
+    const workedHours = tasks.reduce((s, t) => s + t.workedHours, 0);
+    return { ...serverJob, tasks, workedHours: parseFloat(workedHours.toFixed(2)), notes: mergeNoteArrays(serverJob.notes, local.notes) };
+  });
+}
+
 function mapTasks(tasks: Task[], taskId: string, fn: (t: Task) => Task): Task[] {
   return tasks.map((t) => (t.id === taskId ? fn(t) : t));
 }
@@ -424,6 +456,7 @@ function mapJobs(jobs: Job[], jobId: string, fn: (j: Job) => Job): Job[] {
 function reducer(state: JobsState, action: Action): JobsState {
   switch (action.type) {
     case "SET_JOBS": return { ...state, jobs: action.payload };
+    case "MERGE_JOBS": return { ...state, jobs: mergeJobsWithLocal(action.payload, state.jobs) };
 
     case "CLOCK_IN": {
       const { jobId, taskId } = action.payload;
@@ -693,6 +726,8 @@ interface JobsContextValue {
   holdJob: (jobId: string) => void;
   unholdJob: (jobId: string) => void;
   updateOdometer: (jobId: string, odometer: number) => Promise<void>;
+  refreshJobs: () => Promise<void>;
+  isRefreshing: boolean;
   unreadCount: number;
 }
 
@@ -706,25 +741,27 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     activeBreak: false, activeNonProd: null,
   });
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const initialLoadDone = useRef(false);
+
   useEffect(() => {
     const id = setInterval(() => dispatch({ type: "TICK_CLOCK" }), 1000);
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    const fetchJobsFromApi = () =>
-      fetch(`${API_BASE}/jobs`)
-        .then((r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.json();
-        })
-        .then((data: { jobs?: Job[] }) => {
-          if (Array.isArray(data.jobs)) {
-            dispatch({ type: "SET_JOBS", payload: data.jobs });
-            AsyncStorage.setItem("jobs_v2", JSON.stringify(data.jobs)).catch(() => {});
-          }
-        });
+  const fetchAndMergeJobs = useCallback(async (isInitial = false) => {
+    try {
+      const r = await fetch(`${API_BASE}/jobs`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data: { jobs?: Job[] } = await r.json();
+      if (Array.isArray(data.jobs)) {
+        dispatch({ type: isInitial ? "SET_JOBS" : "MERGE_JOBS", payload: data.jobs });
+        AsyncStorage.setItem("jobs_v2", JSON.stringify(data.jobs)).catch(() => {});
+      }
+    } catch {}
+  }, []);
 
+  useEffect(() => {
     AsyncStorage.getItem("jobs_v2").then((cached) => {
       if (cached) {
         try {
@@ -743,9 +780,35 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "SET_JOBS", payload: migrated });
         } catch {}
       }
-      fetchJobsFromApi().catch(() => {});
+      fetchAndMergeJobs(true).finally(() => { initialLoadDone.current = true; });
     });
-  }, []);
+  }, [fetchAndMergeJobs]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (initialLoadDone.current) fetchAndMergeJobs(false);
+    }, 60000);
+    return () => clearInterval(id);
+  }, [fetchAndMergeJobs]);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === "active" && initialLoadDone.current) {
+        fetchAndMergeJobs(false);
+      }
+    };
+    const sub = AppState.addEventListener("change", handleAppStateChange);
+    return () => sub.remove();
+  }, [fetchAndMergeJobs]);
+
+  const refreshJobs = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchAndMergeJobs(false);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [fetchAndMergeJobs]);
 
   useEffect(() => { AsyncStorage.setItem("jobs_v2", JSON.stringify(state.jobs)); }, [state.jobs]);
 
@@ -917,7 +980,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );
