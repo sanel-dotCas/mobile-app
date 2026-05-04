@@ -57,6 +57,30 @@ interface YardInspection {
   createdAt: string;
   completedAt?: string;
   assignedTo?: string | null;
+  notes?: string | null;
+  bodyDamage?: string | null;
+}
+
+function parseChecklistResult(notes?: string | null, bodyDamage?: string | null) {
+  let passed = 0, failed = 0, na = 0;
+  const failedItems: string[] = [];
+
+  if (notes) {
+    const pm = notes.match(/(\d+)\s+passed/i);
+    const fm = notes.match(/(\d+)\s+failed/i);
+    const nm = notes.match(/(\d+)\s+N\/A/i);
+    if (pm) passed = parseInt(pm[1]);
+    if (fm) failed = parseInt(fm[1]);
+    if (nm) na = parseInt(nm[1]);
+  }
+
+  if (bodyDamage && bodyDamage.includes("Failed items:")) {
+    const after = bodyDamage.split("Failed items:")[1] ?? "";
+    const lines = after.split("\n").map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+    failedItems.push(...lines);
+  }
+
+  return { passed, failed, na, failedItems };
 }
 
 interface InspectionRec {
@@ -800,6 +824,39 @@ export default function SupervisorYardScreen() {
                         <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{insp.locationName}</Text>
                       </View>
                     )}
+                    {insp.status === "finished" && (insp.notes || insp.bodyDamage) && (() => {
+                      const { passed, failed, na, failedItems } = parseChecklistResult(insp.notes, insp.bodyDamage);
+                      const total = passed + failed + na;
+                      return (
+                        <View style={{ marginTop: 6, gap: 4 }}>
+                          {total > 0 && (
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#dcfce7", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                <Text style={{ fontSize: 10, color: "#16a34a", fontFamily: "Inter_600SemiBold" }}>✓ {passed} passed</Text>
+                              </View>
+                              {failed > 0 && (
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#fee2e2", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, color: "#dc2626", fontFamily: "Inter_600SemiBold" }}>✗ {failed} failed</Text>
+                                </View>
+                              )}
+                              {na > 0 && (
+                                <View style={{ backgroundColor: "#f1f5f9", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 10, color: "#64748b", fontFamily: "Inter_500Medium" }}>— {na} N/A</Text>
+                                </View>
+                              )}
+                            </View>
+                          )}
+                          {failedItems.length > 0 && (
+                            <View style={{ backgroundColor: "#fef2f2", borderRadius: 6, padding: 6, borderWidth: 1, borderColor: "#fecaca" }}>
+                              <Text style={{ fontSize: 10, color: "#dc2626", fontFamily: "Inter_600SemiBold", marginBottom: 2 }}>Failed items:</Text>
+                              {failedItems.map((item, idx) => (
+                                <Text key={idx} style={{ fontSize: 10, color: "#b91c1c", fontFamily: "Inter_400Regular" }}>• {item}</Text>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })()}
                     <Text style={[styles.cardDate, { color: colors.mutedForeground }]}>
                       {new Date(insp.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                       {insp.completedAt ? ` · Done ${new Date(insp.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}

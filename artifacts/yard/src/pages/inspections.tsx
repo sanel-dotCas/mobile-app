@@ -52,6 +52,28 @@ const URGENCY_LABELS: Record<string, string> = {
   ok: "On Schedule",
 };
 
+function parseChecklistResult(notes: string | null, bodyDamage: string | null) {
+  let passed = 0, failed = 0, na = 0;
+  const failedItems: string[] = [];
+
+  if (notes) {
+    const pm = notes.match(/(\d+)\s+passed/i);
+    const fm = notes.match(/(\d+)\s+failed/i);
+    const nm = notes.match(/(\d+)\s+N\/A/i);
+    if (pm) passed = parseInt(pm[1]);
+    if (fm) failed = parseInt(fm[1]);
+    if (nm) na = parseInt(nm[1]);
+  }
+
+  if (bodyDamage && bodyDamage.includes("Failed items:")) {
+    const after = bodyDamage.split("Failed items:")[1] ?? "";
+    const lines = after.split("\n").map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+    failedItems.push(...lines);
+  }
+
+  return { passed, failed, na, failedItems };
+}
+
 type Inspection = {
   id: number; inspectionNumber: string; vehicleId: number; stockVin: string;
   vehicleName: string; vehicleYear?: number | null; stockNumber?: string | null;
@@ -796,11 +818,52 @@ export default function InspectionsPage() {
                   )}
                 </div>
 
-                {insp.notes && (
-                  <p className="text-xs text-muted-foreground mt-1 italic">{insp.notes}</p>
-                )}
-                {insp.bodyDamage && (
-                  <p className="text-xs text-amber-600 mt-1">Damage: {insp.bodyDamage}</p>
+                {insp.status === "finished" && (insp.notes || insp.bodyDamage) ? (() => {
+                  const { passed, failed, na, failedItems } = parseChecklistResult(insp.notes, insp.bodyDamage);
+                  const total = passed + failed + na;
+                  return (
+                    <div className="mt-2 space-y-1.5">
+                      {total > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700">
+                            ✓ {passed} passed
+                          </span>
+                          {failed > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-500/15 text-red-700">
+                              ✗ {failed} failed
+                            </span>
+                          )}
+                          {na > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                              — {na} N/A
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {failedItems.length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded p-2">
+                          <p className="text-[11px] font-semibold text-red-700 mb-1">Failed items:</p>
+                          <ul className="space-y-0.5">
+                            {failedItems.map((item, idx) => (
+                              <li key={idx} className="text-[11px] text-red-600 flex items-start gap-1">
+                                <span className="mt-px shrink-0">•</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <>
+                    {insp.notes && (
+                      <p className="text-xs text-muted-foreground mt-1 italic">{insp.notes}</p>
+                    )}
+                    {insp.bodyDamage && (
+                      <p className="text-xs text-amber-600 mt-1">Notes: {insp.bodyDamage}</p>
+                    )}
+                  </>
                 )}
                 {/* Mileage row */}
                 <div className="flex items-center gap-2 mt-2">

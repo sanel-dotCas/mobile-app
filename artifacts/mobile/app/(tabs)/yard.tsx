@@ -178,7 +178,11 @@ function TechInspectionsView() {
       if (!techName) { setInspections([]); return; }
       const params = new URLSearchParams({ assignedTo: techName, limit: "50" });
       const data = await fetchJson(`/yard/inspections?${params}`);
-      setInspections(data.inspections ?? []);
+      // Only show active tasks — filter out finished inspections
+      const active = (data.inspections ?? []).filter(
+        (i: YardInspection) => i.status !== "finished"
+      );
+      setInspections(active);
     } catch {
       setInspections([]);
     } finally {
