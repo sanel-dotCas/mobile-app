@@ -9,7 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, and, SQL, desc, or, inArray, isNull } from "drizzle-orm";
 import { formatVehicleName } from "../lib/formatVehicleName";
-import { notifyTechnicianAssigned, notifyMultipleTechnicians } from "../lib/pushNotifications";
+import { notifyTechnicianAssigned, notifyMultipleTechnicians, notifyTechnicianReassigned, notifyTechnicianUnassigned } from "../lib/pushNotifications";
 
 const router: IRouter = Router();
 
@@ -507,6 +507,20 @@ router.patch("/yard/inspections/:inspectionId", async (req, res) => {
   const { status, notes, bodyDamage, fuelPercentage, completedAt, assignedTo } =
     req.body;
 
+  // Fetch the current inspection so we know the previous assignedTo
+  const [existing] = await db
+    .select()
+    .from(yardInspectionsTable)
+    .where(eq(yardInspectionsTable.id, inspectionId))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Inspection not found" });
+    return;
+  }
+
+  const previousAssignedTo = existing.assignedTo;
+
   const updates: Record<string, unknown> = {};
   if (status !== undefined) updates.status = status;
   if (notes !== undefined) updates.notes = notes;
@@ -546,15 +560,47 @@ router.patch("/yard/inspections/:inspectionId", async (req, res) => {
 
   const resolved = await resolveDetails(updated);
 
-  // Fire push notification when manually assigning a technician
-  if (assignedTo && typeof assignedTo === "string" && assignedTo.length > 0) {
-    notifyTechnicianAssigned(
-      assignedTo,
-      updated.id,
-      resolved.vehicleName,
-      updated.type,
-      resolved.locationName
-    ).catch(() => {});
+  // Fire push notifications based on assignedTo changes
+  if (assignedTo !== undefined) {
+    const newAssignedTo = assignedTo || null;
+    const hadPreviousAssignee = previousAssignedTo && previousAssignedTo.length > 0;
+    const hasNewAssignee = newAssignedTo && newAssignedTo.length > 0;
+
+    if (hadPreviousAssignee && hasNewAssignee && previousAssignedTo !== newAssignedTo) {
+      // Reassigned to a different technician — notify the removed tech and the new tech
+      notifyTechnicianReassigned(
+        previousAssignedTo!,
+        updated.id,
+        resolved.vehicleName,
+        updated.type,
+        resolved.locationName
+      ).catch(() => {});
+      notifyTechnicianAssigned(
+        newAssignedTo,
+        updated.id,
+        resolved.vehicleName,
+        updated.type,
+        resolved.locationName
+      ).catch(() => {});
+    } else if (hadPreviousAssignee && !hasNewAssignee) {
+      // Unassigned — notify the removed tech
+      notifyTechnicianUnassigned(
+        previousAssignedTo!,
+        updated.id,
+        resolved.vehicleName,
+        updated.type,
+        resolved.locationName
+      ).catch(() => {});
+    } else if (!hadPreviousAssignee && hasNewAssignee) {
+      // Freshly assigned — notify the new tech
+      notifyTechnicianAssigned(
+        newAssignedTo,
+        updated.id,
+        resolved.vehicleName,
+        updated.type,
+        resolved.locationName
+      ).catch(() => {});
+    }
   }
 
   res.json(resolved);

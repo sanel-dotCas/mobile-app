@@ -144,6 +144,62 @@ export async function notifyMultipleTechnicians(
   await sendExpoPushNotification(messages);
 }
 
+export async function notifyTechnicianReassigned(
+  previousAssignedTo: string,
+  inspectionId: number,
+  vehicleName: string,
+  inspectionType: string,
+  locationName: string | null
+): Promise<void> {
+  const user = await findUserByAssignment(previousAssignedTo);
+
+  if (!user || !user.expoPushToken || !user.notificationsEnabled) {
+    return;
+  }
+
+  const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
+  const locationPart = locationName ? ` · ${locationName}` : "";
+
+  await sendExpoPushNotification([
+    {
+      to: user.expoPushToken,
+      title: "Inspection Reassigned",
+      body: `${vehicleName}${locationPart} — ${typeLabel} has been reassigned to another technician`,
+      data: { inspectionId, screen: "inspection" },
+      sound: "default",
+      priority: "high",
+    },
+  ]);
+}
+
+export async function notifyTechnicianUnassigned(
+  previousAssignedTo: string,
+  inspectionId: number,
+  vehicleName: string,
+  inspectionType: string,
+  locationName: string | null
+): Promise<void> {
+  const user = await findUserByAssignment(previousAssignedTo);
+
+  if (!user || !user.expoPushToken || !user.notificationsEnabled) {
+    return;
+  }
+
+  const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
+  const locationPart = locationName ? ` · ${locationName}` : "";
+
+  await sendExpoPushNotification([
+    {
+      to: user.expoPushToken,
+      title: "Inspection Removed",
+      body: `${vehicleName}${locationPart} — ${typeLabel} has been removed from your queue`,
+      data: { inspectionId, screen: "inspection" },
+      sound: "default",
+      priority: "high",
+    },
+  ]);
+}
+
 const INSPECTION_TYPE_LABELS: Record<string, string> = {
   "pre-inspection": "Pre-Inspection (PDI)",
   "secondary": "Secondary Check",
