@@ -14,6 +14,8 @@ export interface YardInspection {
   vehicleId: number;
   stockVin: string;
   vehicleName: string;
+  vehicleYear?: number | null;
+  stockNumber?: string | null;
   type: YardInspectionType;
   status: YardInspectionStatus;
   locationId?: number | null;

@@ -693,6 +693,12 @@ components:
           type: string
         vehicleName:
           type: string
+        vehicleYear:
+          type: integer
+          nullable: true
+        stockNumber:
+          type: string
+          nullable: true
         type:
           type: string
           enum: [pre-inspection, secondary, final-quality]
