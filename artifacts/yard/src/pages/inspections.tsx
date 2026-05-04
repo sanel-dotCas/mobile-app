@@ -9,8 +9,10 @@ import {
   getListYardVehiclesQueryKey,
   useListYardLocations,
   getListYardLocationsQueryKey,
+  useGenerateYardInspections,
+  useAutoAssignYardInspections,
 } from "@workspace/api-client-react";
-import { Plus, X, ClipboardCheck, UserCheck, Gauge } from "lucide-react";
+import { Plus, X, ClipboardCheck, UserCheck, Gauge, CalendarClock, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type InspStatus = "all" | "queued" | "in-progress" | "finished";
@@ -28,10 +30,26 @@ const STATUS_STYLES: Record<string, string> = {
   finished: "bg-emerald-500/15 text-emerald-600",
 };
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   "pre-inspection": "Pre-Inspection",
   secondary: "Secondary",
   "final-quality": "Final Quality",
+  "new-arrival": "New Arrival PDI",
+  "used-arrival": "Used Arrival PDI",
+  "periodic-fluid": "Periodic — Fluid Check",
+  "periodic-damage": "Periodic — Damage Scan",
+  "start-and-run": "Start & Run Cycle",
+};
+
+const URGENCY_STYLES: Record<string, string> = {
+  overdue: "bg-red-100 text-red-700",
+  "due-soon": "bg-amber-100 text-amber-700",
+  ok: "bg-emerald-100 text-emerald-700",
+};
+const URGENCY_LABELS: Record<string, string> = {
+  overdue: "Overdue",
+  "due-soon": "Due Soon",
+  ok: "On Schedule",
 };
 
 type Inspection = {
@@ -41,6 +59,17 @@ type Inspection = {
   notes: string | null; bodyDamage: string | null; fuelPercentage: number | null;
   vehicleMileage: number | null;
   createdAt: string; completedAt: string | null; assignedTo: string | null;
+};
+
+type Recommendation = {
+  vehicleId: number;
+  vehicleName: string;
+  stockNumber: string;
+  urgency: "overdue" | "due-soon" | "ok";
+  daysRemaining: number;
+  daysSinceArrival: number;
+  lastInspectedAt: string | null;
+  nextDueDate: string;
 };
 
 function UpdateMileageModal({
@@ -149,7 +178,7 @@ function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
     create.mutate({
       data: {
         vehicleId: Number(form.vehicleId),
-        type: form.type as "pre-inspection" | "secondary" | "final-quality",
+        type: form.type as "pre-inspection" | "secondary" | "final-quality" | "new-arrival" | "used-arrival" | "periodic-fluid" | "periodic-damage" | "start-and-run",
         locationId: form.locationId ? Number(form.locationId) : undefined,
         notes: form.notes || undefined,
         bodyDamage: form.bodyDamage || undefined,
@@ -192,9 +221,20 @@ function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
               className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
             >
-              <option value="pre-inspection">Pre-Inspection</option>
-              <option value="secondary">Secondary</option>
-              <option value="final-quality">Final Quality</option>
+              <optgroup label="Standard">
+                <option value="pre-inspection">Pre-Inspection</option>
+                <option value="secondary">Secondary</option>
+                <option value="final-quality">Final Quality</option>
+              </optgroup>
+              <optgroup label="Arrival">
+                <option value="new-arrival">New Arrival PDI</option>
+                <option value="used-arrival">Used Arrival PDI</option>
+              </optgroup>
+              <optgroup label="Periodic">
+                <option value="periodic-fluid">Periodic — Fluid Check</option>
+                <option value="periodic-damage">Periodic — Damage Scan</option>
+                <option value="start-and-run">Start & Run Cycle</option>
+              </optgroup>
             </select>
           </div>
           <div>
@@ -271,6 +311,268 @@ function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   );
 }
 
+const INTERVAL_PRESETS = [
+  { label: "30 days", value: 30 },
+  { label: "60 days", value: 60 },
+  { label: "90 days", value: 90 },
+];
+
+const PERIODIC_TYPES = [
+  { value: "periodic-fluid", label: "Fluid Check" },
+  { value: "periodic-damage", label: "Damage Scan" },
+  { value: "start-and-run", label: "Start & Run Cycle" },
+] as const;
+
+function ScheduleInspectionsPanel({ onSuccess }: { onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [intervalDays, setIntervalDays] = useState(30);
+  const [customDays, setCustomDays] = useState("");
+  const [isCustom, setIsCustom] = useState(false);
+  const [autoAssign, setAutoAssign] = useState(true);
+  const [inspType, setInspType] = useState<"periodic-fluid" | "periodic-damage" | "start-and-run">("periodic-fluid");
+
+  const effectiveInterval = isCustom ? Number(customDays) || 0 : intervalDays;
+
+  const { data: recsData, isLoading: recsLoading } = useQuery<{
+    recommendations: Recommendation[];
+    summary: { overdue: number; dueSoon: number; ok: number; total: number };
+  }>({
+    queryKey: ["inspection-recommendations"],
+    queryFn: async () => {
+      const r = await fetch("/api/yard/inspection-recommendations");
+      return r.json();
+    },
+    enabled: open,
+  });
+
+  const generateMutation = useGenerateYardInspections({
+    mutation: {
+      onSuccess: (data) => {
+        toast({
+          title: `${data.created} inspection${data.created !== 1 ? "s" : ""} created`,
+          description: data.assigned > 0
+            ? `${data.assigned} auto-assigned${data.skipped > 0 ? `, ${data.skipped} skipped (already active)` : ""}`
+            : data.skipped > 0
+            ? `${data.skipped} vehicle${data.skipped !== 1 ? "s" : ""} skipped (already have active inspections)`
+            : undefined,
+        });
+        onSuccess();
+        setOpen(false);
+      },
+      onError: () => toast({ title: "Failed to generate inspections", variant: "destructive" }),
+    },
+  });
+
+  const previewRecs = (recsData?.recommendations ?? []).filter(
+    (r) => r.daysRemaining <= effectiveInterval || r.urgency === "overdue"
+  );
+
+  const handleGenerate = () => {
+    if (effectiveInterval < 1) {
+      toast({ title: "Please enter a valid interval", variant: "destructive" });
+      return;
+    }
+    generateMutation.mutate({
+      data: { intervalDays: effectiveInterval, autoAssign, inspectionType: inspType },
+    });
+  };
+
+  return (
+    <div className="bg-card border border-card-border rounded-lg">
+      <button
+        data-testid="schedule-inspections-toggle"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-lg"
+      >
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-[hsl(221,83%,53%)]" />
+          <span className="text-sm font-semibold text-foreground">Schedule Inspections</span>
+          {recsData && (
+            <span className="text-xs text-muted-foreground">
+              ({recsData.summary.overdue} overdue, {recsData.summary.dueSoon} due soon)
+            </span>
+          )}
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="border-t border-border px-4 py-4 space-y-4">
+          {/* Interval picker */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-2">Inspection Interval</label>
+            <div className="flex flex-wrap gap-2">
+              {INTERVAL_PRESETS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => { setIntervalDays(p.value); setIsCustom(false); }}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                    !isCustom && intervalDays === p.value
+                      ? "bg-[hsl(221,83%,53%)] border-[hsl(221,83%,53%)] text-white"
+                      : "border-border text-muted-foreground hover:border-[hsl(221,83%,53%)]"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setIsCustom(true)}
+                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                  isCustom
+                    ? "bg-[hsl(221,83%,53%)] border-[hsl(221,83%,53%)] text-white"
+                    : "border-border text-muted-foreground hover:border-[hsl(221,83%,53%)]"
+                }`}
+              >
+                Custom
+              </button>
+              {isCustom && (
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  placeholder="Days..."
+                  value={customDays}
+                  onChange={(e) => setCustomDays(e.target.value)}
+                  className="w-24 px-2 py-1 text-xs border border-border rounded bg-background text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Inspection type */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-2">Inspection Type</label>
+            <div className="flex flex-wrap gap-2">
+              {PERIODIC_TYPES.map((t) => (
+                <button
+                  key={t.value}
+                  onClick={() => setInspType(t.value)}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                    inspType === t.value
+                      ? "bg-[hsl(221,83%,53%)] border-[hsl(221,83%,53%)] text-white"
+                      : "border-border text-muted-foreground hover:border-[hsl(221,83%,53%)]"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Auto-assign toggle */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setAutoAssign((a) => !a)}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                autoAssign ? "bg-[hsl(221,83%,53%)]" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  autoAssign ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+            <span className="text-xs text-foreground font-medium">
+              Auto-Assign to technicians
+            </span>
+            {autoAssign && (
+              <span className="text-xs text-muted-foreground">(round-robin across available techs)</span>
+            )}
+          </div>
+
+          {/* Vehicle preview table */}
+          {effectiveInterval > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                Vehicles that would be included ({previewRecs.length})
+              </p>
+              {recsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-8 bg-muted animate-pulse rounded" />
+                  ))}
+                </div>
+              ) : previewRecs.length === 0 ? (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  No vehicles are overdue or due within {effectiveInterval} days
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-muted-foreground font-medium">Vehicle</th>
+                        <th className="text-left px-3 py-2 text-muted-foreground font-medium hidden sm:table-cell">Last Inspected</th>
+                        <th className="text-left px-3 py-2 text-muted-foreground font-medium hidden sm:table-cell">Days in Yard</th>
+                        <th className="text-left px-3 py-2 text-muted-foreground font-medium">Urgency</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {previewRecs.slice(0, 20).map((r) => (
+                        <tr key={r.vehicleId} className="hover:bg-muted/20">
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-foreground">{r.vehicleName}</div>
+                            <div className="text-muted-foreground">{r.stockNumber}</div>
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">
+                            {r.lastInspectedAt
+                              ? new Date(r.lastInspectedAt).toLocaleDateString()
+                              : "Never"}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">
+                            {r.daysSinceArrival}d
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${URGENCY_STYLES[r.urgency]}`}>
+                              {r.urgency === "overdue"
+                                ? `${Math.abs(r.daysRemaining)}d overdue`
+                                : r.urgency === "due-soon"
+                                ? `Due in ${r.daysRemaining}d`
+                                : URGENCY_LABELS[r.urgency]}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {previewRecs.length > 20 && (
+                    <p className="text-xs text-muted-foreground text-center py-2 border-t border-border">
+                      +{previewRecs.length - 20} more vehicles
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setOpen(false)}
+              className="flex-1 py-2 border border-border rounded text-sm text-foreground hover:border-[hsl(221,83%,53%)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              data-testid="button-generate-inspections"
+              onClick={handleGenerate}
+              disabled={generateMutation.isPending || previewRecs.length === 0 || effectiveInterval < 1}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors disabled:opacity-50"
+            >
+              <Zap className="w-4 h-4" />
+              {generateMutation.isPending
+                ? "Generating..."
+                : `Generate ${previewRecs.length > 0 ? `(${previewRecs.length})` : ""}`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InspectionsPage() {
   const [statusFilter, setStatusFilter] = useState<InspStatus>("all");
   const [page, setPage] = useState(1);
@@ -303,6 +605,16 @@ export default function InspectionsPage() {
     },
   });
 
+  const autoAssignMutation = useAutoAssignYardInspections({
+    mutation: {
+      onSuccess: (data) => {
+        toast({ title: `${data.assigned} inspection${data.assigned !== 1 ? "s" : ""} assigned` });
+        queryClient.invalidateQueries({ queryKey: getListYardInspectionsQueryKey() });
+      },
+      onError: () => toast({ title: "Auto-assign failed", variant: "destructive" }),
+    },
+  });
+
   const markFinished = (id: number) => {
     updateInspection.mutate({ inspectionId: id, data: { status: "finished" } });
   };
@@ -325,6 +637,11 @@ export default function InspectionsPage() {
     return insp.vehicleMileage;
   };
 
+  const handleScheduleSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: getListYardInspectionsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["inspection-recommendations"] });
+  };
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -332,14 +649,28 @@ export default function InspectionsPage() {
           <h1 className="text-lg font-semibold text-foreground">PDI & Inspections</h1>
           <p className="text-muted-foreground text-sm">{data?.total ?? 0} inspections</p>
         </div>
-        <button
-          data-testid="button-create-inspection"
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Create PDI
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => autoAssignMutation.mutate({ data: {} })}
+            disabled={autoAssignMutation.isPending}
+            title="Auto-assign all unassigned queued inspections"
+            className="flex items-center gap-1.5 px-3 py-2 border border-border text-sm font-medium rounded hover:border-[hsl(221,83%,53%)] text-foreground transition-colors disabled:opacity-50"
+          >
+            <UserCheck className="w-4 h-4" />
+            Auto-Assign
+          </button>
+          <button
+            data-testid="button-create-inspection"
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Create PDI
+          </button>
+        </div>
       </div>
+
+      {/* Schedule Inspections panel */}
+      <ScheduleInspectionsPanel onSuccess={handleScheduleSuccess} />
 
       {/* Status chips */}
       <div className="flex flex-wrap gap-2">
@@ -419,6 +750,7 @@ export default function InspectionsPage() {
                       className="text-xs px-2 py-0.5 bg-muted border border-border rounded text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
                       defaultValue=""
                       onChange={(e) => { if (e.target.value) assignTech(insp.id, e.target.value); }}
+                      data-testid={`assign-tech-${insp.id}`}
                     >
                       <option value="">Assign technician...</option>
                       {(usersData ?? []).map((u) => (

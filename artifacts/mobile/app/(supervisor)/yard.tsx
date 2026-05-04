@@ -4,11 +4,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -25,6 +27,7 @@ const BASE = Platform.OS === "web"
 type VehicleStatus = "available" | "in_transit" | "pdi_pending" | "sold";
 type InspectionStatus = "queued" | "in-progress" | "finished";
 type Urgency = "overdue" | "due-soon" | "ok";
+type PeriodicType = "periodic-fluid" | "periodic-damage" | "start-and-run";
 
 interface YardVehicle {
   id: number;
@@ -46,6 +49,7 @@ interface YardInspection {
   id: number;
   inspectionNumber: string;
   vehicleName: string;
+  vehicleYear?: number | null;
   stockVin: string;
   status: InspectionStatus;
   type: string;
@@ -57,13 +61,34 @@ interface YardInspection {
 
 interface InspectionRec {
   vehicleId: number;
+  vehicleName: string;
+  stockNumber: string;
   urgency: Urgency;
   daysRemaining: number;
-  aiRecommendation: string;
+  daysSinceArrival: number;
+  lastInspectedAt: string | null;
   nextDueDate: string;
+  aiRecommendation: string;
 }
 
 type Tab = "vehicles" | "inspections";
+
+const TYPE_LABELS: Record<string, string> = {
+  "pre-inspection": "Pre-Inspection",
+  secondary: "Secondary",
+  "final-quality": "Final Quality",
+  "new-arrival": "New Arrival PDI",
+  "used-arrival": "Used Arrival PDI",
+  "periodic-fluid": "Periodic — Fluid Check",
+  "periodic-damage": "Periodic — Damage Scan",
+  "start-and-run": "Start & Run Cycle",
+};
+
+const PERIODIC_TYPES: Array<{ value: PeriodicType; label: string }> = [
+  { value: "periodic-fluid", label: "Fluid Check" },
+  { value: "periodic-damage", label: "Damage Scan" },
+  { value: "start-and-run", label: "Start & Run" },
+];
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   available: "Available",
@@ -137,6 +162,231 @@ function InspectionBadge({ rec }: { rec: InspectionRec }) {
   );
 }
 
+interface GenerateSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  onGenerated: (created: number, assigned: number) => void;
+  recommendations: InspectionRec[];
+}
+
+function GenerateSheet({ visible, onClose, onGenerated, recommendations }: GenerateSheetProps) {
+  const colors = useColors();
+  const [intervalDays, setIntervalDays] = useState(30);
+  const [customDays, setCustomDays] = useState("");
+  const [isCustom, setIsCustom] = useState(false);
+  const [autoAssign, setAutoAssign] = useState(true);
+  const [inspType, setInspType] = useState<PeriodicType>("periodic-fluid");
+  const [generating, setGenerating] = useState(false);
+
+  const effectiveInterval = isCustom ? Number(customDays) || 0 : intervalDays;
+
+  const previewRecs = recommendations.filter(
+    (r) => r.daysRemaining <= effectiveInterval || r.urgency === "overdue"
+  );
+
+  const handleGenerate = async () => {
+    if (effectiveInterval < 1) return;
+    setGenerating(true);
+    try {
+      const res = await fetch(`${BASE}/yard/inspections/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intervalDays: effectiveInterval,
+          autoAssign,
+          inspectionType: inspType,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      onGenerated(data.created ?? 0, data.assigned ?? 0);
+      onClose();
+    } catch {
+      // error handled by caller
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable
+          style={[styles.modalSheet, { backgroundColor: colors.card }]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <View style={styles.modalHandle} />
+          <Text style={[styles.modalTitle, { color: colors.foreground }]}>Schedule Inspections</Text>
+          <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+            Generate periodic inspections for vehicles overdue or due within the selected interval
+          </Text>
+
+          {/* Interval picker */}
+          <View style={styles.sheetSection}>
+            <Text style={[styles.sheetLabel, { color: colors.mutedForeground }]}>Inspection Interval</Text>
+            <View style={styles.chipRow}>
+              {[30, 60, 90].map((d) => (
+                <Pressable
+                  key={d}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: !isCustom && intervalDays === d ? colors.primary : colors.background,
+                      borderColor: !isCustom && intervalDays === d ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => { setIntervalDays(d); setIsCustom(false); }}
+                >
+                  <Text style={[styles.chipText, { color: !isCustom && intervalDays === d ? "#fff" : colors.foreground }]}>
+                    {d} days
+                  </Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: isCustom ? colors.primary : colors.background,
+                    borderColor: isCustom ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setIsCustom(true)}
+              >
+                <Text style={[styles.chipText, { color: isCustom ? "#fff" : colors.foreground }]}>Custom</Text>
+              </Pressable>
+            </View>
+            {isCustom && (
+              <TextInput
+                value={customDays}
+                onChangeText={setCustomDays}
+                keyboardType="number-pad"
+                placeholder="Enter days..."
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.customInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              />
+            )}
+          </View>
+
+          {/* Inspection type */}
+          <View style={styles.sheetSection}>
+            <Text style={[styles.sheetLabel, { color: colors.mutedForeground }]}>Inspection Type</Text>
+            <View style={styles.chipRow}>
+              {PERIODIC_TYPES.map((t) => (
+                <Pressable
+                  key={t.value}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: inspType === t.value ? colors.primary : colors.background,
+                      borderColor: inspType === t.value ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setInspType(t.value)}
+                >
+                  <Text style={[styles.chipText, { color: inspType === t.value ? "#fff" : colors.foreground }]}>
+                    {t.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* Auto-assign toggle */}
+          <View style={[styles.sheetSection, styles.toggleRow]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetLabel, { color: colors.foreground }]}>Auto-Assign</Text>
+              <Text style={[styles.modalSub, { color: colors.mutedForeground, marginTop: 2 }]}>
+                Distribute evenly across available technicians
+              </Text>
+            </View>
+            <Switch
+              value={autoAssign}
+              onValueChange={setAutoAssign}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {/* Preview */}
+          {effectiveInterval > 0 && (
+            <View style={styles.sheetSection}>
+              <Text style={[styles.sheetLabel, { color: colors.mutedForeground }]}>
+                Preview — {previewRecs.length} vehicle{previewRecs.length !== 1 ? "s" : ""} would be included
+              </Text>
+              {previewRecs.length === 0 ? (
+                <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+                  No vehicles are overdue or due within {effectiveInterval} days
+                </Text>
+              ) : (
+                <ScrollView style={styles.previewList} nestedScrollEnabled>
+                  {previewRecs.slice(0, 10).map((r) => (
+                    <View key={r.vehicleId} style={[styles.previewRow, { borderBottomColor: colors.border }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.previewVehicle, { color: colors.foreground }]} numberOfLines={1}>
+                          {r.vehicleName}
+                        </Text>
+                        <Text style={[styles.previewSub, { color: colors.mutedForeground }]}>
+                          {r.stockNumber} · {r.daysSinceArrival}d in yard
+                        </Text>
+                      </View>
+                      <View style={[styles.urgencyBadge, { backgroundColor: URGENCY_BG[r.urgency] }]}>
+                        <Text style={[styles.urgencyText, { color: URGENCY_COLOR[r.urgency] }]}>
+                          {r.urgency === "overdue"
+                            ? `${Math.abs(r.daysRemaining)}d overdue`
+                            : r.urgency === "due-soon"
+                            ? `Due in ${r.daysRemaining}d`
+                            : "On Schedule"}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                  {previewRecs.length > 10 && (
+                    <Text style={[styles.previewMore, { color: colors.mutedForeground }]}>
+                      +{previewRecs.length - 10} more
+                    </Text>
+                  )}
+                </ScrollView>
+              )}
+            </View>
+          )}
+
+          {/* Actions */}
+          <View style={styles.modalActions}>
+            <Pressable
+              style={[styles.cancelBtn, { borderColor: colors.border }]}
+              onPress={onClose}
+            >
+              <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.generateBtn,
+                {
+                  backgroundColor: previewRecs.length === 0 || generating ? colors.muted : colors.primary,
+                  opacity: previewRecs.length === 0 || generating || effectiveInterval < 1 ? 0.5 : 1,
+                },
+              ]}
+              onPress={handleGenerate}
+              disabled={previewRecs.length === 0 || generating || effectiveInterval < 1}
+            >
+              {generating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="zap" size={14} color="#fff" />
+                  <Text style={styles.generateText}>
+                    Generate {previewRecs.length > 0 ? `(${previewRecs.length})` : ""}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function SupervisorYardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -147,11 +397,19 @@ export default function SupervisorYardScreen() {
   const [vehicles, setVehicles] = useState<YardVehicle[]>([]);
   const [inspections, setInspections] = useState<YardInspection[]>([]);
   const [recommendations, setRecommendations] = useState<Record<number, InspectionRec>>({});
+  const [allRecommendations, setAllRecommendations] = useState<InspectionRec[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<VehicleStatus | "all">("all");
   const [inspFilter, setInspFilter] = useState<InspectionStatus | "all">("all");
+  const [showGenerateSheet, setShowGenerateSheet] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
 
   const loadVehicles = useCallback(async () => {
     try {
@@ -168,11 +426,13 @@ export default function SupervisorYardScreen() {
   const loadRecommendations = useCallback(async () => {
     try {
       const data = await fetchJson("/yard/inspection-recommendations");
+      const all: InspectionRec[] = data.recommendations ?? [];
       const map: Record<number, InspectionRec> = {};
-      for (const r of data.recommendations ?? []) {
+      for (const r of all) {
         map[r.vehicleId] = r;
       }
       setRecommendations(map);
+      setAllRecommendations(all);
     } catch {
       // non-critical
     }
@@ -244,6 +504,14 @@ export default function SupervisorYardScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader title="Yard" subtitle="Supervisor View" showNotifications={false} />
+
+      {/* Toast notification */}
+      {toast && (
+        <View style={styles.toast}>
+          <Feather name="check-circle" size={14} color="#fff" />
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
 
       {/* Inspection alert banner */}
       {(overdueCount > 0 || dueSoonCount > 0) && (
@@ -404,7 +672,7 @@ export default function SupervisorYardScreen() {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-          {/* Inspection filters + New PDI button */}
+          {/* Inspection filters + Generate button */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -428,6 +696,15 @@ export default function SupervisorYardScreen() {
                 </Text>
               </Pressable>
             ))}
+
+            {/* Generate button */}
+            <Pressable
+              style={[styles.filterChip, styles.generateChip, { backgroundColor: "#7c3aed", borderColor: "#7c3aed" }]}
+              onPress={() => setShowGenerateSheet(true)}
+            >
+              <Feather name="zap" size={13} color="#fff" />
+              <Text style={[styles.filterChipText, { color: "#fff" }]}>Generate</Text>
+            </Pressable>
 
             <Pressable
               style={[styles.filterChip, styles.createBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
@@ -474,6 +751,9 @@ export default function SupervisorYardScreen() {
                       )}
                     </View>
                     <Text style={[styles.cardTitle, { color: colors.foreground }]}>{insp.vehicleName}</Text>
+                    <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
+                      {TYPE_LABELS[insp.type] ?? insp.type}
+                    </Text>
                     <Text style={[styles.cardSub, { color: colors.mutedForeground }]} numberOfLines={1}>{insp.stockVin}</Text>
                     {insp.assignedTo && (
                       <View style={styles.assignedRow}>
@@ -499,6 +779,17 @@ export default function SupervisorYardScreen() {
           />
         </View>
       )}
+
+      <GenerateSheet
+        visible={showGenerateSheet}
+        onClose={() => setShowGenerateSheet(false)}
+        recommendations={allRecommendations}
+        onGenerated={(created, assigned) => {
+          const msg = `${created} inspection${created !== 1 ? "s" : ""} created${assigned > 0 ? `, ${assigned} auto-assigned` : ""}`;
+          showToast(msg);
+          load(true);
+        }}
+      />
     </View>
   );
 }
@@ -506,6 +797,31 @@ export default function SupervisorYardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  toast: {
+    position: "absolute",
+    bottom: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: "#16a34a",
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    zIndex: 100,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
+  },
   alertBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -569,11 +885,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_500Medium",
   },
-  createBtn: {
+  generateChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     marginLeft: 8,
+  },
+  createBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   listContent: {
     padding: 16,
@@ -673,5 +994,144 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     fontFamily: "Inter_400Regular",
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingTop: 12,
+    gap: 0,
+    maxHeight: "90%",
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#e2e8f0",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 12,
+  },
+  sheetSection: {
+    marginTop: 16,
+  },
+  sheetLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  customInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  previewList: {
+    maxHeight: 180,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  previewVehicle: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  previewSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  urgencyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  urgencyText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
+  previewMore: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    padding: 8,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+    paddingBottom: 8,
+  },
+  cancelBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  cancelText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  generateBtn: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  generateText: {
+    color: "#fff",
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
 });

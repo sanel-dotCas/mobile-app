@@ -19,10 +19,14 @@ import type {
 import type {
   AnalyzeEstimateRequest,
   AnalyzeEstimateResponse,
+  AutoAssignYardInspectionsBody,
+  AutoAssignYardInspectionsResponse,
   CreateYardInspectionBody,
   CreateYardLocationBody,
   CreateYardVehicleBody,
   DmsAccountType,
+  GenerateYardInspectionsBody,
+  GenerateYardInspectionsResponse,
   GetLocationMovementFeedParams,
   GetTechnicianStatsParams,
   HealthStatus,
@@ -1943,4 +1947,184 @@ export const useUpdateYardInspection = <
   TContext
 > => {
   return useMutation(getUpdateYardInspectionMutationOptions(options));
+};
+
+/**
+ * @summary Batch-generate periodic inspections for vehicles due within interval
+ */
+export const getGenerateYardInspectionsUrl = () => {
+  return `/api/yard/inspections/generate`;
+};
+
+export const generateYardInspections = async (
+  generateYardInspectionsBody: GenerateYardInspectionsBody,
+  options?: RequestInit,
+): Promise<GenerateYardInspectionsResponse> => {
+  return customFetch<GenerateYardInspectionsResponse>(
+    getGenerateYardInspectionsUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(generateYardInspectionsBody),
+    },
+  );
+};
+
+export const getGenerateYardInspectionsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateYardInspections>>,
+    TError,
+    { data: BodyType<GenerateYardInspectionsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateYardInspections>>,
+  TError,
+  { data: BodyType<GenerateYardInspectionsBody> },
+  TContext
+> => {
+  const mutationKey = ["generateYardInspections"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateYardInspections>>,
+    { data: BodyType<GenerateYardInspectionsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateYardInspections(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateYardInspectionsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateYardInspections>>
+>;
+export type GenerateYardInspectionsMutationBody =
+  BodyType<GenerateYardInspectionsBody>;
+export type GenerateYardInspectionsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Batch-generate periodic inspections for vehicles due within interval
+ */
+export const useGenerateYardInspections = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateYardInspections>>,
+    TError,
+    { data: BodyType<GenerateYardInspectionsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateYardInspections>>,
+  TError,
+  { data: BodyType<GenerateYardInspectionsBody> },
+  TContext
+> => {
+  return useMutation(getGenerateYardInspectionsMutationOptions(options));
+};
+
+/**
+ * @summary Distribute unassigned queued inspections evenly across available technicians
+ */
+export const getAutoAssignYardInspectionsUrl = () => {
+  return `/api/yard/inspections/auto-assign`;
+};
+
+export const autoAssignYardInspections = async (
+  autoAssignYardInspectionsBody?: AutoAssignYardInspectionsBody,
+  options?: RequestInit,
+): Promise<AutoAssignYardInspectionsResponse> => {
+  return customFetch<AutoAssignYardInspectionsResponse>(
+    getAutoAssignYardInspectionsUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(autoAssignYardInspectionsBody),
+    },
+  );
+};
+
+export const getAutoAssignYardInspectionsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof autoAssignYardInspections>>,
+    TError,
+    { data: BodyType<AutoAssignYardInspectionsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof autoAssignYardInspections>>,
+  TError,
+  { data: BodyType<AutoAssignYardInspectionsBody> },
+  TContext
+> => {
+  const mutationKey = ["autoAssignYardInspections"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof autoAssignYardInspections>>,
+    { data: BodyType<AutoAssignYardInspectionsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return autoAssignYardInspections(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AutoAssignYardInspectionsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof autoAssignYardInspections>>
+>;
+export type AutoAssignYardInspectionsMutationBody =
+  BodyType<AutoAssignYardInspectionsBody>;
+export type AutoAssignYardInspectionsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Distribute unassigned queued inspections evenly across available technicians
+ */
+export const useAutoAssignYardInspections = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof autoAssignYardInspections>>,
+    TError,
+    { data: BodyType<AutoAssignYardInspectionsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof autoAssignYardInspections>>,
+  TError,
+  { data: BodyType<AutoAssignYardInspectionsBody> },
+  TContext
+> => {
+  return useMutation(getAutoAssignYardInspectionsMutationOptions(options));
 };

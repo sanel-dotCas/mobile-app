@@ -27,4 +27,5 @@ export interface YardInspection {
   createdAt: string;
   completedAt?: string | null;
   assignedTo?: string | null;
+  assignedAt?: string | null;
 }

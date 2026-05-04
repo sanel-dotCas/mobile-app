@@ -309,6 +309,11 @@ export const YardInspectionType = {
   "pre-inspection": "pre-inspection",
   secondary: "secondary",
   "final-quality": "final-quality",
+  "new-arrival": "new-arrival",
+  "used-arrival": "used-arrival",
+  "periodic-fluid": "periodic-fluid",
+  "periodic-damage": "periodic-damage",
+  "start-and-run": "start-and-run",
 } as const;
 
 export type YardInspectionStatus =
@@ -339,6 +344,7 @@ export interface YardInspection {
   createdAt: string;
   completedAt?: string | null;
   assignedTo?: string | null;
+  assignedAt?: string | null;
 }
 
 export interface YardInspectionList {
@@ -355,6 +361,11 @@ export const CreateYardInspectionBodyType = {
   "pre-inspection": "pre-inspection",
   secondary: "secondary",
   "final-quality": "final-quality",
+  "new-arrival": "new-arrival",
+  "used-arrival": "used-arrival",
+  "periodic-fluid": "periodic-fluid",
+  "periodic-damage": "periodic-damage",
+  "start-and-run": "start-and-run",
 } as const;
 
 export interface CreateYardInspectionBody {
@@ -365,6 +376,46 @@ export interface CreateYardInspectionBody {
   bodyDamage?: string;
   fuelPercentage?: number;
   assignedTo?: string;
+}
+
+/**
+ * Type of periodic inspection to create (defaults to periodic-fluid)
+ */
+export type GenerateYardInspectionsBodyInspectionType =
+  (typeof GenerateYardInspectionsBodyInspectionType)[keyof typeof GenerateYardInspectionsBodyInspectionType];
+
+export const GenerateYardInspectionsBodyInspectionType = {
+  "periodic-fluid": "periodic-fluid",
+  "periodic-damage": "periodic-damage",
+  "start-and-run": "start-and-run",
+} as const;
+
+export interface GenerateYardInspectionsBody {
+  /** Include vehicles overdue or due within this many days */
+  intervalDays: number;
+  /** If true, distribute created inspections evenly across available technicians */
+  autoAssign: boolean;
+  /** Type of periodic inspection to create (defaults to periodic-fluid) */
+  inspectionType?: GenerateYardInspectionsBodyInspectionType;
+  /** Optional list of technician names to assign to (defaults to all available) */
+  technicianIds?: string[];
+}
+
+export interface GenerateYardInspectionsResponse {
+  created: number;
+  assigned: number;
+  skipped: number;
+  inspections: YardInspection[];
+}
+
+export interface AutoAssignYardInspectionsBody {
+  /** Optional list of inspection IDs to assign (defaults to all unassigned queued) */
+  inspectionIds?: number[];
+}
+
+export interface AutoAssignYardInspectionsResponse {
+  assigned: number;
+  total: number;
 }
 
 export type UpdateYardInspectionBodyStatus =

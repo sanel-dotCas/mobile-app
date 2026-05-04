@@ -8,6 +8,8 @@
 
 export * from "./analyzeEstimateRequest";
 export * from "./analyzeEstimateResponse";
+export * from "./autoAssignYardInspectionsBody";
+export * from "./autoAssignYardInspectionsResponse";
 export * from "./createYardInspectionBody";
 export * from "./createYardInspectionBodyType";
 export * from "./createYardLocationBody";
@@ -19,6 +21,9 @@ export * from "./dmsAccountType";
 export * from "./estimateLine";
 export * from "./estimateLineLaborCategory";
 export * from "./estimateLineType";
+export * from "./generateYardInspectionsBody";
+export * from "./generateYardInspectionsBodyInspectionType";
+export * from "./generateYardInspectionsResponse";
 export * from "./getLocationMovementFeedParams";
 export * from "./getTechnicianStatsParams";
 export * from "./healthStatus";

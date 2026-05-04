@@ -61,6 +61,11 @@ const TYPE_LABEL: Record<string, string> = {
   "pre-inspection": "Pre-Inspection (PDI)",
   "secondary": "Secondary Check",
   "final-quality": "Final Quality Check",
+  "new-arrival": "New Arrival PDI",
+  "used-arrival": "Used Arrival PDI",
+  "periodic-fluid": "Periodic — Fluid Check",
+  "periodic-damage": "Periodic — Damage Scan",
+  "start-and-run": "Start & Run Cycle",
 };
 
 const TECHNICIANS = [

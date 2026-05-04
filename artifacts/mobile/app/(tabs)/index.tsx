@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -20,6 +21,18 @@ import { useJobs } from "@/context/JobsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
+const BASE = Platform.OS === "web"
+  ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+  : "/api";
+
+// Maps 2-letter technician code → full name used in yard assignment records
+const CODE_TO_NAME: Record<string, string> = {
+  MR: "Mike Rodriguez",
+  JW: "James Wilson",
+  CM: "Carlos Mendez",
+  AH: "Ahmed Hassan",
+};
+
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS = ["S","M","T","W","T","F","S"];
 
@@ -37,12 +50,39 @@ export default function DashboardScreen() {
   const { state } = useJobs();
   const { t } = useLang();
   const { logout, userCode } = useAuth();
+  const router = useRouter();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const today = new Date();
   const [calYear] = useState(today.getFullYear());
   const [calMonth] = useState(today.getMonth());
   const calDays = getCalendarDays(calYear, calMonth);
+
+  const [myInspectionsCount, setMyInspectionsCount] = useState<number | null>(null);
+
+  const techName = CODE_TO_NAME[userCode] ?? null;
+
+  const loadInspectionCount = useCallback(async () => {
+    if (!techName) {
+      setMyInspectionsCount(0);
+      return;
+    }
+    try {
+      const params = new URLSearchParams({
+        assignedTo: techName,
+        status: "queued,in-progress",
+        limit: "50",
+      });
+      const res = await fetch(`${BASE}/yard/inspections?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMyInspectionsCount((data.inspections ?? []).length);
+    } catch {
+      setMyInspectionsCount(null);
+    }
+  }, [techName]);
+
+  useEffect(() => { loadInspectionCount(); }, [loadInspectionCount]);
 
   const activeJobs = state.jobs.filter((j) => j.status === "in_progress");
   const pendingJobs = state.jobs.filter((j) => j.status === "pending");
@@ -55,6 +95,19 @@ export default function DashboardScreen() {
     if (isToday) return "today";
     return state.stats.workingPattern[key] ?? "off";
   }
+
+  const statsRow = [
+    { label: "Active", count: activeJobs.length, color: colors.info, icon: "activity" as const, onPress: undefined as (() => void) | undefined },
+    { label: "Pending", count: pendingJobs.length, color: colors.warning, icon: "clock" as const, onPress: undefined as (() => void) | undefined },
+    { label: "Completed", count: completedJobs.length, color: colors.success, icon: "check-circle" as const, onPress: undefined as (() => void) | undefined },
+    {
+      label: "Inspections",
+      count: myInspectionsCount ?? 0,
+      color: "#7c3aed",
+      icon: "clipboard" as const,
+      onPress: (): void => { router.push("/(tabs)/jobs"); },
+    },
+  ];
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -105,22 +158,25 @@ export default function DashboardScreen() {
 
         {/* Stats row */}
         <View style={styles.statsRow}>
-          {[
-            { label: "Active", count: activeJobs.length, color: colors.info, icon: "activity" as const },
-            { label: "Pending", count: pendingJobs.length, color: colors.warning, icon: "clock" as const },
-            { label: "Completed", count: completedJobs.length, color: colors.success, icon: "check-circle" as const },
-          ].map(({ label, count, color, icon }) => (
-            <View key={label} style={[styles.statCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
+          {statsRow.map(({ label, count, color, icon, onPress }) => (
+            <Pressable
+              key={label}
+              style={[styles.statCard, { backgroundColor: colors.card, shadowColor: "#000" }]}
+              onPress={onPress}
+              disabled={!onPress}
+            >
               <View style={[styles.statIconBg, { backgroundColor: color + "20" }]}>
                 <Feather name={icon} size={16} color={color} />
               </View>
               {state.jobsLoaded ? (
-                <Text style={[styles.statCount, { color: colors.foreground }]}>{count}</Text>
+                <Text style={[styles.statCount, { color: colors.foreground }]}>
+                  {label === "Inspections" && myInspectionsCount === null ? "—" : count}
+                </Text>
               ) : (
                 <View style={[styles.skeletonCount, { backgroundColor: colors.border }]} />
               )}
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -216,19 +272,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  exportBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1.5,
-  },
-  exportBtnText: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
   logoutBtn: {
     width: 32,
     height: 32,
@@ -291,10 +334,12 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
+    flexWrap: "wrap",
   },
   statCard: {
     flex: 1,
+    minWidth: 70,
     borderRadius: 12,
     padding: 12,
     alignItems: "center",
@@ -316,8 +361,9 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: "Inter_500Medium",
+    textAlign: "center",
   },
   section: {
     borderRadius: 14,

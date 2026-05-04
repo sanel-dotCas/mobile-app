@@ -477,6 +477,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/YardInspection"
 
+  /yard/inspections/generate:
+    post:
+      operationId: generateYardInspections
+      tags: [yard-inspections]
+      summary: Batch-generate periodic inspections for vehicles due within interval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateYardInspectionsBody"
+      responses:
+        "200":
+          description: Generation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateYardInspectionsResponse"
+
+  /yard/inspections/auto-assign:
+    post:
+      operationId: autoAssignYardInspections
+      tags: [yard-inspections]
+      summary: Distribute unassigned queued inspections evenly across available technicians
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoAssignYardInspectionsBody"
+      responses:
+        "200":
+          description: Assignment result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoAssignYardInspectionsResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -865,7 +903,7 @@ components:
           nullable: true
         type:
           type: string
-          enum: [pre-inspection, secondary, final-quality]
+          enum: [pre-inspection, secondary, final-quality, new-arrival, used-arrival, periodic-fluid, periodic-damage, start-and-run]
         status:
           type: string
           enum: [finished, in-progress, queued]
@@ -895,6 +933,9 @@ components:
         assignedTo:
           type: string
           nullable: true
+        assignedAt:
+          type: string
+          nullable: true
       required: [id, inspectionNumber, vehicleId, stockVin, vehicleName, type, status, createdAt]
 
     YardInspectionList:
@@ -919,7 +960,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [pre-inspection, secondary, final-quality]
+          enum: [pre-inspection, secondary, final-quality, new-arrival, used-arrival, periodic-fluid, periodic-damage, start-and-run]
         locationId:
           type: integer
         notes:
@@ -931,6 +972,59 @@ components:
         assignedTo:
           type: string
       required: [vehicleId, type]
+
+    GenerateYardInspectionsBody:
+      type: object
+      properties:
+        intervalDays:
+          type: integer
+          description: Include vehicles overdue or due within this many days
+        autoAssign:
+          type: boolean
+          description: If true, distribute created inspections evenly across available technicians
+        inspectionType:
+          type: string
+          enum: [periodic-fluid, periodic-damage, start-and-run]
+          description: Type of periodic inspection to create (defaults to periodic-fluid)
+        technicianIds:
+          type: array
+          items:
+            type: string
+          description: Optional list of technician names to assign to (defaults to all available)
+      required: [intervalDays, autoAssign]
+
+    GenerateYardInspectionsResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+        assigned:
+          type: integer
+        skipped:
+          type: integer
+        inspections:
+          type: array
+          items:
+            $ref: "#/components/schemas/YardInspection"
+      required: [created, assigned, skipped, inspections]
+
+    AutoAssignYardInspectionsBody:
+      type: object
+      properties:
+        inspectionIds:
+          type: array
+          items:
+            type: integer
+          description: Optional list of inspection IDs to assign (defaults to all unassigned queued)
+
+    AutoAssignYardInspectionsResponse:
+      type: object
+      properties:
+        assigned:
+          type: integer
+        total:
+          type: integer
+      required: [assigned, total]
 
     UpdateYardInspectionBody:
       type: object

@@ -57,6 +57,11 @@ export const yardInspectionTypeEnum = pgEnum("yard_inspection_type", [
   "pre-inspection",
   "secondary",
   "final-quality",
+  "new-arrival",
+  "used-arrival",
+  "periodic-fluid",
+  "periodic-damage",
+  "start-and-run",
 ]);
 
 export const yardInspectionStatusEnum = pgEnum("yard_inspection_status", [

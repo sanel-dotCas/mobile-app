@@ -13,4 +13,9 @@ export const YardInspectionType = {
   "pre-inspection": "pre-inspection",
   secondary: "secondary",
   "final-quality": "final-quality",
+  "new-arrival": "new-arrival",
+  "used-arrival": "used-arrival",
+  "periodic-fluid": "periodic-fluid",
+  "periodic-damage": "periodic-damage",
+  "start-and-run": "start-and-run",
 } as const;

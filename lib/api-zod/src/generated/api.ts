@@ -574,7 +574,16 @@ export const ListYardInspectionsResponse = zod.object({
       vehicleName: zod.string(),
       vehicleYear: zod.number().nullish(),
       stockNumber: zod.string().nullish(),
-      type: zod.enum(["pre-inspection", "secondary", "final-quality"]),
+      type: zod.enum([
+        "pre-inspection",
+        "secondary",
+        "final-quality",
+        "new-arrival",
+        "used-arrival",
+        "periodic-fluid",
+        "periodic-damage",
+        "start-and-run",
+      ]),
       status: zod.enum(["finished", "in-progress", "queued"]),
       locationId: zod.number().nullish(),
       locationName: zod.string().nullish(),
@@ -585,6 +594,7 @@ export const ListYardInspectionsResponse = zod.object({
       createdAt: zod.string(),
       completedAt: zod.string().nullish(),
       assignedTo: zod.string().nullish(),
+      assignedAt: zod.string().nullish(),
     }),
   ),
   total: zod.number(),
@@ -597,7 +607,16 @@ export const ListYardInspectionsResponse = zod.object({
  */
 export const CreateYardInspectionBody = zod.object({
   vehicleId: zod.number(),
-  type: zod.enum(["pre-inspection", "secondary", "final-quality"]),
+  type: zod.enum([
+    "pre-inspection",
+    "secondary",
+    "final-quality",
+    "new-arrival",
+    "used-arrival",
+    "periodic-fluid",
+    "periodic-damage",
+    "start-and-run",
+  ]),
   locationId: zod.number().optional(),
   notes: zod.string().optional(),
   bodyDamage: zod.string().optional(),
@@ -629,7 +648,16 @@ export const UpdateYardInspectionResponse = zod.object({
   vehicleName: zod.string(),
   vehicleYear: zod.number().nullish(),
   stockNumber: zod.string().nullish(),
-  type: zod.enum(["pre-inspection", "secondary", "final-quality"]),
+  type: zod.enum([
+    "pre-inspection",
+    "secondary",
+    "final-quality",
+    "new-arrival",
+    "used-arrival",
+    "periodic-fluid",
+    "periodic-damage",
+    "start-and-run",
+  ]),
   status: zod.enum(["finished", "in-progress", "queued"]),
   locationId: zod.number().nullish(),
   locationName: zod.string().nullish(),
@@ -640,4 +668,86 @@ export const UpdateYardInspectionResponse = zod.object({
   createdAt: zod.string(),
   completedAt: zod.string().nullish(),
   assignedTo: zod.string().nullish(),
+  assignedAt: zod.string().nullish(),
+});
+
+/**
+ * @summary Batch-generate periodic inspections for vehicles due within interval
+ */
+export const GenerateYardInspectionsBody = zod.object({
+  intervalDays: zod
+    .number()
+    .describe("Include vehicles overdue or due within this many days"),
+  autoAssign: zod
+    .boolean()
+    .describe(
+      "If true, distribute created inspections evenly across available technicians",
+    ),
+  inspectionType: zod
+    .enum(["periodic-fluid", "periodic-damage", "start-and-run"])
+    .optional()
+    .describe(
+      "Type of periodic inspection to create (defaults to periodic-fluid)",
+    ),
+  technicianIds: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      "Optional list of technician names to assign to (defaults to all available)",
+    ),
+});
+
+export const GenerateYardInspectionsResponse = zod.object({
+  created: zod.number(),
+  assigned: zod.number(),
+  skipped: zod.number(),
+  inspections: zod.array(
+    zod.object({
+      id: zod.number(),
+      inspectionNumber: zod.string(),
+      vehicleId: zod.number(),
+      stockVin: zod.string(),
+      vehicleName: zod.string(),
+      vehicleYear: zod.number().nullish(),
+      stockNumber: zod.string().nullish(),
+      type: zod.enum([
+        "pre-inspection",
+        "secondary",
+        "final-quality",
+        "new-arrival",
+        "used-arrival",
+        "periodic-fluid",
+        "periodic-damage",
+        "start-and-run",
+      ]),
+      status: zod.enum(["finished", "in-progress", "queued"]),
+      locationId: zod.number().nullish(),
+      locationName: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      bodyDamage: zod.string().nullish(),
+      fuelPercentage: zod.number().nullish(),
+      vehicleMileage: zod.number().nullish(),
+      createdAt: zod.string(),
+      completedAt: zod.string().nullish(),
+      assignedTo: zod.string().nullish(),
+      assignedAt: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Distribute unassigned queued inspections evenly across available technicians
+ */
+export const AutoAssignYardInspectionsBody = zod.object({
+  inspectionIds: zod
+    .array(zod.number())
+    .optional()
+    .describe(
+      "Optional list of inspection IDs to assign (defaults to all unassigned queued)",
+    ),
+});
+
+export const AutoAssignYardInspectionsResponse = zod.object({
+  assigned: zod.number(),
+  total: zod.number(),
 });
