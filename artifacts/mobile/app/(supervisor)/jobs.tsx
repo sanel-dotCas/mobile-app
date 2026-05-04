@@ -3,13 +3,16 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +24,28 @@ import type { Job, JobStatus, LaborType, Technician } from "@/context/JobsContex
 import { useJobs } from "@/context/JobsContext";
 import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
+
+interface NewJobForm {
+  estimateNumber: string;
+  licensePlate: string;
+  vehicle: string;
+  serviceAdvisor: string;
+  customerNotes: string;
+  appointmentDate: string;
+  totalEstimatedHours: string;
+  odometer: string;
+}
+
+const EMPTY_FORM: NewJobForm = {
+  estimateNumber: "",
+  licensePlate: "",
+  vehicle: "",
+  serviceAdvisor: "",
+  customerNotes: "",
+  appointmentDate: new Date().toISOString().slice(0, 10),
+  totalEstimatedHours: "1.0",
+  odometer: "0",
+};
 
 type FilterKey = "all" | "pending" | "in_progress" | "on_hold" | "completed";
 
@@ -86,13 +111,17 @@ export default function SupervisorJobsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, assignJob, holdJob, unholdJob } = useJobs();
+  const { state, assignJob, holdJob, unholdJob, createJob, deleteJob } = useJobs();
   const { getStage } = useStages();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [assignModal, setAssignModal] = useState<{ jobId: string } | null>(null);
   const [smartSuggestion, setSmartSuggestion] = useState<{ tech: Technician; score: number; reasons: string[] } | null>(null);
+  const [createModal, setCreateModal] = useState(false);
+  const [form, setForm] = useState<NewJobForm>(EMPTY_FORM);
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const filteredJobs = activeFilter === "all"
     ? state.jobs
@@ -163,13 +192,79 @@ export default function SupervisorJobsScreen() {
     }
   };
 
+  const handleCreateJob = async () => {
+    setFormError(null);
+    if (!form.estimateNumber.trim()) {
+      setFormError("Estimate number is required.");
+      return;
+    }
+    if (!form.vehicle.trim()) {
+      setFormError("Vehicle is required (e.g. 2022 Ford F-150).");
+      return;
+    }
+    setCreating(true);
+    try {
+      await createJob({
+        estimateNumber: form.estimateNumber.trim(),
+        licensePlate: form.licensePlate.trim(),
+        vehicle: form.vehicle.trim(),
+        serviceAdvisor: form.serviceAdvisor.trim(),
+        customerNotes: form.customerNotes.trim(),
+        appointmentDate: form.appointmentDate || new Date().toISOString(),
+        totalEstimatedHours: parseFloat(form.totalEstimatedHours) || 0,
+        odometer: parseInt(form.odometer, 10) || 0,
+      });
+      setCreateModal(false);
+      setForm(EMPTY_FORM);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: unknown) {
+      setFormError(e instanceof Error ? e.message : "Failed to create job.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteJob = (job: Job) => {
+    Alert.alert(
+      "Delete Job",
+      `Permanently delete ${job.estimateNumber} — ${job.vehicle}?\n\nThis cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteJob(job.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch {
+              Alert.alert("Error", "Failed to delete job. Please try again.");
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const FILTER_COLORS: Partial<Record<FilterKey, string>> = {
     on_hold: "#d97706",
   };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title="Job Management" subtitle={`${state.jobs.length} total jobs`} />
+      <AppHeader
+        title="Job Management"
+        subtitle={`${state.jobs.length} total jobs`}
+        rightElement={
+          <Pressable
+            onPress={() => { setCreateModal(true); setFormError(null); setForm(EMPTY_FORM); }}
+            style={[styles.newJobBtn, { backgroundColor: colors.primary }]}
+          >
+            <Feather name="plus" size={16} color="#fff" />
+            <Text style={styles.newJobBtnText}>New Job</Text>
+          </Pressable>
+        }
+      />
 
       {/* Delay alert banner */}
       {delayedCount > 0 && (
@@ -348,6 +443,12 @@ export default function SupervisorJobsScreen() {
                   </View>
 
                   <View style={styles.cardActions}>
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation?.(); handleDeleteJob(job); }}
+                      style={[styles.holdBtn, { borderColor: "#fecaca", backgroundColor: "#fff5f5" }]}
+                    >
+                      <Feather name="trash-2" size={13} color="#ef4444" />
+                    </Pressable>
                     {job.status !== "completed" && (
                       <Pressable
                         onPress={(e) => { e.stopPropagation?.(); handleHoldToggle(job); }}
@@ -378,6 +479,130 @@ export default function SupervisorJobsScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Create Job Modal */}
+      <Modal visible={createModal} transparent animationType="slide" onRequestClose={() => setCreateModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <Pressable style={styles.modalOverlay} onPress={() => setCreateModal(false)}>
+            <Pressable style={[styles.modalSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation?.()}>
+              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Job</Text>
+                <Text style={[styles.modalJobLabel, { color: colors.mutedForeground }]}>Create a new repair order</Text>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: "80%" }}>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Estimate Number *</Text>
+                  <TextInput
+                    style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                    value={form.estimateNumber}
+                    onChangeText={(v) => setForm((f) => ({ ...f, estimateNumber: v }))}
+                    placeholder="#00001"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Vehicle *</Text>
+                  <TextInput
+                    style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                    value={form.vehicle}
+                    onChangeText={(v) => setForm((f) => ({ ...f, vehicle: v }))}
+                    placeholder="2022 Ford F-150"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+                <View style={styles.formRow}>
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>License Plate</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                      value={form.licensePlate}
+                      onChangeText={(v) => setForm((f) => ({ ...f, licensePlate: v }))}
+                      placeholder="ABC123"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="characters"
+                    />
+                  </View>
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Odometer</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                      value={form.odometer}
+                      onChangeText={(v) => setForm((f) => ({ ...f, odometer: v }))}
+                      placeholder="0"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Service Advisor</Text>
+                  <TextInput
+                    style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                    value={form.serviceAdvisor}
+                    onChangeText={(v) => setForm((f) => ({ ...f, serviceAdvisor: v }))}
+                    placeholder="Advisor name"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+                <View style={styles.formRow}>
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Est. Hours</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                      value={form.totalEstimatedHours}
+                      onChangeText={(v) => setForm((f) => ({ ...f, totalEstimatedHours: v }))}
+                      placeholder="1.0"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Appointment Date</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                      value={form.appointmentDate}
+                      onChangeText={(v) => setForm((f) => ({ ...f, appointmentDate: v }))}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                </View>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Customer Notes</Text>
+                  <TextInput
+                    style={[styles.fieldInput, styles.fieldTextarea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                    value={form.customerNotes}
+                    onChangeText={(v) => setForm((f) => ({ ...f, customerNotes: v }))}
+                    placeholder="Customer concerns, requests..."
+                    placeholderTextColor={colors.mutedForeground}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+                {formError && (
+                  <View style={styles.formError}>
+                    <Feather name="alert-circle" size={13} color="#ef4444" />
+                    <Text style={styles.formErrorText}>{formError}</Text>
+                  </View>
+                )}
+                <Pressable
+                  onPress={handleCreateJob}
+                  disabled={creating}
+                  style={[styles.createBtn, { backgroundColor: creating ? colors.muted : colors.primary }]}
+                >
+                  {creating
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <><Feather name="plus-circle" size={16} color="#fff" /><Text style={styles.createBtnText}>Create Job</Text></>
+                  }
+                </Pressable>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Assign technician modal */}
       {assignModal && (() => {
@@ -624,4 +849,17 @@ const styles = StyleSheet.create({
   miniLoadTrack:      { height: 4, borderRadius: 2, overflow: "hidden" },
   miniLoadFill:       { height: "100%", borderRadius: 2 },
   statusDot:          { width: 10, height: 10, borderRadius: 5 },
+
+  newJobBtn:          { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  newJobBtnText:      { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
+  formGroup:          { gap: 5, marginBottom: 12 },
+  formRow:            { flexDirection: "row", gap: 10 },
+  fieldLabel:         { fontSize: 12, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldInput:         { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: "Inter_400Regular" },
+  fieldTextarea:      { minHeight: 72, textAlignVertical: "top", paddingTop: 10 },
+  formError:          { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#fff5f5", borderRadius: 8, padding: 10, marginBottom: 12 },
+  formErrorText:      { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium", color: "#ef4444" },
+  createBtn:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12, marginTop: 4, marginBottom: 8 },
+  createBtnText:      { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
 });

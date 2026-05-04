@@ -501,6 +501,75 @@ router.put("/jobs/:id", async (req, res) => {
   }
 });
 
+router.post("/jobs", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+
+  if (!body || typeof body !== "object") {
+    res.status(400).json({ error: "Invalid request body" });
+    return;
+  }
+
+  const estimateNumber = typeof body.estimateNumber === "string" ? body.estimateNumber.trim() : "";
+  if (!estimateNumber) {
+    res.status(400).json({ error: "estimateNumber is required" });
+    return;
+  }
+
+  const vehicleStr = typeof body.vehicle === "string" ? body.vehicle.trim() : "";
+  const { year: vehicleYear, make: vehicleMake, model: vehicleModel } = parseVehicleString(vehicleStr);
+
+  const id = `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const now = new Date().toISOString();
+
+  try {
+    const values = {
+      id,
+      estimateNumber,
+      licensePlate: typeof body.licensePlate === "string" ? body.licensePlate.trim() : "",
+      vehicleYear: vehicleYear ?? null,
+      vehicleMake: vehicleMake ?? null,
+      vehicleModel: vehicleModel ?? null,
+      serviceAdvisor: typeof body.serviceAdvisor === "string" ? body.serviceAdvisor.trim() : "",
+      status: "pending",
+      odometer: typeof body.odometer === "number" ? body.odometer : 0,
+      totalEstimatedHours: String(Number(body.totalEstimatedHours ?? 0).toFixed(2)),
+      workedHours: "0.00",
+      progress: 0,
+      appointmentDate: typeof body.appointmentDate === "string" ? body.appointmentDate : now,
+      customerNotes: typeof body.customerNotes === "string" ? body.customerNotes.trim() : "",
+      thumbnail: null,
+      currentStageId: "stage-001",
+      assignedTechnicianId: null,
+      tasks: [],
+      notes: [],
+      inspections: [],
+      stageHistory: [{ stageId: "stage-001", enteredAt: now }],
+    };
+
+    const [row] = await db.insert(jobsTable).values(values).returning();
+    res.status(201).json({ job: rowToJob(row) });
+  } catch (err) {
+    req.log.error(err, "Failed to create job");
+    res.status(500).json({ error: "Failed to create job" });
+  }
+});
+
+router.delete("/jobs/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deleted = await db.delete(jobsTable).where(eq(jobsTable.id, id)).returning({ id: jobsTable.id });
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    await db.delete(jobOdometerCorrectionsTable).where(eq(jobOdometerCorrectionsTable.jobId, id));
+    res.status(204).send();
+  } catch (err) {
+    req.log.error(err, "Failed to delete job");
+    res.status(500).json({ error: "Failed to delete job" });
+  }
+});
+
 router.patch("/jobs/:id/odometer", async (req, res) => {
   const { id } = req.params;
   const { odometer } = req.body as { odometer?: unknown };

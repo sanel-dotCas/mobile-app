@@ -128,6 +128,8 @@ type Action =
   | { type: "SET_JOBS"; payload: Job[] }
   | { type: "MERGE_JOBS"; payload: Job[] }
   | { type: "MARK_JOBS_LOADED" }
+  | { type: "ADD_JOB"; payload: Job }
+  | { type: "REMOVE_JOB"; payload: { jobId: string } }
   | { type: "CLOCK_IN"; payload: { jobId: string; taskId: string } }
   | { type: "CLOCK_OUT"; payload: { jobId: string; taskId: string } }
   | { type: "ADD_NOTE"; payload: { jobId: string; note: JobNote } }
@@ -236,6 +238,8 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "SET_JOBS": return { ...state, jobs: action.payload, jobsLoaded: true };
     case "MERGE_JOBS": return { ...state, jobs: mergeJobsWithLocal(action.payload, state.jobs), jobsLoaded: true };
     case "MARK_JOBS_LOADED": return { ...state, jobsLoaded: true };
+    case "ADD_JOB": return { ...state, jobs: [...state.jobs, action.payload] };
+    case "REMOVE_JOB": return { ...state, jobs: state.jobs.filter((j) => j.id !== action.payload.jobId) };
 
     case "CLOCK_IN": {
       const { jobId, taskId } = action.payload;
@@ -520,6 +524,8 @@ interface JobsContextValue {
   isRefreshing: boolean;
   unreadCount: number;
   pendingOdometerUpdates: PendingOdometerUpdate[];
+  createJob: (fields: { estimateNumber: string; licensePlate: string; vehicle: string; serviceAdvisor: string; customerNotes: string; appointmentDate: string; totalEstimatedHours: number; odometer: number }) => Promise<Job>;
+  deleteJob: (jobId: string) => Promise<void>;
 }
 
 const JobsContext = createContext<JobsContextValue | null>(null);
@@ -815,6 +821,33 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.jobs]);
 
+  const createJob = useCallback(async (fields: { estimateNumber: string; licensePlate: string; vehicle: string; serviceAdvisor: string; customerNotes: string; appointmentDate: string; totalEstimatedHours: number; odometer: number }): Promise<Job> => {
+    const r = await fetch(`${API_BASE}/jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error((err as { error?: string }).error ?? "Failed to create job");
+    }
+    const data = await r.json() as { job: Job };
+    dispatch({ type: "ADD_JOB", payload: data.job });
+    AsyncStorage.setItem("jobs_v2", JSON.stringify([...prevJobsRef.current, data.job])).catch(() => {});
+    prevJobsRef.current = [...prevJobsRef.current, data.job];
+    return data.job;
+  }, []);
+
+  const deleteJob = useCallback(async (jobId: string): Promise<void> => {
+    const r = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
+    if (!r.ok && r.status !== 404) {
+      throw new Error("Failed to delete job");
+    }
+    dispatch({ type: "REMOVE_JOB", payload: { jobId } });
+    prevJobsRef.current = prevJobsRef.current.filter((j) => j.id !== jobId);
+    AsyncStorage.setItem("jobs_v2", JSON.stringify(prevJobsRef.current)).catch(() => {});
+  }, []);
+
   const holdJob = useCallback((jobId: string) => {
     dispatch({ type: "HOLD_JOB", payload: { jobId } });
     patchJob(jobId, { status: "on_hold" });
@@ -851,7 +884,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount, pendingOdometerUpdates: state.pendingOdometerUpdates }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount, pendingOdometerUpdates: state.pendingOdometerUpdates, createJob, deleteJob }}>
       {children}
     </JobsContext.Provider>
   );
