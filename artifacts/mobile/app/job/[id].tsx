@@ -67,7 +67,7 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state, getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer, pendingOdometerUpdates } = useJobs();
+  const { state, getJob, clockIn, clockOut, endBreak, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer, pendingOdometerUpdates } = useJobs();
   const { sortedStages, getStage } = useStages();
   const { role } = useAuth();
   const { t } = useLang();
@@ -143,8 +143,30 @@ export default function JobDetailScreen() {
   };
 
   const handleClockIn = (taskId: string, taskTitle: string) => {
-    const { activeClockIn } = state;
+    const { activeClockIn, activeBreak } = state;
     const isAlreadyClockedInHere = activeClockIn?.jobId === job.id && activeClockIn?.taskId === taskId;
+
+    if (activeBreak) {
+      Alert.alert(
+        "You're on a Break",
+        `End break and clock in to "${taskTitle}"?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "End Break & Clock In",
+            onPress: () => {
+              endBreak();
+              if (activeClockIn && !isAlreadyClockedInHere) {
+                clockOut(activeClockIn.jobId, activeClockIn.taskId);
+              }
+              clockIn(job.id, taskId);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            },
+          },
+        ]
+      );
+      return;
+    }
 
     if (activeClockIn && !isAlreadyClockedInHere) {
       let activeTaskName = "another task";
