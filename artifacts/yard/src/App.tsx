@@ -11,6 +11,7 @@ import LocationDetailPage from "@/pages/location-detail";
 import InventoryPage from "@/pages/inventory";
 import InspectionsPage from "@/pages/inspections";
 import TransfersPage from "@/pages/transfers";
+import ServicePackagesPage from "@/pages/service-packages";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/inventory" component={() => <ProtectedRoute component={InventoryPage} />} />
       <Route path="/inspections" component={() => <ProtectedRoute component={InspectionsPage} />} />
       <Route path="/transfers" component={() => <ProtectedRoute component={TransfersPage} />} />
+      <Route path="/service-packages" component={() => <ProtectedRoute component={ServicePackagesPage} />} />
       <Route component={NotFound} />
     </Switch>
   );

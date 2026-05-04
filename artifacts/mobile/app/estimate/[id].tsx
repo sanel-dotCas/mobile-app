@@ -69,95 +69,6 @@ interface PackageDef {
   lines: Omit<EstimateLine, "id">[];
 }
 
-const PACKAGES: PackageDef[] = [
-  {
-    id: "pkg-front-impact",
-    name: "Full Front Impact",
-    icon: "alert-triangle",
-    color: "#dc2626",
-    description: "Bonnet, bumper, headlights, radiator check",
-    lines: [
-      { type: "labor", laborCategory: "body",     description: "Bonnet repair / skin replacement",         hours: 4.0, unitPrice: 95, total: 380, isPackage: true, packageName: "Full Front Impact" },
-      { type: "labor", laborCategory: "body",     description: "Front bumper removal & refit",             hours: 1.5, unitPrice: 95, total: 142.5, isPackage: true, packageName: "Full Front Impact" },
-      { type: "labor", laborCategory: "refinish", description: "Bonnet refinish — prime, base & clear",   hours: 3.0, unitPrice: 95, total: 285, isPackage: true, packageName: "Full Front Impact" },
-      { type: "labor", laborCategory: "mechanical",description: "Radiator & cooling system check",         hours: 1.0, unitPrice: 95, total: 95, isPackage: true, packageName: "Full Front Impact" },
-      { type: "part",                              description: "Front bumper assembly (OEM)",              quantity: 1, unitPrice: 450, total: 450, isPackage: true, packageName: "Full Front Impact" },
-      { type: "material",                          description: "Paint & refinish materials — front",       quantity: 1, unitPrice: 195, total: 195, isPackage: true, packageName: "Full Front Impact" },
-    ],
-  },
-  {
-    id: "pkg-side-swipe",
-    name: "Side Swipe Repair",
-    icon: "arrow-right",
-    color: "#2563eb",
-    description: "Door skin, quarter panel, mirror, blend",
-    lines: [
-      { type: "labor", laborCategory: "body",     description: "Door skin replacement",                   hours: 3.5, unitPrice: 95, total: 332.5, isPackage: true, packageName: "Side Swipe Repair" },
-      { type: "labor", laborCategory: "body",     description: "Quarter panel repair / partial sectioning",hours: 2.5, unitPrice: 95, total: 237.5, isPackage: true, packageName: "Side Swipe Repair" },
-      { type: "labor", laborCategory: "trim",     description: "Mirror housing replacement",              hours: 0.5, unitPrice: 95, total: 47.5, isPackage: true, packageName: "Side Swipe Repair" },
-      { type: "labor", laborCategory: "refinish", description: "Door & quarter panel refinish with blend",hours: 4.0, unitPrice: 95, total: 380, isPackage: true, packageName: "Side Swipe Repair" },
-      { type: "part",                              description: "Door skin panel",                          quantity: 1, unitPrice: 320, total: 320, isPackage: true, packageName: "Side Swipe Repair" },
-      { type: "part",                              description: "Mirror housing assembly",                  quantity: 1, unitPrice: 185, total: 185, isPackage: true, packageName: "Side Swipe Repair" },
-      { type: "material",                          description: "Paint materials — door & quarter",         quantity: 1, unitPrice: 170, total: 170, isPackage: true, packageName: "Side Swipe Repair" },
-    ],
-  },
-  {
-    id: "pkg-rear-impact",
-    name: "Rear Impact Package",
-    icon: "arrow-left",
-    color: "#7c3aed",
-    description: "Boot lid, bumper, tail lights, structural check",
-    lines: [
-      { type: "labor", laborCategory: "body",     description: "Boot lid removal & replacement",           hours: 2.5, unitPrice: 95, total: 237.5, isPackage: true, packageName: "Rear Impact Package" },
-      { type: "labor", laborCategory: "body",     description: "Rear bumper removal & refit",              hours: 1.5, unitPrice: 95, total: 142.5, isPackage: true, packageName: "Rear Impact Package" },
-      { type: "labor", laborCategory: "frame",    description: "Chassis rail inspection & minor straightening", hours: 2.0, unitPrice: 95, total: 190, isPackage: true, packageName: "Rear Impact Package" },
-      { type: "labor", laborCategory: "refinish", description: "Boot lid & bumper refinish",               hours: 3.0, unitPrice: 95, total: 285, isPackage: true, packageName: "Rear Impact Package" },
-      { type: "part",                              description: "Boot lid assembly (OEM)",                  quantity: 1, unitPrice: 870, total: 870, isPackage: true, packageName: "Rear Impact Package" },
-      { type: "part",                              description: "Rear bumper assembly",                     quantity: 1, unitPrice: 420, total: 420, isPackage: true, packageName: "Rear Impact Package" },
-      { type: "material",                          description: "Paint materials — rear section",           quantity: 1, unitPrice: 185, total: 185, isPackage: true, packageName: "Rear Impact Package" },
-    ],
-  },
-  {
-    id: "pkg-windshield",
-    name: "Windshield Replacement",
-    icon: "eye",
-    color: "#0891b2",
-    description: "Glass, adhesive, ADAS camera recalibration",
-    lines: [
-      { type: "labor", laborCategory: "glass",    description: "Windshield removal & replacement",        hours: 2.0, unitPrice: 95, total: 190, isPackage: true, packageName: "Windshield Replacement" },
-      { type: "labor", laborCategory: "electrical",description: "ADAS forward camera recalibration",      hours: 1.0, unitPrice: 95, total: 95, isPackage: true, packageName: "Windshield Replacement" },
-      { type: "part",                              description: "OEM windshield",                          quantity: 1, unitPrice: 650, total: 650, isPackage: true, packageName: "Windshield Replacement" },
-      { type: "material",                          description: "Windshield adhesive kit & primer",        quantity: 1, unitPrice: 45,  total: 45, isPackage: true, packageName: "Windshield Replacement" },
-    ],
-  },
-  {
-    id: "pkg-full-repaint",
-    name: "Single Panel Repaint",
-    icon: "droplet",
-    color: "#7c3aed",
-    description: "Full prep, prime, base coat, clear coat",
-    lines: [
-      { type: "labor", laborCategory: "refinish", description: "Panel preparation & feather edge",        hours: 1.5, unitPrice: 95, total: 142.5, isPackage: true, packageName: "Single Panel Repaint" },
-      { type: "labor", laborCategory: "refinish", description: "2K primer application & sanding",         hours: 1.0, unitPrice: 95, total: 95, isPackage: true, packageName: "Single Panel Repaint" },
-      { type: "labor", laborCategory: "refinish", description: "Base coat & clear coat application",      hours: 2.0, unitPrice: 95, total: 190, isPackage: true, packageName: "Single Panel Repaint" },
-      { type: "material",                          description: "2K primer, base, clear coat & hardener",  quantity: 1, unitPrice: 165, total: 165, isPackage: true, packageName: "Single Panel Repaint" },
-      { type: "material",                          description: "Masking, thinners & sundries",            quantity: 1, unitPrice: 45,  total: 45, isPackage: true, packageName: "Single Panel Repaint" },
-    ],
-  },
-  {
-    id: "pkg-mechanical-safety",
-    name: "Mechanical Safety Check",
-    icon: "settings",
-    color: "#d97706",
-    description: "Brakes, fluids, steering, wheel alignment",
-    lines: [
-      { type: "labor", laborCategory: "mechanical", description: "Brake system inspection & pad check",   hours: 1.0, unitPrice: 95, total: 95, isPackage: true, packageName: "Mechanical Safety Check" },
-      { type: "labor", laborCategory: "mechanical", description: "Steering & suspension inspection",       hours: 0.5, unitPrice: 95, total: 47.5, isPackage: true, packageName: "Mechanical Safety Check" },
-      { type: "labor", laborCategory: "mechanical", description: "Four-wheel alignment check",             hours: 0.5, unitPrice: 95, total: 47.5, isPackage: true, packageName: "Mechanical Safety Check" },
-      { type: "labor", laborCategory: "mechanical", description: "All fluid levels top-up",                hours: 0.5, unitPrice: 95, total: 47.5, isPackage: true, packageName: "Mechanical Safety Check" },
-    ],
-  },
-];
 
 const DEFAULT_ACCOUNT_TYPES = [
   { id: 1, name: "Customer Pay", code: "CP" },
@@ -492,6 +403,62 @@ function AddLineSheet({
   const [accountType, setAccountType] = useState<string>("Customer Pay");
   const [accountTypes, setAccountTypes] = useState<{ id: number; name: string; code: string }[]>([]);
   const [accountTypesLoading, setAccountTypesLoading] = useState(false);
+  const [apiPackages, setApiPackages] = useState<PackageDef[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    setPackagesLoading(true);
+    setPackagesError(null);
+    const apiBase = BASE_URL || "http://localhost:80";
+    fetch(`${apiBase}/api/service-packages`)
+      .then((r) => r.json())
+      .then((data: { packages: Array<{
+        id: number; name: string; icon: string; color: string; description: string;
+        lines: Array<{
+          lineType: "labor" | "part" | "material"; laborCategory: string | null;
+          description: string; hours: string | null; quantity: string | null;
+          unitPrice: string; displayOrder: number;
+        }>;
+      }> }) => {
+        if (data.packages && Array.isArray(data.packages)) {
+          setApiPackages(
+            data.packages.map((p) => ({
+              id: `api-pkg-${p.id}`,
+              name: p.name,
+              icon: p.icon,
+              color: p.color,
+              description: p.description,
+              lines: p.lines.map((l) => {
+                const unitPrice = parseFloat(l.unitPrice) || 0;
+                const hours = l.hours ? parseFloat(l.hours) : undefined;
+                const quantity = l.quantity ? parseFloat(l.quantity) : undefined;
+                const total = l.lineType === "labor"
+                  ? (hours ?? 0) * unitPrice
+                  : (quantity ?? 0) * unitPrice;
+                return {
+                  type: l.lineType,
+                  laborCategory: (l.lineType === "labor" && l.laborCategory ? l.laborCategory : undefined) as LaborCategory | undefined,
+                  description: l.description,
+                  hours: l.lineType === "labor" ? hours : undefined,
+                  quantity: l.lineType !== "labor" ? (quantity ?? 1) : undefined,
+                  unitPrice,
+                  total,
+                  isPackage: true,
+                  packageName: p.name,
+                } as Omit<EstimateLine, "id">;
+              }),
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        setPackagesError("Could not load service packages from server.");
+        setApiPackages([]);
+      })
+      .finally(() => setPackagesLoading(false));
+  }, [visible]);
 
   React.useEffect(() => {
     if (!visible) return;
@@ -739,7 +706,22 @@ function AddLineSheet({
                 </View>
               ) : (
                 <View style={styles.packageList}>
-                  {PACKAGES.map((pkg) => {
+                  {packagesLoading ? (
+                    <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                      <ActivityIndicator size="small" color="#2563eb" />
+                      <Text style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>Loading packages…</Text>
+                    </View>
+                  ) : packagesError ? (
+                    <View style={{ alignItems: "center", paddingVertical: 32, paddingHorizontal: 16 }}>
+                      <Feather name="alert-circle" size={24} color="#dc2626" />
+                      <Text style={{ marginTop: 8, fontSize: 13, color: "#dc2626", textAlign: "center" }}>{packagesError}</Text>
+                    </View>
+                  ) : apiPackages.length === 0 ? (
+                    <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                      <Text style={{ fontSize: 13, color: "#64748b" }}>No service packages available.</Text>
+                    </View>
+                  ) : null}
+                  {!packagesLoading && !packagesError && apiPackages.map((pkg) => {
                     const expanded = expandedPkg === pkg.id;
                     const pkgLaborTotal = pkg.lines.filter(l => l.type === "labor").reduce((s, l) => s + l.total, 0);
                     const pkgPartsTotal = pkg.lines.filter(l => l.type === "part").reduce((s, l) => s + l.total, 0);

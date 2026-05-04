@@ -13,6 +13,7 @@ import yardTransfersRouter from "./yard-transfers";
 import partsRouter from "./parts";
 import jobsRouter from "./jobs";
 import techniciansRouter from "./technicians";
+import servicePackagesRouter from "./service-packages";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(yardTransfersRouter);
 router.use(partsRouter);
 router.use(jobsRouter);
 router.use(techniciansRouter);
+router.use(servicePackagesRouter);
 
 export default router;

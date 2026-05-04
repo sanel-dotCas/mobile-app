@@ -191,6 +191,35 @@ export const dmsAccountTypesTable = pgTable("dms_account_types", {
   isActive: boolean("is_active").notNull().default(true),
 });
 
+export const servicePackageLineTypeEnum = pgEnum("service_package_line_type", [
+  "labor",
+  "part",
+  "material",
+]);
+
+export const servicePackagesTable = pgTable("service_packages", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  icon: text("icon").notNull().default("package"),
+  color: text("color").notNull().default("#2563eb"),
+  description: text("description").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const servicePackageLinesTable = pgTable("service_package_lines", {
+  id: serial("id").primaryKey(),
+  packageId: integer("package_id").notNull().references(() => servicePackagesTable.id, { onDelete: "cascade" }),
+  lineType: servicePackageLineTypeEnum("line_type").notNull(),
+  laborCategory: text("labor_category"),
+  description: text("description").notNull(),
+  hours: numeric("hours", { precision: 6, scale: 2 }),
+  quantity: numeric("quantity", { precision: 8, scale: 2 }),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull().default("0"),
+  displayOrder: integer("display_order").notNull().default(0),
+});
+
 // ── Insert schemas ────────────────────────────────────────────────────────────
 export const insertYardUserSchema = createInsertSchema(yardUsersTable).omit({
   id: true,
@@ -225,3 +254,5 @@ export type YardVehicle = typeof yardVehiclesTable.$inferSelect;
 export type YardInspection = typeof yardInspectionsTable.$inferSelect;
 export type YardMovement = typeof yardMovementsTable.$inferSelect;
 export type DmsAccountType = typeof dmsAccountTypesTable.$inferSelect;
+export type ServicePackage = typeof servicePackagesTable.$inferSelect;
+export type ServicePackageLine = typeof servicePackageLinesTable.$inferSelect;

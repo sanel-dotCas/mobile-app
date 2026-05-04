@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useYardLogout } from "@workspace/api-client-react";
-import { LayoutDashboard, MapPin, Car, ClipboardCheck, Truck, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, MapPin, Car, ClipboardCheck, Truck, Package, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/inventory", icon: Car, label: "Inventory" },
   { href: "/inspections", icon: ClipboardCheck, label: "Inspections" },
   { href: "/transfers", icon: Truck, label: "Transfers" },
+  { href: "/service-packages", icon: Package, label: "Svc Packages" },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

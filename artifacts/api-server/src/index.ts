@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startSubmissionCleanup } from "./lib/submissionCleanup";
 import { seedDatabase } from "./lib/seedDatabase";
+import { seedServicePackages } from "./routes/service-packages";
 
 const rawPort = process.env["PORT"];
 
@@ -27,6 +28,7 @@ seedDatabase()
 
       logger.info({ port }, "Server listening");
       startSubmissionCleanup();
+      seedServicePackages().catch((e) => logger.error({ err: e }, "Service package seeding failed"));
     });
   })
   .catch((err) => {
