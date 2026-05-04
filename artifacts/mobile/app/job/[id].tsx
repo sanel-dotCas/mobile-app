@@ -67,7 +67,7 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer, pendingOdometerUpdates } = useJobs();
+  const { state, getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer, pendingOdometerUpdates } = useJobs();
   const { sortedStages, getStage } = useStages();
   const { role } = useAuth();
   const { t } = useLang();
@@ -143,10 +143,35 @@ export default function JobDetailScreen() {
   };
 
   const handleClockIn = (taskId: string, taskTitle: string) => {
-    if (activeClockedTask && activeClockedTask.id !== taskId) {
-      Alert.alert("Switch Task?", `You're currently clocked into "${activeClockedTask.title}". Clock out first.`, [{ text: "OK" }]);
+    const { activeClockIn } = state;
+    const isAlreadyClockedInHere = activeClockIn?.jobId === job.id && activeClockIn?.taskId === taskId;
+
+    if (activeClockIn && !isAlreadyClockedInHere) {
+      let activeTaskName = "another task";
+      const activeJob = state.jobs.find((j) => j.id === activeClockIn.jobId);
+      if (activeJob) {
+        const activeTask = activeJob.tasks.find((t) => t.id === activeClockIn.taskId);
+        if (activeTask) activeTaskName = activeTask.title;
+      }
+
+      Alert.alert(
+        "Already Clocked In",
+        `You're already clocked in to "${activeTaskName}". Clock out first, or switch tasks?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Switch Tasks",
+            onPress: () => {
+              clockOut(activeClockIn.jobId, activeClockIn.taskId);
+              clockIn(job.id, taskId);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            },
+          },
+        ]
+      );
       return;
     }
+
     setClockInModal({ jobId: job.id, taskId, taskTitle });
   };
 
