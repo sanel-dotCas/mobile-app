@@ -156,8 +156,6 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    feather: require("../assets/fonts/Feather.ttf"),
   });
 
   useEffect(() => {

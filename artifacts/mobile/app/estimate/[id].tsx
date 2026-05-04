@@ -840,10 +840,14 @@ export default function EstimateDetailScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Status */}
+        {/* Status + meta row */}
         <View style={[styles.statusBanner, { backgroundColor: cfg.bg }]}>
           <View style={[styles.statusDot, { backgroundColor: cfg.color }]} />
           <Text style={[styles.statusLabel, { color: cfg.color }]}>{cfg.label}</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={[styles.statusMeta, { color: cfg.color }]}>
+            {new Date(estimate.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+          </Text>
         </View>
 
         {/* Vehicle card */}
@@ -854,12 +858,14 @@ export default function EstimateDetailScreen() {
           </View>
           <View style={styles.vehicleGrid}>
             {[
-              { label: t.make,  value: estimate.make },
-              { label: t.model, value: estimate.model },
-              { label: t.year,  value: estimate.year },
-              { label: "Plate", value: estimate.licensePlate },
-              { label: t.customer, value: estimate.customer },
-              { label: "Odometer", value: estimate.odometer },
+              { label: t.make,       value: estimate.make },
+              { label: t.model,      value: estimate.model },
+              { label: t.year,       value: estimate.year },
+              { label: "Plate",      value: estimate.licensePlate },
+              { label: t.customer,   value: estimate.customer },
+              { label: "Odometer",   value: estimate.odometer },
+              { label: "Advisor",    value: estimate.serviceAdvisor },
+              { label: "Estimator",  value: estimate.assignedEstimatorCode || "—" },
             ].map(({ label, value }) => (
               <View key={label} style={styles.vehicleCell}>
                 <Text style={[styles.vehicleCellLabel, { color: colors.mutedForeground }]}>{label}</Text>
@@ -1173,6 +1179,7 @@ const styles = StyleSheet.create({
   statusBanner:  { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
   statusDot:     { width: 8, height: 8, borderRadius: 4 },
   statusLabel:   { fontSize: 13, fontFamily: "Inter_700Bold" },
+  statusMeta:    { fontSize: 11, fontFamily: "Inter_400Regular", opacity: 0.75 },
 
   section:       { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
