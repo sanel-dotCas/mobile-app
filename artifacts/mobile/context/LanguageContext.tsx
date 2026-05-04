@@ -161,7 +161,7 @@ const EN = {
   fourDigitPin:       "4-Digit PIN",
   invalidCredentials: "Invalid credentials. Please try again.",
   orSignInWith:       "Or Sign in with",
-  demoHint:           "Demo: MR + 1234 (Tech) · SV + 5678 (Supervisor) · ET + 1234 (Estimator) · PT + 1234 (Parts)",
+  demoHint:           "Demo: MR + 1234 (Tech) · SV + 5678 (Supervisor) · ET + 1234 (Estimator) · PT + 1234 (Parts) · AM + 0000 (Admin)",
   make:               "Make",
   model:              "Model",
   customer:           "Customer",

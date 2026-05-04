@@ -35,6 +35,9 @@ export default function TabLayout() {
     if (!isLoading && isAuthenticated && role === "parts") {
       router.replace("/(parts)");
     }
+    if (!isLoading && isAuthenticated && role === "admin") {
+      router.replace("/(admin)");
+    }
   }, [isLoading, isAuthenticated, role]);
 
   if (isLoading) {
@@ -45,7 +48,7 @@ export default function TabLayout() {
     );
   }
   if (!isAuthenticated) return <Redirect href="/login" />;
-  if (role === "supervisor" || role === "estimator" || role === "parts") return null;
+  if (role === "supervisor" || role === "estimator" || role === "parts" || role === "admin") return null;
 
   return (
     <Tabs

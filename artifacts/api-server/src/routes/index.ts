@@ -15,6 +15,7 @@ import partsRouter from "./parts";
 import jobsRouter from "./jobs";
 import techniciansRouter from "./technicians";
 import servicePackagesRouter from "./service-packages";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(partsRouter);
 router.use(jobsRouter);
 router.use(techniciansRouter);
 router.use(servicePackagesRouter);
+router.use(adminRouter);
 
 export default router;

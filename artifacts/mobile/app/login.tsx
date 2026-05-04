@@ -124,6 +124,8 @@ export default function LoginScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (result === "supervisor") router.replace("/(supervisor)");
       else if (result === "estimator") router.replace("/(estimator)");
+      else if (result === "parts") router.replace("/(parts)");
+      else if (result === "admin") router.replace("/(admin)");
       else router.replace("/(tabs)");
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

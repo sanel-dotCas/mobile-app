@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { Platform } from "react-native";
 
-export type UserRole = "technician" | "supervisor" | "estimator" | "parts";
+export type UserRole = "technician" | "supervisor" | "estimator" | "parts" | "admin";
 
 // Format: 2 letters + 4 digits  e.g. "MR1234" or "SV5678"
 const CREDENTIALS: Record<string, UserRole> = {
@@ -23,6 +23,8 @@ const CREDENTIALS: Record<string, UserRole> = {
   "ET5678": "estimator",
   "PT1234": "parts",
   "PD1234": "parts",
+  "AM0000": "admin",
+  "AM0001": "admin",
 };
 
 const AUTH_KEY = "igmma_authed";

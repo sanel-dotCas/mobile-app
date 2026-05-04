@@ -188,6 +188,7 @@ export default function RootLayout() {
                           <Stack.Screen name="(supervisor)" />
                           <Stack.Screen name="(estimator)" />
                           <Stack.Screen name="(parts)" />
+                          <Stack.Screen name="(admin)" />
                           <Stack.Screen name="job/[id]" options={{ presentation: "card" }} />
                           <Stack.Screen name="estimate/[id]" options={{ presentation: "card" }} />
                           <Stack.Screen name="notifications" options={{ presentation: "card" }} />
