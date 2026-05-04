@@ -6,6 +6,8 @@ import React, { useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -65,7 +67,7 @@ function formatElapsed(seconds: number) {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus } = useJobs();
+  const { getJob, clockIn, clockOut, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer } = useJobs();
   const { sortedStages, getStage } = useStages();
   const { role } = useAuth();
   const { t } = useLang();
@@ -80,6 +82,8 @@ export default function JobDetailScreen() {
   const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
   const [attachLabel, setAttachLabel] = useState("");
   const [clockInModal, setClockInModal] = useState<{ jobId: string; taskId: string; taskTitle: string } | null>(null);
+  const [mileageModalVisible, setMileageModalVisible] = useState(false);
+  const [mileageInput, setMileageInput] = useState("");
 
   const job = getJob(id ?? "");
 
@@ -185,6 +189,20 @@ export default function JobDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const handleOpenMileageModal = () => {
+    setMileageInput(String(job.odometer));
+    setMileageModalVisible(true);
+  };
+
+  const handleConfirmMileage = () => {
+    const parsed = parseInt(mileageInput.replace(/\D/g, ""), 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      updateOdometer(job.id, parsed);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setMileageModalVisible(false);
+  };
+
   const TABS: Array<{ key: TabKey; label: string; icon: string }> = [
     { key: "tasks", label: "Tasks", icon: "tool" },
     { key: "parts", label: "Parts", icon: "package" },
@@ -233,7 +251,20 @@ export default function JobDetailScreen() {
             <MetaItem icon="truck" label="Vehicle" value={job.vehicle} />
             <MetaItem icon="user" label="Service Advisor" value={job.serviceAdvisor} />
             <MetaItem icon="clock" label="Est. Hours" value={`${job.totalEstimatedHours}h`} />
-            <MetaItem icon="activity" label="Odometer" value={`${job.odometer.toLocaleString()} km`} />
+            <View style={metaStyles.item}>
+              <View style={[metaStyles.iconCircle, { backgroundColor: colors.accent }]}>
+                <Feather name="activity" size={14} color={colors.primary} />
+              </View>
+              <View style={metaStyles.textBlock}>
+                <Text style={[metaStyles.label, { color: colors.mutedForeground }]}>Odometer</Text>
+                <View style={styles.odometerRow}>
+                  <Text style={[metaStyles.value, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>{job.odometer.toLocaleString()} km</Text>
+                  <Pressable onPress={handleOpenMileageModal} style={[styles.takeActionBtn, { borderColor: colors.primary }]}>
+                    <Text style={[styles.takeActionBtnText, { color: colors.primary }]}>Take Action</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
             <MetaItem icon="file-text" label="Customer Notes" value={job.customerNotes || "None"} />
           </View>
           <View style={[styles.metaDivider, { backgroundColor: colors.border }]} />
@@ -768,6 +799,51 @@ export default function JobDetailScreen() {
         <ClockInModal visible={!!clockInModal} job={job} taskTitle={clockInModal.taskTitle}
           onConfirm={confirmClockIn} onCancel={() => setClockInModal(null)} />
       )}
+
+      <Modal
+        visible={mileageModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMileageModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.mileageOverlay}
+        >
+          <Pressable style={styles.mileageBackdrop} onPress={() => setMileageModalVisible(false)} />
+          <View style={[styles.mileageSheet, { backgroundColor: colors.card }]}>
+            <Text style={[styles.mileageTitle, { color: colors.foreground }]}>Update Mileage In</Text>
+            <Text style={[styles.mileageSubtitle, { color: colors.mutedForeground }]}>Please verify or update the mileage value:</Text>
+            <View style={[styles.mileageInputWrapper, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <Text style={[styles.mileageInputLabel, { color: colors.primary }]}>Mileage In</Text>
+              <TextInput
+                style={[styles.mileageInput, { color: colors.foreground }]}
+                value={mileageInput}
+                onChangeText={(v) => setMileageInput(v.replace(/[^0-9]/g, ""))}
+                keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={handleConfirmMileage}
+                selectTextOnFocus
+              />
+            </View>
+            <View style={styles.mileageActions}>
+              <Pressable
+                onPress={() => setMileageModalVisible(false)}
+                style={[styles.mileageCancelBtn, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.mileageCancelText, { color: colors.foreground }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmMileage}
+                disabled={mileageInput.trim() === ""}
+                style={[styles.mileageConfirmBtn, { backgroundColor: mileageInput.trim() === "" ? colors.mutedForeground : colors.primary }]}
+              >
+                <Text style={styles.mileageConfirmText}>Confirm</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -908,4 +984,22 @@ const styles = StyleSheet.create({
   notFoundText: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   backButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   backButtonText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  odometerRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "nowrap" },
+  takeActionBtn: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, flexShrink: 0 },
+  takeActionBtnText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+
+  mileageOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
+  mileageBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  mileageSheet: { width: "85%", borderRadius: 18, padding: 24, gap: 16, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+  mileageTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  mileageSubtitle: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: -8 },
+  mileageInputWrapper: { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10 },
+  mileageInputLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", marginBottom: 4 },
+  mileageInput: { fontSize: 18, fontFamily: "Inter_600SemiBold", padding: 0 },
+  mileageActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  mileageCancelBtn: { flex: 1, alignItems: "center", paddingVertical: 13, borderRadius: 12, borderWidth: 1.5 },
+  mileageCancelText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  mileageConfirmBtn: { flex: 1, alignItems: "center", paddingVertical: 13, borderRadius: 12 },
+  mileageConfirmText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
 });

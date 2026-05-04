@@ -131,7 +131,8 @@ type Action =
   | { type: "START_BREAK" }
   | { type: "END_BREAK" }
   | { type: "START_NONPROD"; payload: { taskType: string } }
-  | { type: "END_NONPROD" };
+  | { type: "END_NONPROD" }
+  | { type: "UPDATE_ODOMETER"; payload: { jobId: string; odometer: number } };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128, specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"], completedJobs: 312 },
@@ -516,6 +517,9 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "END_NONPROD":
       return { ...state, activeNonProd: null };
 
+    case "UPDATE_ODOMETER":
+      return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, odometer: action.payload.odometer })) };
+
     case "ASSIGN_JOB":
       return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, assignedTechnicianId: action.payload.technicianId })) };
 
@@ -675,6 +679,7 @@ interface JobsContextValue {
   loadInspectionTemplate: (jobId: string) => void;
   holdJob: (jobId: string) => void;
   unholdJob: (jobId: string) => void;
+  updateOdometer: (jobId: string, odometer: number) => void;
   unreadCount: number;
 }
 
@@ -794,11 +799,12 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
 
   const holdJob = useCallback((jobId: string) => dispatch({ type: "HOLD_JOB", payload: { jobId } }), []);
   const unholdJob = useCallback((jobId: string) => dispatch({ type: "UNHOLD_JOB", payload: { jobId } }), []);
+  const updateOdometer = useCallback((jobId: string, odometer: number) => dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } }), []);
 
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, unreadCount }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, unreadCount }}>
       {children}
     </JobsContext.Provider>
   );
