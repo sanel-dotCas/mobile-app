@@ -124,6 +124,7 @@ export default function JobsScreen() {
   const [myInspections, setMyInspections] = useState<AssignedInspection[]>([]);
   const [inspLoading, setInspLoading] = useState(true);
   const [startingId, setStartingId] = useState<number | null>(null);
+  const [markingDoneId, setMarkingDoneId] = useState<number | null>(null);
 
   const loadInspections = useCallback(async () => {
     if (!techName) {
@@ -165,6 +166,24 @@ export default function JobsScreen() {
       // non-critical — list will re-sync on next refresh
     } finally {
       setStartingId(null);
+    }
+  };
+
+  const handleMarkDone = async (inspectionId: number) => {
+    setMarkingDoneId(inspectionId);
+    try {
+      const res = await fetch(`${BASE}/yard/inspections/${inspectionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "finished" }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await loadInspections();
+    } catch {
+      // non-critical — list will re-sync on next refresh
+    } finally {
+      setMarkingDoneId(null);
     }
   };
 
@@ -340,6 +359,7 @@ export default function JobsScreen() {
                 myInspections.map((insp) => {
                   const urgency = getUrgency(insp);
                   const isStarting = startingId === insp.id;
+                  const isMarkingDone = markingDoneId === insp.id;
                   return (
                     <Pressable
                       key={insp.id}
@@ -401,7 +421,26 @@ export default function JobsScreen() {
                             </Pressable>
                           )}
                           {insp.status === "in-progress" && (
-                            <Feather name="play-circle" size={20} color="#1d4ed8" />
+                            <Pressable
+                              style={[
+                                styles.doneBtn,
+                                { backgroundColor: isMarkingDone ? colors.muted : "#16a34a" },
+                              ]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleMarkDone(insp.id);
+                              }}
+                              disabled={isMarkingDone}
+                            >
+                              {isMarkingDone ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                              ) : (
+                                <>
+                                  <Feather name="check" size={12} color="#fff" />
+                                  <Text style={styles.doneBtnText}>Done</Text>
+                                </>
+                              )}
+                            </Pressable>
                           )}
                           <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginTop: 4 }} />
                         </View>
@@ -615,6 +654,21 @@ const styles = StyleSheet.create({
     minWidth: 56,
   },
   startBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  doneBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    justifyContent: "center",
+    minWidth: 56,
+  },
+  doneBtnText: {
     color: "#fff",
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
