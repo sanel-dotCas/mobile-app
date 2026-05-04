@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { VEHICLE_CHECKLIST } from "@/constants/inspectionChecklist";
 import { AppState, AppStateStatus, Platform } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 import React, {
   createContext,
   useCallback,
@@ -617,6 +618,14 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const id = setInterval(() => dispatch({ type: "TICK_CLOCK" }), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((netState) => {
+      const offline = !(netState.isConnected && netState.isInternetReachable !== false);
+      dispatch({ type: "SET_OFFLINE", payload: offline });
+    });
+    return () => unsubscribe();
   }, []);
 
   const fetchAndMergeJobs = useCallback(async (isInitial = false) => {

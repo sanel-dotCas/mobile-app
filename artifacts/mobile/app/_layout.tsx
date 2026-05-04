@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Platform } from "react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { EstimatesProvider } from "@/context/EstimatesContext";
 import { useJobs, JobsProvider } from "@/context/JobsContext";
@@ -178,6 +179,7 @@ export default function RootLayout() {
                         <DelayChecker />
                         <StageAutoAdvancer />
                         <YardPDIChecker />
+                        <OfflineBanner />
                         <Stack screenOptions={{ headerShown: false }}>
                           <Stack.Screen name="login" />
                           <Stack.Screen name="(tabs)" />
