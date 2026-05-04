@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   RefreshControl,
@@ -152,7 +153,14 @@ export default function JobsScreen() {
         </ScrollView>
       </View>
 
-      {filtered.length === 0 ? (
+      {!state.jobsLoaded ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
+            Loading jobs…
+          </Text>
+        </View>
+      ) : filtered.length === 0 ? (
         <View style={styles.emptyState}>
           <Feather name="briefcase" size={48} color={colors.mutedForeground} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No jobs found</Text>

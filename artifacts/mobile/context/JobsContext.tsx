@@ -127,6 +127,7 @@ interface JobsState {
 type Action =
   | { type: "SET_JOBS"; payload: Job[] }
   | { type: "MERGE_JOBS"; payload: Job[] }
+  | { type: "MARK_JOBS_LOADED" }
   | { type: "CLOCK_IN"; payload: { jobId: string; taskId: string } }
   | { type: "CLOCK_OUT"; payload: { jobId: string; taskId: string } }
   | { type: "ADD_NOTE"; payload: { jobId: string; note: JobNote } }
@@ -234,6 +235,7 @@ function reducer(state: JobsState, action: Action): JobsState {
   switch (action.type) {
     case "SET_JOBS": return { ...state, jobs: action.payload, jobsLoaded: true };
     case "MERGE_JOBS": return { ...state, jobs: mergeJobsWithLocal(action.payload, state.jobs), jobsLoaded: true };
+    case "MARK_JOBS_LOADED": return { ...state, jobsLoaded: true };
 
     case "CLOCK_IN": {
       const { jobId, taskId } = action.payload;
@@ -562,6 +564,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         jobsLoadedRef.current = true;
         dispatch({ type: isInitial ? "SET_JOBS" : "MERGE_JOBS", payload: data.jobs });
         AsyncStorage.setItem("jobs_v2", JSON.stringify(data.jobs)).catch(() => {});
+      } else if (Array.isArray(data.jobs)) {
+        dispatch({ type: "MARK_JOBS_LOADED" });
       }
     } catch {}
   }, []);
