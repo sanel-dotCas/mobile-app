@@ -33,6 +33,7 @@ const CODE_TO_NAME: Record<string, string> = {
   JW: "James Wilson",
   CM: "Carlos Mendez",
   AH: "Ahmed Hassan",
+  DP: "David Park",
 };
 
 type InspectionStatus = "queued" | "in-progress" | "finished";

@@ -1,4 +1,5 @@
-import { db, jobsTable, techniciansTable } from "@workspace/db";
+import { db, jobsTable, techniciansTable, yardUsersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 
 const SEED_TECHNICIANS = [
@@ -64,16 +65,49 @@ const SEED_TECHNICIANS = [
   },
 ];
 
+const SEED_YARD_USERS = [
+  { username: "admin", password: "admin",  name: "Admin User",      role: "admin"          as const },
+  { username: "MR",    password: "1234",   name: "Mike Rodriguez",  role: "yard_operator"  as const },
+  { username: "JW",    password: "1234",   name: "James Wilson",    role: "yard_operator"  as const },
+  { username: "CM",    password: "1234",   name: "Carlos Mendez",   role: "yard_operator"  as const },
+  { username: "AH",    password: "1234",   name: "Ahmed Hassan",    role: "yard_operator"  as const },
+  { username: "DP",    password: "1234",   name: "David Park",      role: "yard_operator"  as const },
+];
+
 export async function seedDatabase() {
-  const [techCount, jobCount] = await Promise.all([
+  const [techCount, jobCount, yardUserCount] = await Promise.all([
     db.select().from(techniciansTable),
     db.select().from(jobsTable),
+    db.select().from(yardUsersTable),
   ]);
 
   if (techCount.length === 0) {
     logger.info("Seeding technicians table with initial data");
     await db.insert(techniciansTable).values(SEED_TECHNICIANS);
     logger.info({ count: SEED_TECHNICIANS.length }, "Technicians seeded");
+  }
+
+  if (yardUserCount.length === 0) {
+    logger.info("Seeding yard_users table with initial data");
+    for (const u of SEED_YARD_USERS) {
+      await db
+        .insert(yardUsersTable)
+        .values(u)
+        .onConflictDoUpdate({ target: yardUsersTable.username, set: { name: u.name, role: u.role } });
+    }
+    logger.info({ count: SEED_YARD_USERS.length }, "Yard users seeded");
+  } else {
+    // Ensure the 5 technician yard users exist even if the table was previously seeded with old data
+    for (const u of SEED_YARD_USERS) {
+      await db
+        .insert(yardUsersTable)
+        .values(u)
+        .onConflictDoUpdate({ target: yardUsersTable.username, set: { name: u.name, role: u.role } });
+    }
+    // Remove legacy placeholder users that are no longer needed
+    for (const oldUsername of ["yard.manager", "operator"]) {
+      await db.delete(yardUsersTable).where(eq(yardUsersTable.username, oldUsername));
+    }
   }
 
   if (jobCount.length === 0) {

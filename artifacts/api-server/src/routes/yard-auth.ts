@@ -82,12 +82,11 @@ function verifyMobileToken(token: string): TokenPayload | null {
 const MOBILE_CREDENTIALS: Record<string, { name: string }> = {
   MR1234: { name: "Mike Rodriguez" },
   JW1234: { name: "James Wilson" },
+  CM1234: { name: "Carlos Mendez" },
+  AH1234: { name: "Ahmed Hassan" },
+  DP1234: { name: "David Park" },
   SV5678: { name: "Sarah Mitchell" },
   AD0000: { name: "Adam Davis" },
-  ET1234: { name: "Emily Torres" },
-  ET5678: { name: "Emily Torres" },
-  PT1234: { name: "Peter Thompson" },
-  PD1234: { name: "Paula Davies" },
 };
 
 // ── Mobile session login ──────────────────────────────────────────────────────

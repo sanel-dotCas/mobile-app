@@ -14,6 +14,9 @@ export type UserRole = "technician" | "supervisor" | "estimator" | "parts";
 const CREDENTIALS: Record<string, UserRole> = {
   "MR1234": "technician",
   "JW1234": "technician",
+  "CM1234": "technician",
+  "AH1234": "technician",
+  "DP1234": "technician",
   "SV5678": "supervisor",
   "AD0000": "supervisor",
   "ET1234": "estimator",
