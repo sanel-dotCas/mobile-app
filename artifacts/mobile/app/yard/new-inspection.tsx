@@ -143,6 +143,16 @@ export default function NewInspectionScreen() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [availTechs, setAvailTechs] = useState<{ name: string; status: string }[]>([]);
+  const [assignedTo, setAssignedTo] = useState<string>("auto");
+
+  useEffect(() => {
+    fetch(`${BASE}/yard/inspections/available-techs`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setAvailTechs(data.techs ?? []); })
+      .catch(() => {});
+  }, []);
+
   const initialChecks = (): CheckItem[] =>
     CHECKLIST_SECTIONS.flatMap((s) =>
       s.items.map((item) => ({ id: item.id, label: item.label, result: "na" as CheckResult, note: "" }))
@@ -201,6 +211,13 @@ export default function NewInspectionScreen() {
         .filter(Boolean)
         .join("\n");
 
+      let resolvedAssignedTo: string | undefined;
+      if (assignedTo === "auto") {
+        resolvedAssignedTo = availTechs.length > 0 ? availTechs[0].name : undefined;
+      } else if (assignedTo !== "") {
+        resolvedAssignedTo = assignedTo;
+      }
+
       const res = await fetch(`${BASE}/yard/inspections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -211,6 +228,7 @@ export default function NewInspectionScreen() {
           bodyDamage,
           notes: fullNotes,
           checklist: JSON.stringify(checklistSummary),
+          assignedTo: resolvedAssignedTo,
         }),
       });
       if (!res.ok) throw new Error("Submit failed");
@@ -284,6 +302,45 @@ export default function NewInspectionScreen() {
                 ))
               )}
             </View>
+          )}
+        </View>
+
+        {/* Assign Technician */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Assign Technician</Text>
+          <View style={styles.typeRow}>
+            <Pressable
+              style={[styles.typeChip, { flex: 1, backgroundColor: assignedTo === "auto" ? colors.primary : colors.background, borderColor: assignedTo === "auto" ? colors.primary : colors.border }]}
+              onPress={() => setAssignedTo("auto")}
+            >
+              <Text style={[styles.typeChipText, { color: assignedTo === "auto" ? "#fff" : colors.foreground }]}>Auto-Assign</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.typeChip, { flex: 1, backgroundColor: assignedTo === "" ? colors.primary : colors.background, borderColor: assignedTo === "" ? colors.primary : colors.border }]}
+              onPress={() => setAssignedTo("")}
+            >
+              <Text style={[styles.typeChipText, { color: assignedTo === "" ? "#fff" : colors.foreground }]}>Unassigned</Text>
+            </Pressable>
+          </View>
+          {availTechs.length > 0 && (
+            <View style={[styles.typeRow, { marginTop: 8, flexWrap: "wrap" }]}>
+              {availTechs.map((tech) => (
+                <Pressable
+                  key={tech.name}
+                  style={[styles.typeChip, { backgroundColor: assignedTo === tech.name ? colors.primary : colors.background, borderColor: assignedTo === tech.name ? colors.primary : colors.border }]}
+                  onPress={() => setAssignedTo(tech.name)}
+                >
+                  <Text style={[styles.typeChipText, { color: assignedTo === tech.name ? "#fff" : colors.foreground }]}>
+                    {tech.name.split(" ")[0]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {availTechs.length === 0 && assignedTo === "auto" && (
+            <Text style={[styles.typeChipText, { color: colors.mutedForeground, marginTop: 6 }]}>
+              No techs available — inspection will be created unassigned
+            </Text>
           )}
         </View>
 

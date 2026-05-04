@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -15,7 +15,14 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { useJobs } from "@/context/JobsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
+
 const STATUS_COLORS = { active: "#16a34a", idle: "#64748b", break: "#d97706", absent: "#ef4444" };
+
+const BASE = Platform.OS === "web"
+  ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+  : "/api";
+
+interface YardInspItem { id: number; type: string; status: string; vehicleName: string; stockNumber: string | null; }
 
 export default function TechniciansScreen() {
   const colors = useColors();
@@ -24,6 +31,36 @@ export default function TechniciansScreen() {
   const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const [filter, setFilter] = useState<"all" | "active" | "idle" | "break" | "absent">("all");
+
+  const [yardByTech, setYardByTech] = useState<Record<string, YardInspItem[]>>({});
+
+  const loadYardInspections = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/yard/inspections?status=queued,in-progress&limit=100`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const map: Record<string, YardInspItem[]> = {};
+      for (const insp of data.inspections ?? []) {
+        if (insp.assignedTo) {
+          if (!map[insp.assignedTo]) map[insp.assignedTo] = [];
+          map[insp.assignedTo].push({
+            id: insp.id,
+            type: insp.type,
+            status: insp.status,
+            vehicleName: insp.vehicleName,
+            stockNumber: insp.stockNumber,
+          });
+        }
+      }
+      setYardByTech(map);
+    } catch { /* non-critical */ }
+  }, []);
+
+  useEffect(() => {
+    loadYardInspections();
+    const interval = setInterval(loadYardInspections, 30000);
+    return () => clearInterval(interval);
+  }, [loadYardInspections]);
 
   const STATUS_LABELS = { active: t.active, idle: t.idle, break: t.onBreak, absent: t.absent };
 
@@ -96,7 +133,12 @@ export default function TechniciansScreen() {
                 <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, { color: colors.foreground }]}>{assignedJobs.length}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Assigned</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Workshop</Text>
+                </View>
+                <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.stat}>
+                  <Text style={[styles.statValue, { color: "#7c3aed" }]}>{(yardByTech[tech.name] ?? []).length}</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Yard Insp.</Text>
                 </View>
                 <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.stat}>
@@ -116,13 +158,47 @@ export default function TechniciansScreen() {
 
               {assignedJobs.length > 0 && (
                 <View style={[styles.jobsList, { borderTopColor: colors.border }]}>
-                  <Text style={[styles.jobsListTitle, { color: colors.mutedForeground }]}>Assigned Jobs</Text>
+                  <Text style={[styles.jobsListTitle, { color: colors.mutedForeground }]}>Workshop Jobs</Text>
                   {assignedJobs.map((job) => (
                     <View key={job.id} style={styles.jobItem}>
                       <Text style={[styles.jobEstimate, { color: colors.foreground }]}>Estimate {job.estimateNumber}</Text>
                       <Text style={[styles.jobVehicle, { color: colors.mutedForeground }]} numberOfLines={1}>{job.vehicle}</Text>
                     </View>
                   ))}
+                </View>
+              )}
+
+              {(yardByTech[tech.name] ?? []).length > 0 && (
+                <View style={[styles.jobsList, { borderTopColor: colors.border, backgroundColor: "#faf5ff" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <Feather name="clipboard" size={11} color="#7c3aed" />
+                    <Text style={[styles.jobsListTitle, { color: "#7c3aed", marginBottom: 0 }]}>Yard Inspections</Text>
+                  </View>
+                  {(yardByTech[tech.name] ?? []).map((insp) => {
+                    const TYPE_LABELS: Record<string, string> = {
+                      "pre-inspection": "Pre-Insp.", secondary: "Secondary", "final-quality": "Final QC",
+                      "new-arrival": "New Arrival", "used-arrival": "Used Arrival",
+                      "periodic-fluid": "Fluid Check", "periodic-damage": "Damage Scan", "start-and-run": "Start & Run",
+                    };
+                    const statusColor = insp.status === "in-progress" ? "#1d4ed8" : "#d97706";
+                    return (
+                      <View key={insp.id} style={styles.jobItem}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={[styles.jobEstimate, { color: colors.foreground }]}>
+                            {TYPE_LABELS[insp.type] ?? insp.type}
+                          </Text>
+                          <View style={[styles.yardStatusPill, { backgroundColor: statusColor + "20" }]}>
+                            <Text style={[styles.yardStatusText, { color: statusColor }]}>
+                              {insp.status === "in-progress" ? "In Progress" : "Queued"}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.jobVehicle, { color: colors.mutedForeground }]} numberOfLines={1}>
+                          {insp.vehicleName}{insp.stockNumber ? ` — #${insp.stockNumber}` : ""}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -165,4 +241,6 @@ const styles = StyleSheet.create({
   jobItem: { gap: 1 },
   jobEstimate: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   jobVehicle: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  yardStatusPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  yardStatusText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
 });

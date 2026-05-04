@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -26,6 +26,10 @@ const TECH_STATUS_CONFIG = {
   absent:  { color: "#ef4444", bg: "#fee2e2", label: "Absent",  icon: "x-circle"     as const },
 };
 
+const BASE = Platform.OS === "web"
+  ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+  : "/api";
+
 export default function LiveSupervisionScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
@@ -35,6 +39,33 @@ export default function LiveSupervisionScreen() {
   const router  = useRouter();
   const { getStage } = useStages();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const [yardByTech, setYardByTech] = useState<Record<string, number>>({});
+  const [totalYardActive, setTotalYardActive] = useState(0);
+
+  const loadYardInspections = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/yard/inspections?status=queued,in-progress&limit=100`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const map: Record<string, number> = {};
+      let total = 0;
+      for (const insp of data.inspections ?? []) {
+        if (insp.assignedTo) {
+          map[insp.assignedTo] = (map[insp.assignedTo] ?? 0) + 1;
+          total++;
+        }
+      }
+      setYardByTech(map);
+      setTotalYardActive(total);
+    } catch { /* non-critical */ }
+  }, []);
+
+  useEffect(() => {
+    loadYardInspections();
+    const interval = setInterval(loadYardInspections, 30000);
+    return () => clearInterval(interval);
+  }, [loadYardInspections]);
 
   const active   = state.technicians.filter((t) => t.status === "active").length;
   const idle     = state.technicians.filter((t) => t.status === "idle").length;
@@ -52,12 +83,19 @@ export default function LiveSupervisionScreen() {
     return hoursIn > stage.expectedHours;
   });
 
-  // Compute overloaded techs (today > 80% of 8h)
+  // Compute overloaded techs (workshop only ≥ 80% of 8h)
   const overloadedTechs = state.technicians.filter(
     (t) => t.status !== "absent" && (t.totalHoursToday / 8) >= 0.8,
   );
 
-  const hasAlerts = delayedJobs.length > 0 || overloadedTechs.length > 0 || onHold > 0;
+  // Techs overloaded when combining workshop hours + yard inspection time (1h each)
+  const combinedOverloadedTechs = state.technicians.filter(
+    (t) => t.status !== "absent" && (yardByTech[t.name] ?? 0) > 0 &&
+      ((t.totalHoursToday + (yardByTech[t.name] ?? 0)) / 8) >= 0.8 &&
+      (t.totalHoursToday / 8) < 0.8,
+  );
+
+  const hasAlerts = delayedJobs.length > 0 || overloadedTechs.length > 0 || onHold > 0 || combinedOverloadedTechs.length > 0;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -139,6 +177,26 @@ export default function LiveSupervisionScreen() {
                 <Feather name="chevron-right" size={16} color="#ca8a04" />
               </Pressable>
             )}
+
+            {combinedOverloadedTechs.length > 0 && (
+              <Pressable
+                onPress={() => router.push("/(supervisor)/yard" as any)}
+                style={[styles.alertCard, { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe" }]}
+              >
+                <View style={[styles.alertIcon, { backgroundColor: "#ddd6fe" }]}>
+                  <Feather name="clipboard" size={16} color="#7c3aed" />
+                </View>
+                <View style={styles.alertBody}>
+                  <Text style={[styles.alertTitle, { color: "#7c3aed" }]}>
+                    {combinedOverloadedTechs.length} Tech{combinedOverloadedTechs.length !== 1 ? "s" : ""} Overloaded — Yard + Workshop
+                  </Text>
+                  <Text style={styles.alertDesc}>
+                    {combinedOverloadedTechs.map((t) => t.name.split(" ")[0]).join(", ")} — combined load ≥ 80%
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={16} color="#7c3aed" />
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -149,6 +207,7 @@ export default function LiveSupervisionScreen() {
             { label: "On Break",  value: onBreak,   color: "#d97706", bg: "#fef3c7", icon: "coffee"    as const },
             { label: "Idle",      value: idle,      color: "#64748b", bg: "#f1f5f9", icon: "pause"     as const },
             { label: "Open Jobs", value: openJobs,  color: colors.primary, bg: colors.accent, icon: "briefcase" as const },
+            { label: "Yard Tasks", value: totalYardActive, color: "#7c3aed", bg: "#ede9fe", icon: "clipboard" as const },
           ].map(({ label, value, color, bg, icon }) => (
             <View key={label} style={[styles.kpiCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
               <View style={[styles.kpiIcon, { backgroundColor: bg }]}>
@@ -163,11 +222,13 @@ export default function LiveSupervisionScreen() {
         {/* ── TECHNICIANS ON FLOOR ──────────────────────── */}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Technicians on Floor</Text>
         {state.technicians.map((tech) => {
-          const cfg        = TECH_STATUS_CONFIG[tech.status];
-          const currentJob = tech.currentJobId ? state.jobs.find((j) => j.id === tech.currentJobId) : null;
-          const loadPct    = (tech.totalHoursToday / 8) * 100;
-          const loadColor  = loadPct >= 90 ? "#ef4444" : loadPct >= 75 ? "#d97706" : "#16a34a";
-          const effColor   = tech.efficiency >= 80 ? colors.success : tech.efficiency >= 60 ? colors.warning : colors.destructive;
+          const cfg          = TECH_STATUS_CONFIG[tech.status];
+          const currentJob   = tech.currentJobId ? state.jobs.find((j) => j.id === tech.currentJobId) : null;
+          const yardCount    = yardByTech[tech.name] ?? 0;
+          const combinedHrs  = tech.totalHoursToday + yardCount;
+          const combinedPct  = (combinedHrs / 8) * 100;
+          const loadColor    = combinedPct >= 90 ? "#ef4444" : combinedPct >= 75 ? "#d97706" : "#16a34a";
+          const effColor     = tech.efficiency >= 80 ? colors.success : tech.efficiency >= 60 ? colors.warning : colors.destructive;
           return (
             <Pressable
               key={tech.id}
@@ -186,6 +247,12 @@ export default function LiveSupervisionScreen() {
                       <Feather name={cfg.icon} size={10} color={cfg.color} />
                       <Text style={[styles.statusBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
                     </View>
+                    {yardCount > 0 && (
+                      <View style={[styles.statusBadge, { backgroundColor: "#ede9fe" }]}>
+                        <Feather name="clipboard" size={10} color="#7c3aed" />
+                        <Text style={[styles.statusBadgeText, { color: "#7c3aed" }]}>{yardCount} yard</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={[styles.techRole, { color: colors.mutedForeground }]}>{tech.role}</Text>
                   {currentJob && (
@@ -198,8 +265,14 @@ export default function LiveSupervisionScreen() {
               <View style={[styles.techStats, { borderTopColor: colors.border }]}>
                 <View style={styles.techStat}>
                   <Feather name="clock" size={11} color={colors.mutedForeground} />
-                  <Text style={[styles.techStatText, { color: colors.mutedForeground }]}>{tech.totalHoursToday}h today</Text>
+                  <Text style={[styles.techStatText, { color: colors.mutedForeground }]}>{tech.totalHoursToday}h wshp</Text>
                 </View>
+                {yardCount > 0 && (
+                  <View style={styles.techStat}>
+                    <Feather name="clipboard" size={11} color="#7c3aed" />
+                    <Text style={[styles.techStatText, { color: "#7c3aed" }]}>{yardCount} yard insp.</Text>
+                  </View>
+                )}
                 <View style={styles.techStat}>
                   <Feather name="trending-up" size={11} color={effColor} />
                   <Text style={[styles.techStatText, { color: effColor, fontFamily: "Inter_600SemiBold" }]}>{tech.efficiency}% eff.</Text>
@@ -208,11 +281,11 @@ export default function LiveSupervisionScreen() {
                   <>
                     <View style={[styles.effBar, { backgroundColor: colors.secondary }]}>
                       <View
-                        style={[styles.effFill, { width: `${Math.min(loadPct, 100)}%` as `${number}%`, backgroundColor: loadColor }]}
+                        style={[styles.effFill, { width: `${Math.min(combinedPct, 100)}%` as `${number}%`, backgroundColor: loadColor }]}
                       />
                     </View>
                     <Text style={[styles.techStatText, { color: loadColor, fontFamily: "Inter_600SemiBold" }]}>
-                      {loadPct.toFixed(0)}% load
+                      {combinedPct.toFixed(0)}% load
                     </Text>
                   </>
                 )}
