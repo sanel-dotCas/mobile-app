@@ -12,6 +12,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import { BranchFilterBar } from "@/components/BranchFilterBar";
+import { useBranch } from "@/context/BranchContext";
 import { useColors } from "@/hooks/useColors";
 
 const BASE =
@@ -72,6 +74,7 @@ function timeAgo(dateStr: string) {
 export default function AdminDashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { branchParam } = useBranch();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,8 +83,8 @@ export default function AdminDashboardScreen() {
   const load = useCallback(async () => {
     try {
       const [statsRes, actRes] = await Promise.all([
-        fetch(`${BASE}/admin/stats`),
-        fetch(`${BASE}/admin/activity`),
+        fetch(`${BASE}/admin/stats?_=1${branchParam}`),
+        fetch(`${BASE}/admin/activity?_=1${branchParam}`),
       ]);
       if (statsRes.ok) {
         const raw = await statsRes.json();
@@ -108,7 +111,7 @@ export default function AdminDashboardScreen() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setLoading(true); load(); }, [load, branchParam]);
 
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [load]);
 
@@ -130,6 +133,7 @@ export default function AdminDashboardScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <AppHeader title="Admin Dashboard" subtitle="IGMMA DMS Control Centre" />
+      <BranchFilterBar />
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 100 + insets.bottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

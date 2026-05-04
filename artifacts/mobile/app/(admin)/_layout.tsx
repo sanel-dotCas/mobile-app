@@ -5,6 +5,7 @@ import React from "react";
 import { ActivityIndicator, Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useAuth } from "@/context/AuthContext";
+import { BranchProvider } from "@/context/BranchContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function AdminLayout() {
@@ -26,6 +27,7 @@ export default function AdminLayout() {
   if (role !== "admin") return <Redirect href="/(tabs)" />;
 
   return (
+    <BranchProvider>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: "#dc2626",
@@ -90,5 +92,6 @@ export default function AdminLayout() {
         }}
       />
     </Tabs>
+    </BranchProvider>
   );
 }

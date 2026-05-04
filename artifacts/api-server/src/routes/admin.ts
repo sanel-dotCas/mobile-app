@@ -12,13 +12,19 @@ import {
 } from "@workspace/db";
 import { techniciansTable } from "@workspace/db";
 import { jobsTable } from "@workspace/db";
-import { eq, count, desc, sql, and } from "drizzle-orm";
+import { eq, count, desc, sql, and, or } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 // ── Stats ────────────────────────────────────────────────────────────────────
-router.get("/admin/stats", async (_req, res) => {
+router.get("/admin/stats", async (req, res) => {
   try {
+    const { locationId } = req.query as Record<string, string>;
+    const locId = locationId && locationId !== "all" ? Number(locationId) : null;
+    const vWhere = locId ? eq(yardVehiclesTable.locationId, locId) : undefined;
+    const iWhere = locId ? eq(yardInspectionsTable.locationId, locId) : undefined;
+    const uWhere = locId ? eq(yardUsersTable.locationId, locId) : undefined;
+
     const [
       vehicleRows,
       inspectionRows,
@@ -30,15 +36,17 @@ router.get("/admin/stats", async (_req, res) => {
     ] = await Promise.all([
       db.select({ status: yardVehiclesTable.status, cnt: count() })
         .from(yardVehiclesTable)
+        .where(vWhere)
         .groupBy(yardVehiclesTable.status),
       db.select({ status: yardInspectionsTable.status, cnt: count() })
         .from(yardInspectionsTable)
+        .where(iWhere)
         .groupBy(yardInspectionsTable.status),
       db.select({ status: jobsTable.status, cnt: count() })
         .from(jobsTable)
         .groupBy(jobsTable.status),
       db.select({ cnt: count() }).from(techniciansTable),
-      db.select({ cnt: count() }).from(yardUsersTable),
+      db.select({ cnt: count() }).from(yardUsersTable).where(uWhere),
       db.select({ cnt: count() }).from(yardLocationsTable),
       db.select({ cnt: count() }).from(servicePackagesTable),
     ]);
@@ -79,11 +87,15 @@ router.get("/admin/stats", async (_req, res) => {
 });
 
 // ── Activity feed ─────────────────────────────────────────────────────────────
-router.get("/admin/activity", async (_req, res) => {
+router.get("/admin/activity", async (req, res) => {
   try {
+    const { locationId } = req.query as Record<string, string>;
+    const locId = locationId && locationId !== "all" ? Number(locationId) : null;
+    const whereClause = locId ? eq(yardMovementsTable.locationId, locId) : undefined;
     const movements = await db
       .select()
       .from(yardMovementsTable)
+      .where(whereClause)
       .orderBy(desc(yardMovementsTable.createdAt))
       .limit(30);
     res.json({ activity: movements });
