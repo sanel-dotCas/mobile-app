@@ -944,6 +944,7 @@ export default function EstimateDetailScreen() {
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dmsSubmissionError, setDmsSubmissionError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [bulkSection, setBulkSection] = useState<"labor" | "part" | "material" | null>(null);
 
@@ -1162,6 +1163,7 @@ export default function EstimateDetailScreen() {
         if (!data.success) {
           throw new Error(data.message ?? "DMS submission did not succeed.");
         }
+        setDmsSubmissionError(null);
         updateStatus(estimate.id, "submitted");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
@@ -1173,6 +1175,7 @@ export default function EstimateDetailScreen() {
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Submission failed. Please try again.";
+        setDmsSubmissionError(msg);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Submission Failed", msg);
       } finally {
@@ -1227,6 +1230,20 @@ export default function EstimateDetailScreen() {
             {new Date(estimate.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
           </Text>
         </View>
+
+        {/* DMS submission failure banner */}
+        {dmsSubmissionError !== null && estimate.status === "approved" && (
+          <View style={styles.dmsErrorBanner}>
+            <Feather name="alert-circle" size={14} color="#dc2626" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dmsErrorTitle}>DMS Submission Failed</Text>
+              <Text style={styles.dmsErrorMsg}>{dmsSubmissionError} — tap "Submit to DMS" below to retry.</Text>
+            </View>
+            <Pressable onPress={() => setDmsSubmissionError(null)} hitSlop={10}>
+              <Feather name="x" size={14} color="#dc2626" />
+            </Pressable>
+          </View>
+        )}
 
         {/* Vehicle card */}
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1605,6 +1622,10 @@ const styles = StyleSheet.create({
   statusDot:     { width: 8, height: 8, borderRadius: 4 },
   statusLabel:   { fontSize: 13, fontFamily: "Inter_700Bold" },
   statusMeta:    { fontSize: 11, fontFamily: "Inter_400Regular", opacity: 0.75 },
+
+  dmsErrorBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#fef2f2", borderWidth: 1, borderColor: "#fecaca", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  dmsErrorTitle:  { fontSize: 13, fontFamily: "Inter_700Bold", color: "#dc2626", marginBottom: 2 },
+  dmsErrorMsg:    { fontSize: 12, fontFamily: "Inter_400Regular", color: "#b91c1c", lineHeight: 17 },
 
   section:       { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
