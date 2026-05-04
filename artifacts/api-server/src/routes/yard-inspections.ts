@@ -21,7 +21,9 @@ function formatInspection(
     stockVin: vehicle
       ? `Stock inventory # ${vehicle.stockNumber} · VIN: ${vehicle.vin}`
       : "",
-    vehicleName: vehicle ? `${vehicle.make} ${vehicle.model}` : "Unknown",
+    vehicleName: vehicle
+      ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ")
+      : "Unknown",
     vehicleYear: vehicle?.year ?? null,
     stockNumber: vehicle?.stockNumber ?? null,
     type: insp.type,

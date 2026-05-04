@@ -47,7 +47,6 @@ function UpdateMileageModal({
   inspectionId,
   currentMileage,
   vehicleName,
-  vehicleYear,
   stockNumber,
   onClose,
   onConfirm,
@@ -55,7 +54,6 @@ function UpdateMileageModal({
   inspectionId: number;
   currentMileage: number | null;
   vehicleName: string;
-  vehicleYear?: number | null;
   stockNumber?: string | null;
   onClose: () => void;
   onConfirm: (inspectionId: number, mileage: number) => void;
@@ -70,10 +68,7 @@ function UpdateMileageModal({
     onClose();
   };
 
-  const subtitle = [
-    vehicleYear ? String(vehicleYear) : null,
-    vehicleName,
-  ].filter(Boolean).join(" ") + (stockNumber ? ` — Stock #${stockNumber}` : "");
+  const subtitle = vehicleName + (stockNumber ? ` — Stock #${stockNumber}` : "");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -280,7 +275,7 @@ export default function InspectionsPage() {
   const [statusFilter, setStatusFilter] = useState<InspStatus>("all");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-  const [mileageModal, setMileageModal] = useState<{ inspectionId: number; currentMileage: number | null; vehicleName: string; vehicleYear?: number | null; stockNumber?: string | null } | null>(null);
+  const [mileageModal, setMileageModal] = useState<{ inspectionId: number; currentMileage: number | null; vehicleName: string; stockNumber?: string | null } | null>(null);
   const [mileageOverrides, setMileageOverrides] = useState<Record<number, number>>({});
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -444,10 +439,7 @@ export default function InspectionsPage() {
                   <Gauge className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="text-xs text-foreground">
                     {getDisplayMileage(insp) != null
-                      ? <>
-                          {insp.vehicleYear && <span className="text-muted-foreground mr-1">{insp.vehicleYear}</span>}
-                          {`${getDisplayMileage(insp)!.toLocaleString()} km`}
-                        </>
+                      ? `${getDisplayMileage(insp)!.toLocaleString()} km`
                       : <span className="text-muted-foreground italic">No mileage recorded</span>
                     }
                     {mileageOverrides[insp.id] !== undefined && (
@@ -456,7 +448,7 @@ export default function InspectionsPage() {
                   </span>
                   <button
                     data-testid={`button-take-action-mileage-${insp.id}`}
-                    onClick={() => setMileageModal({ inspectionId: insp.id, currentMileage: getDisplayMileage(insp), vehicleName: insp.vehicleName, vehicleYear: insp.vehicleYear, stockNumber: insp.stockNumber })}
+                    onClick={() => setMileageModal({ inspectionId: insp.id, currentMileage: getDisplayMileage(insp), vehicleName: insp.vehicleName, stockNumber: insp.stockNumber })}
                     className="ml-auto text-[10px] px-2 py-0.5 border border-[hsl(221,83%,53%)] text-[hsl(221,83%,53%)] rounded hover:bg-[hsl(221,83%,53%)] hover:text-white transition-colors shrink-0"
                   >
                     Take Action
@@ -533,7 +525,6 @@ export default function InspectionsPage() {
           inspectionId={mileageModal.inspectionId}
           currentMileage={mileageModal.currentMileage}
           vehicleName={mileageModal.vehicleName}
-          vehicleYear={mileageModal.vehicleYear}
           stockNumber={mileageModal.stockNumber}
           onClose={() => setMileageModal(null)}
           onConfirm={handleMileageConfirm}
