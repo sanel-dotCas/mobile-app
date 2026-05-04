@@ -31,3 +31,9 @@ export const jobsTable = pgTable("jobs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const estimateSubmissionsTable = pgTable("estimate_submissions", {
+  estimateId: text("estimate_id").primaryKey(),
+  dmsRoNumber: text("dms_ro_number").notNull(),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+});

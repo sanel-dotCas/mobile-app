@@ -1,6 +1,6 @@
 import { Router } from "express";
 import OpenAI from "openai";
-import { db, dmsAccountTypesTable } from "@workspace/db";
+import { db, dmsAccountTypesTable, estimateSubmissionsTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 
 const router = Router();
@@ -165,27 +165,48 @@ router.post("/estimates/submit", async (req, res) => {
     "DMS estimate submission received"
   );
 
-  lines.forEach((line, i) => {
-    req.log.info(
-      {
-        lineIndex: i,
-        type: line.type,
-        laborCategory: line.laborCategory ?? null,
-        description: line.description,
-        operation: line.operation ?? null,
-        accountType: line.accountType ?? null,
-        total: line.total,
-      },
-      "DMS estimate line"
-    );
-  });
+  const candidateRoNumber = `RO-${Date.now().toString(36).toUpperCase()}`;
 
-  const roNumber = `RO-${Date.now().toString(36).toUpperCase()}`;
+  await db
+    .insert(estimateSubmissionsTable)
+    .values({ estimateId, dmsRoNumber: candidateRoNumber })
+    .onConflictDoNothing();
+
+  const [submission] = await db
+    .select()
+    .from(estimateSubmissionsTable)
+    .where(eq(estimateSubmissionsTable.estimateId, estimateId))
+    .limit(1);
+
+  const roNumber = submission.dmsRoNumber;
+  const isNew = roNumber === candidateRoNumber;
+
+  if (isNew) {
+    lines.forEach((line, i) => {
+      req.log.info(
+        {
+          lineIndex: i,
+          type: line.type,
+          laborCategory: line.laborCategory ?? null,
+          description: line.description,
+          operation: line.operation ?? null,
+          accountType: line.accountType ?? null,
+          total: line.total,
+        },
+        "DMS estimate line"
+      );
+    });
+    req.log.info({ estimateId, dmsRoNumber: roNumber }, "DMS estimate submission persisted");
+  } else {
+    req.log.info({ estimateId, dmsRoNumber: roNumber }, "Duplicate DMS submission — returning existing RO number");
+  }
 
   res.json({
     success: true,
     dmsRoNumber: roNumber,
-    message: `Estimate ${estimateNo} submitted to DMS. Repair Order ${roNumber} created.`,
+    message: isNew
+      ? `Estimate ${estimateNo} submitted to DMS. Repair Order ${roNumber} created.`
+      : `Estimate ${estimateNo} was already submitted to DMS. Repair Order ${roNumber} already exists.`,
   });
 });
 
