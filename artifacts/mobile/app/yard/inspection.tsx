@@ -271,7 +271,7 @@ export default function InspectionDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { role } = useAuth();
+  const { role, mobileSessionToken } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [inspection, setInspection] = useState<Inspection | null>(null);
@@ -834,6 +834,7 @@ export default function InspectionDetailScreen() {
               attachments={mediaAttachments}
               onChange={setMediaAttachments}
               label="Inspection Photos & Videos"
+              sessionToken={mobileSessionToken ?? undefined}
             />
 
             {/* Action buttons */}

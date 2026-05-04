@@ -39,6 +39,7 @@ interface Props {
   onChange: OnChange;
   disabled?: boolean;
   label?: string;
+  sessionToken?: string;
 }
 
 function uid(): string {
@@ -49,14 +50,19 @@ async function uploadAttachment(
   localUri: string,
   name: string,
   contentType: string,
+  sessionToken?: string,
 ): Promise<string> {
   const stat = await fetch(localUri);
   const blob = await stat.blob();
   const size = blob.size;
 
+  const authHeaders: Record<string, string> = sessionToken
+    ? { "x-mobile-session": sessionToken }
+    : {};
+
   const urlRes = await fetch(`${BASE}/storage/uploads/request-url`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify({ name, size, contentType }),
   });
   if (!urlRes.ok) throw new Error("Failed to get upload URL");
@@ -69,16 +75,27 @@ async function uploadAttachment(
   });
   if (!uploadRes.ok) throw new Error("Upload failed");
 
+  const confirmRes = await fetch(`${BASE}/storage/uploads/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify({ objectPath }),
+  });
+  if (!confirmRes.ok) throw new Error("Upload confirm failed");
+
   return objectPath as string;
 }
 
-export function getAttachmentDisplayUri(att: AttachmentRecord): string {
-  if (att.localUri && !att.uploaded) return att.localUri;
+export function getAttachmentObjectUri(att: AttachmentRecord): string {
   if (att.objectPath) return `${BASE}/storage/objects/${att.objectPath.replace(/^\/objects\//, "")}`;
   return att.localUri ?? "";
 }
 
-export default function MediaAttachments({ attachments, onChange, disabled, label = "Photos & Videos" }: Props) {
+export function getAttachmentDisplayUri(att: AttachmentRecord): string {
+  if (att.localUri && !att.uploaded) return att.localUri;
+  return getAttachmentObjectUri(att);
+}
+
+export default function MediaAttachments({ attachments, onChange, disabled, label = "Photos & Videos", sessionToken }: Props) {
   const colors = useColors();
 
   const addFromPicker = useCallback(
@@ -108,7 +125,7 @@ export default function MediaAttachments({ attachments, onChange, disabled, labe
       onChange([...attachments, placeholder]);
 
       try {
-        const objectPath = await uploadAttachment(localUri, name, contentType);
+        const objectPath = await uploadAttachment(localUri, name, contentType, sessionToken);
         const updated = [...attachments, placeholder].map((a) =>
           a.id === placeholder.id ? { ...a, objectPath, uploaded: true, uploading: false } : a,
         );
@@ -121,7 +138,7 @@ export default function MediaAttachments({ attachments, onChange, disabled, labe
         Alert.alert("Upload Failed", "Could not upload the photo. Tap the × to remove it and try again.");
       }
     },
-    [attachments, onChange, disabled],
+    [attachments, onChange, disabled, sessionToken],
   );
 
   const handleCamera = async () => {
@@ -155,6 +172,8 @@ export default function MediaAttachments({ attachments, onChange, disabled, labe
     ]);
   };
 
+  const authHeaders = sessionToken ? { "x-mobile-session": sessionToken } : undefined;
+
   return (
     <View style={[st.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={st.header}>
@@ -168,8 +187,10 @@ export default function MediaAttachments({ attachments, onChange, disabled, labe
       {attachments.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.thumbRow} contentContainerStyle={st.thumbContent}>
           {attachments.map((att) => {
-            const uri = getAttachmentDisplayUri(att);
             const isVideo = att.contentType.startsWith("video/");
+            const imageSource = att.uploaded
+              ? { uri: getAttachmentObjectUri(att), headers: authHeaders }
+              : { uri: att.localUri ?? "" };
             return (
               <View key={att.id} style={st.thumbWrap}>
                 {isVideo ? (
@@ -177,7 +198,7 @@ export default function MediaAttachments({ attachments, onChange, disabled, labe
                     <Feather name="video" size={24} color={colors.primary} />
                   </View>
                 ) : (
-                  <Image source={{ uri }} style={st.thumb} resizeMode="cover" />
+                  <Image source={imageSource} style={st.thumb} resizeMode="cover" />
                 )}
 
                 {att.uploading && (

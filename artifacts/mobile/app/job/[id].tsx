@@ -75,7 +75,7 @@ export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state, getJob, clockIn, clockOut, endBreak, addNote, markJobComplete, advanceStage, receivePart, updatePartStatus, updateOdometer, pendingOdometerUpdates } = useJobs();
   const { sortedStages, getStage } = useStages();
-  const { role } = useAuth();
+  const { role, mobileSessionToken } = useAuth();
   const { t } = useLang();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -882,6 +882,7 @@ export default function JobDetailScreen() {
               onChange={handleJobAttachmentsChange}
               disabled={job.status === "completed"}
               label="Job Photos & Videos"
+              sessionToken={mobileSessionToken ?? undefined}
             />
             {savingAttachments && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, marginBottom: 8 }}>
