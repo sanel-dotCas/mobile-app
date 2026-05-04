@@ -56,7 +56,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Type**: Express 5 API
 - **Preview path**: `/api`
 - **Port**: 8080
-- **Routes**: `/api/healthz`, `/api/estimates/analyze`, `/api/yard/auth/*`, `/api/yard/dashboard/*`, `/api/yard/locations/*`, `/api/yard/spots/*`, `/api/yard/vehicles/*`, `/api/yard/inspections/*`, `/api/yard/inspection-recommendations`, `/api/yard/permissions`
+- **Routes**: `/api/healthz`, `/api/estimates/analyze`, `/api/yard/auth/*`, `/api/yard/dashboard/*`, `/api/yard/locations/*`, `/api/yard/spots/*`, `/api/yard/vehicles/*`, `/api/yard/inspections/*`, `/api/yard/inspection-recommendations`, `/api/yard/permissions`, `/api/storage/uploads/request-url`, `/api/storage/objects/*`, `/api/storage/public-objects/*`
+- **Object storage**: GCS bucket via Replit object storage; presigned upload URL flow: POST request-url → PUT binary to GCS → store objectPath in DB
 - **Yard auth note**: No session cookies — frontend sends `x-yard-user-id` header (or uses localStorage-based state). Login endpoint returns user object directly.
 
 ## Permissions System

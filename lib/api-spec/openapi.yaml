@@ -1158,6 +1158,37 @@ components:
           type: string
       required: [success, message]
 
+    # ── Object Storage ────────────────────────────────────────────────────────
+    RequestUploadUrlBody:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required: [name, size, contentType]
+
+    RequestUploadUrlResponse:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          type: object
+          properties:
+            name:
+              type: string
+            size:
+              type: integer
+            contentType:
+              type: string
+          required: [name, size, contentType]
+      required: [uploadURL, objectPath, metadata]
+
     # ── Movement ──────────────────────────────────────────────────────────────
     MovementEntry:
       type: object

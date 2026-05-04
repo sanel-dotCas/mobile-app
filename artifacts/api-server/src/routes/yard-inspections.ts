@@ -74,7 +74,9 @@ function formatInspection(
     locationName,
     notes: insp.notes ?? null,
     bodyDamage: insp.bodyDamage ?? null,
+    checklist: insp.checklist ?? null,
     fuelPercentage: insp.fuelPercentage ?? null,
+    attachments: Array.isArray(insp.attachments) ? insp.attachments : [],
     vehicleMileage: vehicle?.mileage ?? null,
     assignedTo: insp.assignedTo ?? null,
     assignedAt: insp.assignedAt?.toISOString() ?? null,
@@ -504,7 +506,7 @@ router.post("/yard/inspections/auto-assign", async (req, res) => {
 // ── Update inspection ─────────────────────────────────────────────────────────
 router.patch("/yard/inspections/:inspectionId", async (req, res) => {
   const inspectionId = Number(req.params.inspectionId);
-  const { status, notes, bodyDamage, fuelPercentage, completedAt, assignedTo } =
+  const { status, notes, bodyDamage, checklist, fuelPercentage, completedAt, assignedTo, attachments } =
     req.body;
 
   // Fetch the current inspection so we know the previous assignedTo
@@ -525,12 +527,16 @@ router.patch("/yard/inspections/:inspectionId", async (req, res) => {
   if (status !== undefined) updates.status = status;
   if (notes !== undefined) updates.notes = notes;
   if (bodyDamage !== undefined) updates.bodyDamage = bodyDamage;
+  if (checklist !== undefined) updates.checklist = checklist;
   if (fuelPercentage !== undefined) updates.fuelPercentage = Number(fuelPercentage);
   if (completedAt !== undefined) updates.completedAt = new Date(completedAt);
   if (status === "finished" && !completedAt) updates.completedAt = new Date();
   if (assignedTo !== undefined) {
     updates.assignedTo = assignedTo || null;
     updates.assignedAt = assignedTo ? new Date() : null;
+  }
+  if (attachments !== undefined) {
+    updates.attachments = Array.isArray(attachments) ? attachments : [];
   }
 
   const [updated] = await db

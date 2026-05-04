@@ -7,6 +7,7 @@ import {
   timestamp,
   numeric,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -145,7 +146,9 @@ export const yardInspectionsTable = pgTable("yard_inspections", {
   status: yardInspectionStatusEnum("status").notNull().default("queued"),
   notes: text("notes"),
   bodyDamage: text("body_damage"),
+  checklist: text("checklist"),
   fuelPercentage: integer("fuel_percentage"),
+  attachments: jsonb("attachments").$type<unknown[]>().default([]),
   assignedTo: text("assigned_to"),
   assignedAt: timestamp("assigned_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import estimatesRouter from "./estimates";
+import storageRouter from "./storage";
 import healthRouter from "./health";
 import yardAuthRouter from "./yard-auth";
 import yardLocationsRouter from "./yard-locations";
@@ -18,6 +19,7 @@ import servicePackagesRouter from "./service-packages";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(storageRouter);
 router.use(estimatesRouter);
 router.use(yardAuthRouter);
 router.use(yardLocationsRouter);

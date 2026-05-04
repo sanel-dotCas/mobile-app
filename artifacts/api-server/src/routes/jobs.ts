@@ -300,6 +300,7 @@ function rowToJob(row: typeof jobsTable.$inferSelect) {
     notes: row.notes as unknown[],
     inspections: row.inspections as unknown[],
     stageHistory: row.stageHistory as unknown[],
+    attachments: Array.isArray(row.attachments) ? (row.attachments as unknown[]) : [],
   };
 }
 
@@ -460,6 +461,7 @@ router.put("/jobs/:id", async (req, res) => {
       notes: Array.isArray(body.notes) ? body.notes : [],
       inspections: Array.isArray(body.inspections) ? body.inspections : [],
       stageHistory: Array.isArray(body.stageHistory) ? body.stageHistory : [],
+      attachments: Array.isArray(body.attachments) ? body.attachments : [],
       updatedAt: new Date(),
     };
 
@@ -489,6 +491,7 @@ router.put("/jobs/:id", async (req, res) => {
           notes: values.notes,
           inspections: values.inspections,
           stageHistory: values.stageHistory,
+          attachments: values.attachments,
           updatedAt: values.updatedAt,
         },
       })

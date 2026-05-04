@@ -28,6 +28,7 @@ export const jobsTable = pgTable("jobs", {
   notes: jsonb("notes").notNull().$type<unknown[]>().default([]),
   inspections: jsonb("inspections").notNull().$type<unknown[]>().default([]),
   stageHistory: jsonb("stage_history").notNull().$type<unknown[]>().default([]),
+  attachments: jsonb("attachments").$type<unknown[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

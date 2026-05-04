@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import MediaAttachments, { type AttachmentRecord } from "@/components/MediaAttachments";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 
@@ -284,6 +285,7 @@ export default function InspectionDetailScreen() {
   const [fuelPct, setFuelPct] = useState("50");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [formInitialised, setFormInitialised] = useState(false);
+  const [mediaAttachments, setMediaAttachments] = useState<AttachmentRecord[]>([]);
 
   const isSupervisor = role === "supervisor";
 
@@ -326,6 +328,9 @@ export default function InspectionDetailScreen() {
 
     setChecks(initialChecks);
     if (data.fuelPercentage != null) setFuelPct(String(data.fuelPercentage));
+    if (Array.isArray((data as any).attachments) && (data as any).attachments.length > 0) {
+      setMediaAttachments((data as any).attachments as AttachmentRecord[]);
+    }
     if (data.notes) {
       const match = data.notes.match(/Notes: ([\s\S]+)$/);
       if (match) setAdditionalNotes(match[1].trim());
@@ -366,6 +371,7 @@ export default function InspectionDetailScreen() {
       bodyDamage,
       fuelPercentage: Number(fuelPct) || null,
       checklist: JSON.stringify(checklistSummary),
+      attachments: mediaAttachments.filter((a) => a.uploaded),
       ...(status ? { status } : {}),
     };
   };
@@ -790,6 +796,13 @@ export default function InspectionDetailScreen() {
                 textAlignVertical="top"
               />
             </View>
+
+            {/* Photos & Videos */}
+            <MediaAttachments
+              attachments={mediaAttachments}
+              onChange={setMediaAttachments}
+              label="Inspection Photos & Videos"
+            />
 
             {/* Action buttons */}
             <View style={styles.actionRow}>

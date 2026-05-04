@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { ClockInModal } from "@/components/ClockInModal";
 import { InspectionChecklist } from "@/components/InspectionChecklist";
+import MediaAttachments, { type AttachmentRecord } from "@/components/MediaAttachments";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatusPill } from "@/components/StatusPill";
 import { TaskCard } from "@/components/TaskCard";
@@ -31,7 +32,12 @@ import { useLang } from "@/context/LanguageContext";
 import { useStages } from "@/context/StagesContext";
 import { useColors } from "@/hooks/useColors";
 
-type TabKey = "tasks" | "parts" | "inspections" | "notes";
+const JOB_API =
+  Platform.OS === "web"
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+    : "/api";
+
+type TabKey = "tasks" | "parts" | "inspections" | "notes" | "photos";
 
 function MetaItem({ icon, label, value }: { icon: string; label: string; value: string }) {
   const colors = useColors();
@@ -81,11 +87,19 @@ export default function JobDetailScreen() {
   const [noteSubject, setNoteSubject] = useState("");
   const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
   const [attachLabel, setAttachLabel] = useState("");
+  const [jobAttachments, setJobAttachments] = useState<AttachmentRecord[]>([]);
+  const [savingAttachments, setSavingAttachments] = useState(false);
   const [clockInModal, setClockInModal] = useState<{ jobId: string; taskId: string; taskTitle: string } | null>(null);
   const [mileageModalVisible, setMileageModalVisible] = useState(false);
   const [mileageInput, setMileageInput] = useState("");
 
   const job = getJob(id ?? "");
+
+  React.useEffect(() => {
+    if (job && Array.isArray((job as any).attachments) && (job as any).attachments.length > 0) {
+      setJobAttachments((job as any).attachments as AttachmentRecord[]);
+    }
+  }, [job?.id]);
 
   if (!job) {
     return (
@@ -261,7 +275,29 @@ export default function JobDetailScreen() {
     { key: "parts", label: "Parts", icon: "package" },
     { key: "inspections", label: "Inspect", icon: "clipboard" },
     { key: "notes", label: "Notes", icon: "message-square" },
+    { key: "photos", label: "Photos", icon: "camera" },
   ];
+
+  const saveJobAttachments = async (atts: AttachmentRecord[]) => {
+    const allUploaded = atts.every((a) => a.uploaded || !a.uploading);
+    if (!allUploaded) return;
+    setSavingAttachments(true);
+    try {
+      await fetch(`${JOB_API}/jobs/${job.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...job, attachments: atts }),
+      });
+    } catch {
+    } finally {
+      setSavingAttachments(false);
+    }
+  };
+
+  const handleJobAttachmentsChange = (atts: AttachmentRecord[]) => {
+    setJobAttachments(atts);
+    saveJobAttachments(atts);
+  };
 
   const totalParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).length, 0);
   const pendingParts = job.tasks.reduce((s, t) => s + (t.parts ?? []).filter((p) => p.status !== "received").length, 0);
@@ -835,6 +871,32 @@ export default function JobDetailScreen() {
         {activeTab === "inspections" && (
           <View style={styles.tabContent}>
             <InspectionChecklist jobId={job.id} />
+          </View>
+        )}
+
+        {/* ── Photos Tab ───────────────────────────────────── */}
+        {activeTab === "photos" && (
+          <View style={styles.tabContent}>
+            <MediaAttachments
+              attachments={jobAttachments}
+              onChange={handleJobAttachmentsChange}
+              disabled={job.status === "completed"}
+              label="Job Photos & Videos"
+            />
+            {savingAttachments && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, marginBottom: 8 }}>
+                <Text style={{ fontSize: 12, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>Saving…</Text>
+              </View>
+            )}
+            {jobAttachments.length === 0 && (
+              <View style={styles.emptyNotes}>
+                <Feather name="camera" size={36} color={colors.mutedForeground} />
+                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground }]}>No photos yet</Text>
+                <Text style={[styles.emptyNotesText, { color: colors.mutedForeground, fontSize: 12 }]}>
+                  Use the camera or gallery above to add photos
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
