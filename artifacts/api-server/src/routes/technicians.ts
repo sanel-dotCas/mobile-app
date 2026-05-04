@@ -173,7 +173,7 @@ router.get("/technicians/me/stats", async (req, res) => {
       workingPattern[date] = secs >= 3600 ? "worked" : "partial";
     }
 
-    res.json({ totalTimeTracked, productivity, workingPattern });
+    res.json({ totalTimeTracked, totalTimeTrackedSeconds: totalSeconds, productivity, workingPattern });
   } catch (err) {
     req.log.error(err, "Failed to fetch technician stats");
     res.status(500).json({ error: "Failed to fetch technician stats" });

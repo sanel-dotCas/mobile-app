@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -88,6 +88,40 @@ export default function DashboardScreen() {
   const pendingJobs = state.jobs.filter((j) => j.status === "pending");
   const completedJobs = state.jobs.filter((j) => j.status === "completed");
 
+  const [liveNow, setLiveNow] = useState(Date.now());
+  const liveTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (state.activeClockIn) {
+      if (!liveTickRef.current) {
+        liveTickRef.current = setInterval(() => setLiveNow(Date.now()), 1000);
+      }
+    } else {
+      if (liveTickRef.current) {
+        clearInterval(liveTickRef.current);
+        liveTickRef.current = null;
+      }
+    }
+    return () => {
+      if (liveTickRef.current) {
+        clearInterval(liveTickRef.current);
+        liveTickRef.current = null;
+      }
+    };
+  }, [state.activeClockIn]);
+
+  const liveTimeTracked = useMemo(() => {
+    if (!state.activeClockIn) return state.stats.totalTimeTracked;
+    const incrementalSeconds = Math.max(
+      0,
+      Math.floor((liveNow - state.statsRefreshedAt) / 1000),
+    );
+    const total = state.stats.totalTimeTrackedSeconds + incrementalSeconds;
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    return `${h}h ${m}m`;
+  }, [state.activeClockIn, state.stats.totalTimeTrackedSeconds, state.statsRefreshedAt, liveNow]);
+
   function getDayPattern(day: number | null): "worked" | "partial" | "off" | "today" | "none" {
     if (!day) return "none";
     const key = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -136,8 +170,16 @@ export default function DashboardScreen() {
         <View style={[styles.kpiCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
           <View style={styles.kpiRow}>
             <View style={styles.kpiItem}>
-              <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Total time tracked</Text>
-              <Text style={[styles.kpiValue, { color: colors.foreground }]}>{state.stats.totalTimeTracked}</Text>
+              <View style={styles.kpiLabelRow}>
+                <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Total time tracked</Text>
+                {state.activeClockIn && (
+                  <View style={[styles.liveBadge, { backgroundColor: colors.success + "20" }]}>
+                    <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
+                    <Text style={[styles.liveText, { color: colors.success }]}>LIVE</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.kpiValue, { color: colors.foreground }]}>{liveTimeTracked}</Text>
             </View>
             <View style={[styles.kpiDivider, { backgroundColor: colors.border }]} />
             <View style={styles.kpiItem}>
@@ -301,6 +343,29 @@ const styles = StyleSheet.create({
   kpiDivider: {
     width: 1,
     alignSelf: "stretch",
+  },
+  kpiLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  liveText: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
   },
   kpiLabel: {
     fontSize: 12,

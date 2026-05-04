@@ -99,7 +99,7 @@ export interface Technician {
 }
 
 interface DashboardStats {
-  totalTimeTracked: string; productivity: number;
+  totalTimeTracked: string; totalTimeTrackedSeconds: number; productivity: number;
   workingPattern: Record<string, "worked" | "partial" | "off">;
 }
 
@@ -130,6 +130,7 @@ interface PendingInspectionUpdate {
 
 interface JobsState {
   jobs: Job[]; stats: DashboardStats;
+  statsRefreshedAt: number;
   activeClockIn: { jobId: string; taskId: string; startTime: string } | null;
   isOffline: boolean; notifications: Notification[];
   timeRecords: TimeRecord[]; activeShift: TimeRecord | null;
@@ -199,7 +200,7 @@ const INITIAL_TECHNICIANS: Technician[] = [
 ];
 
 const INITIAL_STATS: DashboardStats = {
-  totalTimeTracked: "31h 56m", productivity: 77,
+  totalTimeTracked: "31h 56m", totalTimeTrackedSeconds: 114960, productivity: 77,
   workingPattern: {
     "2026-04-01": "worked", "2026-04-02": "worked", "2026-04-03": "partial",
     "2026-04-04": "worked", "2026-04-07": "worked", "2026-04-08": "worked",
@@ -266,7 +267,7 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "MERGE_JOBS": return { ...state, jobs: mergeJobsWithLocal(action.payload, state.jobs), jobsLoaded: true };
     case "MARK_JOBS_LOADED": return { ...state, jobsLoaded: true };
     case "SET_TECHNICIANS": return { ...state, technicians: action.payload };
-    case "SET_STATS": return { ...state, stats: action.payload };
+    case "SET_STATS": return { ...state, stats: action.payload, statsRefreshedAt: Date.now() };
     case "ADD_JOB": return { ...state, jobs: [...state.jobs, action.payload] };
     case "REMOVE_JOB": return { ...state, jobs: state.jobs.filter((j) => j.id !== action.payload.jobId) };
 
@@ -620,7 +621,7 @@ function syncJobToServer(job: Job) {
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, {
-    jobs: [], stats: INITIAL_STATS, activeClockIn: null,
+    jobs: [], stats: INITIAL_STATS, statsRefreshedAt: Date.now(), activeClockIn: null,
     isOffline: false, notifications: INITIAL_NOTIFICATIONS,
     timeRecords: [], activeShift: null, technicians: INITIAL_TECHNICIANS,
     activeBreak: false, activeNonProd: null, jobsLoaded: false,
@@ -700,12 +701,13 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         }
       }
       if (statsRes.ok) {
-        const stats: { totalTimeTracked?: string; productivity?: number; workingPattern?: Record<string, "worked" | "partial" | "off"> } = await statsRes.json();
+        const stats: { totalTimeTracked?: string; totalTimeTrackedSeconds?: number; productivity?: number; workingPattern?: Record<string, "worked" | "partial" | "off"> } = await statsRes.json();
         if (stats.totalTimeTracked !== undefined) {
           dispatch({
             type: "SET_STATS",
             payload: {
               totalTimeTracked: stats.totalTimeTracked,
+              totalTimeTrackedSeconds: stats.totalTimeTrackedSeconds ?? 0,
               productivity: stats.productivity ?? 0,
               workingPattern: stats.workingPattern ?? {},
             },
