@@ -957,23 +957,28 @@ const styles = StyleSheet.create({
   },
   filterScroll: {
     borderBottomWidth: 1,
-    flexGrow: 0,
+    flexShrink: 0,
   },
   filterContent: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 8,
     flexDirection: "row",
+    alignItems: "center",
   },
   filterChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
   },
   filterChipText: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+    lineHeight: 18,
   },
   generateChip: {
     flexDirection: "row",
