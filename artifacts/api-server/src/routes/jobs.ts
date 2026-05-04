@@ -98,6 +98,63 @@ router.get("/jobs/:id", async (req, res) => {
   }
 });
 
+router.patch("/jobs/:id", async (req, res) => {
+  const { id } = req.params;
+  const body = req.body as {
+    status?: string;
+    tasks?: unknown[];
+    notes?: unknown[];
+    workedHours?: number;
+    progress?: number;
+    currentStageId?: string;
+    stageHistory?: unknown[];
+    inspections?: unknown[];
+  };
+
+  const updateData: Partial<typeof jobsTable.$inferInsert> & { updatedAt: Date } = {
+    updatedAt: new Date(),
+  };
+
+  if (body.status !== undefined) updateData.status = body.status;
+  if (body.tasks !== undefined) updateData.tasks = body.tasks;
+  if (body.notes !== undefined) updateData.notes = body.notes;
+  if (body.workedHours !== undefined) {
+    if (typeof body.workedHours !== "number" || body.workedHours < 0) {
+      res.status(400).json({ error: "workedHours must be a non-negative number" });
+      return;
+    }
+    updateData.workedHours = body.workedHours.toFixed(2);
+  }
+  if (body.progress !== undefined) {
+    if (typeof body.progress !== "number" || body.progress < 0 || body.progress > 100) {
+      res.status(400).json({ error: "progress must be a number between 0 and 100" });
+      return;
+    }
+    updateData.progress = body.progress;
+  }
+  if (body.currentStageId !== undefined) updateData.currentStageId = body.currentStageId;
+  if (body.stageHistory !== undefined) updateData.stageHistory = body.stageHistory;
+  if (body.inspections !== undefined) updateData.inspections = body.inspections;
+
+  try {
+    const rows = await db
+      .update(jobsTable)
+      .set(updateData)
+      .where(eq(jobsTable.id, id))
+      .returning();
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+
+    res.json(rowToJob(rows[0]));
+  } catch (err) {
+    req.log.error(err, "Failed to update job");
+    res.status(500).json({ error: "Failed to update job" });
+  }
+});
+
 router.patch("/jobs/:id/odometer", async (req, res) => {
   const { id } = req.params;
   const { odometer } = req.body as { odometer?: unknown };

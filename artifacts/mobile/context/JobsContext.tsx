@@ -13,6 +13,14 @@ const API_BASE = Platform.OS === "web"
   ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
   : "/api";
 
+function patchJob(jobId: string, patch: Record<string, unknown>): void {
+  fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  }).catch(() => {});
+}
+
 export type JobStatus = "pending" | "in_progress" | "on_hold" | "completed";
 export type TaskStatus = "pending" | "in_progress" | "done";
 export type LaborType = "ELECTRICAL" | "MECHANICAL" | "BODY" | "PAINT" | "DIAGNOSTIC" | "OTHER";
@@ -741,21 +749,69 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { AsyncStorage.setItem("jobs_v2", JSON.stringify(state.jobs)); }, [state.jobs]);
 
-  const clockIn = useCallback((jobId: string, taskId: string) => dispatch({ type: "CLOCK_IN", payload: { jobId, taskId } }), []);
-  const clockOut = useCallback((jobId: string, taskId: string) => dispatch({ type: "CLOCK_OUT", payload: { jobId, taskId } }), []);
+  const clockIn = useCallback((jobId: string, taskId: string) => {
+    dispatch({ type: "CLOCK_IN", payload: { jobId, taskId } });
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const clockInStart = new Date().toISOString();
+    const updatedTasks = mapTasks(job.tasks, taskId, (t) => ({
+      ...t, clockedIn: true, clockInStart, status: "in_progress" as TaskStatus,
+    }));
+    patchJob(jobId, { tasks: updatedTasks, status: "in_progress" });
+  }, [state.jobs]);
+
+  const clockOut = useCallback((jobId: string, taskId: string) => {
+    dispatch({ type: "CLOCK_OUT", payload: { jobId, taskId } });
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const updatedTasks = mapTasks(job.tasks, taskId, (t) => {
+      const addedSeconds = t.clockInStart ? Math.floor((Date.now() - new Date(t.clockInStart).getTime()) / 1000) : 0;
+      const newElapsed = t.elapsedSeconds + addedSeconds;
+      return { ...t, clockedIn: false, clockInStart: null, elapsedSeconds: newElapsed, workedHours: parseFloat((newElapsed / 3600).toFixed(2)) };
+    });
+    const totalWorked = updatedTasks.reduce((s, t) => s + t.workedHours, 0);
+    patchJob(jobId, {
+      tasks: updatedTasks,
+      workedHours: parseFloat(totalWorked.toFixed(2)),
+      progress: computeProgress({ ...job, tasks: updatedTasks }),
+    });
+  }, [state.jobs]);
 
   const addNote = useCallback((jobId: string, text: string, subject?: string, attachments?: NoteAttachment[]) => {
     const note: JobNote = { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), author: "Mike Rodriguez", text, timestamp: new Date().toISOString(), subject, attachments };
     dispatch({ type: "ADD_NOTE", payload: { jobId, note } });
-  }, []);
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (job) patchJob(jobId, { notes: [...job.notes, note] });
+  }, [state.jobs]);
 
   const addTaskNote = useCallback((jobId: string, taskId: string, text: string, subject?: string, attachments?: NoteAttachment[]) => {
     const note: TaskNote = { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), author: "Mike Rodriguez", text, timestamp: new Date().toISOString(), subject, attachments };
     dispatch({ type: "ADD_TASK_NOTE", payload: { jobId, taskId, note } });
-  }, []);
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (job) {
+      const updatedTasks = mapTasks(job.tasks, taskId, (t) => ({ ...t, notes: [...t.notes, note] }));
+      patchJob(jobId, { tasks: updatedTasks });
+    }
+  }, [state.jobs]);
 
-  const markTaskDone = useCallback((jobId: string, taskId: string) => dispatch({ type: "MARK_TASK_DONE", payload: { jobId, taskId } }), []);
-  const markJobComplete = useCallback((jobId: string) => dispatch({ type: "MARK_JOB_COMPLETE", payload: { jobId } }), []);
+  const markTaskDone = useCallback((jobId: string, taskId: string) => {
+    dispatch({ type: "MARK_TASK_DONE", payload: { jobId, taskId } });
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (job) {
+      const updatedTasks = mapTasks(job.tasks, taskId, (t) => ({ ...t, status: "done" as TaskStatus, clockedIn: false }));
+      const allDone = updatedTasks.every((t) => t.status === "done");
+      patchJob(jobId, {
+        tasks: updatedTasks,
+        progress: computeProgress({ ...job, tasks: updatedTasks }),
+        status: allDone ? "completed" : job.status,
+      });
+    }
+  }, [state.jobs]);
+
+  const markJobComplete = useCallback((jobId: string) => {
+    dispatch({ type: "MARK_JOB_COMPLETE", payload: { jobId } });
+    patchJob(jobId, { status: "completed", progress: 100 });
+  }, []);
   const markNotificationRead = useCallback((id: string) => dispatch({ type: "MARK_NOTIFICATION_READ", payload: id }), []);
   const markAllRead = useCallback(() => dispatch({ type: "MARK_ALL_READ" }), []);
   const getJob = useCallback((id: string) => state.jobs.find((j) => j.id === id), [state.jobs]);
@@ -776,8 +832,16 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const updatePartStatus = useCallback((jobId: string, taskId: string, partId: string, status: PartStatus) =>
     dispatch({ type: "UPDATE_PART_STATUS", payload: { jobId, taskId, partId, status } }), []);
 
-  const advanceStage = useCallback((jobId: string, nextStageId: string, stageName: string) =>
-    dispatch({ type: "ADVANCE_STAGE", payload: { jobId, nextStageId, stageName } }), []);
+  const advanceStage = useCallback((jobId: string, nextStageId: string, stageName: string) => {
+    dispatch({ type: "ADVANCE_STAGE", payload: { jobId, nextStageId, stageName } });
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (job) {
+      patchJob(jobId, {
+        currentStageId: nextStageId,
+        stageHistory: [...job.stageHistory, { stageId: nextStageId, enteredAt: new Date().toISOString() }],
+      });
+    }
+  }, [state.jobs]);
 
   const addDelayNotification = useCallback((jobId: string, estimateNumber: string, stageName: string, stageId: string, overdueHours: number) =>
     dispatch({ type: "ADD_DELAY_NOTIFICATION", payload: { jobId, estimateNumber, stageName, stageId, overdueHours } }), []);
@@ -821,8 +885,19 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.jobs]);
 
-  const holdJob = useCallback((jobId: string) => dispatch({ type: "HOLD_JOB", payload: { jobId } }), []);
-  const unholdJob = useCallback((jobId: string) => dispatch({ type: "UNHOLD_JOB", payload: { jobId } }), []);
+  const holdJob = useCallback((jobId: string) => {
+    dispatch({ type: "HOLD_JOB", payload: { jobId } });
+    patchJob(jobId, { status: "on_hold" });
+  }, []);
+
+  const unholdJob = useCallback((jobId: string) => {
+    dispatch({ type: "UNHOLD_JOB", payload: { jobId } });
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (job) {
+      const newStatus = job.tasks.some((t) => t.status !== "pending") ? "in_progress" : "pending";
+      patchJob(jobId, { status: newStatus });
+    }
+  }, [state.jobs]);
 
   const updateOdometer = useCallback((jobId: string, odometer: number): Promise<void> => {
     dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } });
