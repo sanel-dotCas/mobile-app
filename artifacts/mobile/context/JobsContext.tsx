@@ -692,7 +692,7 @@ const JobsContext = createContext<JobsContextValue | null>(null);
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, {
-    jobs: INITIAL_JOBS, stats: INITIAL_STATS, activeClockIn: null,
+    jobs: [], stats: INITIAL_STATS, activeClockIn: null,
     isOffline: false, notifications: INITIAL_NOTIFICATIONS,
     timeRecords: [], activeShift: null, technicians: INITIAL_TECHNICIANS,
     activeBreak: false, activeNonProd: null,
@@ -704,22 +704,23 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const applyServerCorrections = () => {
-      fetch(`${API_BASE}/jobs/odometer`)
-        .then((r) => r.json())
-        .then((data: { corrections?: Record<string, number> }) => {
-          const corrections = data.corrections ?? {};
-          Object.entries(corrections).forEach(([jobId, odometer]) => {
-            dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } });
-          });
+    const fetchJobsFromApi = () =>
+      fetch(`${API_BASE}/jobs`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
         })
-        .catch(() => {});
-    };
+        .then((data: { jobs?: Job[] }) => {
+          if (Array.isArray(data.jobs)) {
+            dispatch({ type: "SET_JOBS", payload: data.jobs });
+            AsyncStorage.setItem("jobs_v2", JSON.stringify(data.jobs)).catch(() => {});
+          }
+        });
 
-    AsyncStorage.getItem("jobs_v2").then((data) => {
-      if (data) {
+    AsyncStorage.getItem("jobs_v2").then((cached) => {
+      if (cached) {
         try {
-          const parsed: Job[] = JSON.parse(data);
+          const parsed: Job[] = JSON.parse(cached);
           const migrated = parsed.map((job) => {
             const vehicleMatch = /^(.+)\s+\((\d{4})\)$/.exec(job.vehicle);
             const vehicle = vehicleMatch ? `${vehicleMatch[2]} ${vehicleMatch[1]}` : job.vehicle;
@@ -734,7 +735,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "SET_JOBS", payload: migrated });
         } catch {}
       }
-      applyServerCorrections();
+      fetchJobsFromApi().catch(() => {});
     });
   }, []);
 
