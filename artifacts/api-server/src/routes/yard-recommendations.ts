@@ -145,6 +145,8 @@ router.get("/yard/inspection-recommendations", async (req, res) => {
           inspectionIntervalDays: intervalDays,
           daysSinceArrival,
           lastInspectedAt: lastInsp?.completedAt?.toISOString() ?? null,
+          lastInspectionType: lastInsp?.type ?? null,
+          lastInspectionTechnician: lastInsp?.assignedTo ?? null,
           nextDueDate: nextDueDate.toISOString(),
           daysRemaining,
           urgency,

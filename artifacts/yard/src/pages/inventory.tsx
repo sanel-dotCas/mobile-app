@@ -7,8 +7,10 @@ import {
   getListYardLocationsQueryKey,
   useCreateYardVehicle,
   useUpdateYardVehicle,
+  useCreateYardInspection,
+  CreateYardInspectionBodyType,
 } from "@workspace/api-client-react";
-import { Search, Plus, ChevronDown, ChevronUp, X, Lock, MapPin, ArrowRightCircle } from "lucide-react";
+import { Search, Plus, ChevronDown, ChevronUp, X, Lock, MapPin, ClipboardCheck, Calendar, Clock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -29,12 +31,40 @@ const STATUS_STYLES: Record<string, string> = {
   sold: "bg-muted text-muted-foreground",
 };
 
+const URGENCY_STYLES: Record<string, string> = {
+  overdue: "text-red-600",
+  "due-soon": "text-amber-600",
+  ok: "text-emerald-600",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  "pre-inspection": "Pre-Inspection",
+  secondary: "Secondary",
+  "final-quality": "Final Quality",
+  "new-arrival": "New Arrival PDI",
+  "used-arrival": "Used Arrival PDI",
+  "periodic-fluid": "Periodic — Fluid Check",
+  "periodic-damage": "Periodic — Damage Scan",
+  "start-and-run": "Start & Run Cycle",
+};
+
 type Vehicle = {
   id: number; vin: string; stockNumber: string; make: string; model: string;
   year: number; color: string | null; mileage: number | null; condition: string | null;
   status: string; locationId: number | null; locationName: string | null;
   spotId: number | null; spotCode: string | null; zoneName: string | null;
   price: number | null; arrivedAt: string | null;
+};
+
+type InspectionHistory = {
+  vehicleId: number;
+  inspectionIntervalDays: number;
+  lastInspectedAt: string | null;
+  lastInspectionType: string | null;
+  lastInspectionTechnician: string | null;
+  nextDueDate: string;
+  daysRemaining: number;
+  urgency: "overdue" | "due-soon" | "ok";
 };
 
 function AddVehicleModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -280,10 +310,174 @@ function AssignToYardModal({
   );
 }
 
+function QuickInspectModal({
+  vehicle,
+  onClose,
+  onSuccess,
+}: {
+  vehicle: Vehicle;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const { data: locations } = useListYardLocations({ query: { queryKey: getListYardLocationsQueryKey() } });
+  const { data: usersData } = useQuery<{ id: number; name: string; role: string }[]>({
+    queryKey: ["yard-users"],
+    queryFn: async () => {
+      const r = await fetch("/api/yard/users", { credentials: "include" });
+      return r.json();
+    },
+  });
+
+  const [form, setForm] = useState({
+    type: "pre-inspection",
+    locationId: vehicle.locationId ? String(vehicle.locationId) : "",
+    assignedTo: "",
+    fuelPercentage: "100",
+    notes: "",
+  });
+
+  const create = useCreateYardInspection({
+    mutation: {
+      onSuccess: () => { toast({ title: "Inspection created" }); onSuccess(); },
+      onError: () => toast({ title: "Failed to create inspection", variant: "destructive" }),
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    create.mutate({
+      data: {
+        vehicleId: vehicle.id,
+        type: form.type as CreateYardInspectionBodyType,
+        locationId: form.locationId ? Number(form.locationId) : undefined,
+        assignedTo: form.assignedTo || undefined,
+        fuelPercentage: form.fuelPercentage ? Number(form.fuelPercentage) : undefined,
+        notes: form.notes || undefined,
+      },
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md bg-card border border-card-border rounded-lg p-6 m-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-base font-semibold text-foreground">Create PDI Inspection</h2>
+          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          {vehicle.year} {vehicle.make} {vehicle.model} · Stock #{vehicle.stockNumber}
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Inspection Type</label>
+            <select
+              value={form.type}
+              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            >
+              <optgroup label="Standard">
+                <option value="pre-inspection">Pre-Inspection</option>
+                <option value="secondary">Secondary</option>
+                <option value="final-quality">Final Quality</option>
+              </optgroup>
+              <optgroup label="Arrival">
+                <option value="new-arrival">New Arrival PDI</option>
+                <option value="used-arrival">Used Arrival PDI</option>
+              </optgroup>
+              <optgroup label="Periodic">
+                <option value="periodic-fluid">Periodic — Fluid Check</option>
+                <option value="periodic-damage">Periodic — Damage Scan</option>
+                <option value="start-and-run">Start & Run Cycle</option>
+              </optgroup>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Assign Technician</label>
+            <select
+              value={form.assignedTo}
+              onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            >
+              <option value="">— Unassigned —</option>
+              {(usersData ?? []).map((u) => (
+                <option key={u.id} value={u.name}>{u.name} ({u.role.replace("_", " ")})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Location</label>
+            <select
+              value={form.locationId}
+              onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            >
+              <option value="">— Auto —</option>
+              {(locations ?? []).map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Fuel %</label>
+            <input
+              type="number" min="0" max="100"
+              value={form.fuelPercentage}
+              onChange={(e) => setForm((f) => ({ ...f, fuelPercentage: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
+            <input
+              type="text"
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              placeholder="Optional notes..."
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2 border border-border rounded text-sm text-foreground hover:border-[hsl(221,83%,53%)] transition-colors">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              data-testid="button-submit-inspection"
+              disabled={create.isPending}
+              className="flex-1 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors disabled:opacity-50"
+            >
+              {create.isPending ? "Creating..." : "Create Inspection"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
+  const [showInspect, setShowInspect] = useState(false);
   const queryClient = useQueryClient();
+
+  const { data: inspHistory, isError: inspError } = useQuery<InspectionHistory>({
+    queryKey: ["vehicle-inspection-history", vehicle.id],
+    queryFn: async () => {
+      const r = await fetch(`/api/yard/vehicles/${vehicle.id}/inspection-history`, {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error("Failed to load inspection history");
+      return r.json();
+    },
+    enabled: expanded,
+    staleTime: 30000,
+    retry: 1,
+  });
+
+  const urgencyClass = inspHistory ? URGENCY_STYLES[inspHistory.urgency] : "";
 
   return (
     <>
@@ -313,6 +507,7 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
       {expanded && (
         <tr className="bg-muted/20 border-b border-border">
           <td colSpan={5} className="px-4 py-3">
+            {/* Vehicle details grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-3">
               <div>
                 <p className="text-muted-foreground mb-0.5">VIN</p>
@@ -353,8 +548,64 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
                 <p className="text-foreground">{vehicle.arrivedAt ? new Date(vehicle.arrivedAt).toLocaleDateString() : "—"}</p>
               </div>
             </div>
+
+            {/* Inspection history section */}
+            {vehicle.status !== "sold" && (
+              <div className="mb-3 pt-2.5 border-t border-border">
+                <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-muted-foreground" />
+                  Inspection History
+                </p>
+                {inspHistory ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> Last Inspected
+                      </p>
+                      <p className="text-foreground font-medium">
+                        {inspHistory.lastInspectedAt
+                          ? new Date(inspHistory.lastInspectedAt).toLocaleDateString()
+                          : "Never"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> Next Due
+                      </p>
+                      <p className={`font-medium ${urgencyClass}`}>
+                        {new Date(inspHistory.nextDueDate).toLocaleDateString()}
+                        {inspHistory.daysRemaining < 0
+                          ? ` (${Math.abs(inspHistory.daysRemaining)}d overdue)`
+                          : inspHistory.daysRemaining <= 7
+                          ? ` (in ${inspHistory.daysRemaining}d)`
+                          : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground mb-0.5">Last Type</p>
+                      <p className="text-foreground">
+                        {inspHistory.lastInspectionType
+                          ? TYPE_LABELS[inspHistory.lastInspectionType] ?? inspHistory.lastInspectionType
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
+                        <User className="w-3 h-3" /> Technician
+                      </p>
+                      <p className="text-foreground">{inspHistory.lastInspectionTechnician ?? "—"}</p>
+                    </div>
+                  </div>
+                ) : inspError ? (
+                  <p className="text-xs text-muted-foreground italic">Unable to load inspection data</p>
+                ) : (
+                  <div className="h-3 w-48 bg-muted animate-pulse rounded" />
+                )}
+              </div>
+            )}
+
             {/* Actions row */}
-            <div className="flex items-center gap-2 pt-2 border-t border-border">
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
               <button
                 data-testid={`button-assign-yard-${vehicle.id}`}
                 onClick={(e) => { e.stopPropagation(); setShowAssign(true); }}
@@ -363,6 +614,16 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
                 <MapPin className="w-3.5 h-3.5" />
                 {vehicle.locationName ? "Reassign Yard/Spot" : "Assign to Yard/Lot"}
               </button>
+              {vehicle.status !== "sold" && (
+                <button
+                  data-testid={`button-inspect-now-${vehicle.id}`}
+                  onClick={(e) => { e.stopPropagation(); setShowInspect(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-emerald-600 text-emerald-600 rounded hover:bg-emerald-600 hover:text-white transition-colors"
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5" />
+                  Inspect Now
+                </button>
+              )}
               {vehicle.locationName && (
                 <span className="text-xs text-muted-foreground">
                   Currently at <span className="text-foreground font-medium">{vehicle.locationName}</span>
@@ -381,6 +642,17 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
             setShowAssign(false);
             setExpanded(false);
             queryClient.invalidateQueries({ queryKey: getListYardVehiclesQueryKey() });
+          }}
+        />
+      )}
+      {showInspect && (
+        <QuickInspectModal
+          vehicle={vehicle}
+          onClose={() => setShowInspect(false)}
+          onSuccess={() => {
+            setShowInspect(false);
+            queryClient.invalidateQueries({ queryKey: getListYardVehiclesQueryKey() });
+            queryClient.invalidateQueries({ queryKey: ["vehicle-inspection-history", vehicle.id] });
           }}
         />
       )}

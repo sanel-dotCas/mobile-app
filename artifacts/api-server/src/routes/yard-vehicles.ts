@@ -166,6 +166,58 @@ router.get("/yard/vehicles/:vehicleId", async (req, res) => {
   });
 });
 
+router.get("/yard/vehicles/:vehicleId/inspection-history", async (req, res) => {
+  const vehicleId = Number(req.params.vehicleId);
+  const [v] = await db.select().from(yardVehiclesTable).where(eq(yardVehiclesTable.id, vehicleId)).limit(1);
+  if (!v) { res.status(404).json({ error: "Vehicle not found" }); return; }
+
+  const inspections = await db
+    .select()
+    .from(yardInspectionsTable)
+    .where(and(
+      eq(yardInspectionsTable.vehicleId, vehicleId),
+      eq(yardInspectionsTable.status, "finished"),
+    ))
+    .orderBy(desc(yardInspectionsTable.completedAt))
+    .limit(5);
+
+  const now = new Date();
+  const intervalDays = v.inspectionIntervalDays ?? 30;
+  const arrivedAt = v.arrivedAt ?? v.createdAt;
+
+  const lastInsp = inspections[0] ?? null;
+  let nextDueDate: Date;
+  if (lastInsp?.completedAt) {
+    nextDueDate = new Date(lastInsp.completedAt.getTime() + intervalDays * 86400000);
+  } else {
+    nextDueDate = new Date(arrivedAt.getTime() + intervalDays * 86400000);
+  }
+  const daysRemaining = Math.floor((nextDueDate.getTime() - now.getTime()) / 86400000);
+  let urgency: "overdue" | "due-soon" | "ok";
+  if (daysRemaining < 0) urgency = "overdue";
+  else if (daysRemaining <= 7) urgency = "due-soon";
+  else urgency = "ok";
+
+  res.json({
+    vehicleId,
+    inspectionIntervalDays: intervalDays,
+    lastInspectedAt: lastInsp?.completedAt?.toISOString() ?? null,
+    lastInspectionType: lastInsp?.type ?? null,
+    lastInspectionTechnician: lastInsp?.assignedTo ?? null,
+    nextDueDate: nextDueDate.toISOString(),
+    daysRemaining,
+    urgency,
+    history: inspections.map((i) => ({
+      id: i.id,
+      inspectionNumber: i.inspectionNumber,
+      type: i.type,
+      completedAt: i.completedAt?.toISOString() ?? null,
+      assignedTo: i.assignedTo ?? null,
+      notes: i.notes ?? null,
+    })),
+  });
+});
+
 router.patch("/yard/vehicles/:vehicleId", async (req, res) => {
   const vehicleId = Number(req.params.vehicleId);
   const { status, locationId, spotId, color, price, actor } = req.body;

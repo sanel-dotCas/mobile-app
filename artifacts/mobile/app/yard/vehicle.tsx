@@ -48,10 +48,23 @@ interface InspectionRec {
   daysRemaining: number;
   nextDueDate: string;
   lastInspectedAt: string | null;
+  lastInspectionType: string | null;
+  lastInspectionTechnician: string | null;
   aiRecommendation: string;
   daysSinceArrival: number;
   inspectionIntervalDays: number;
 }
+
+const INSPECTION_TYPE_LABELS: Record<string, string> = {
+  "pre-inspection": "Pre-Inspection",
+  secondary: "Secondary",
+  "final-quality": "Final Quality",
+  "new-arrival": "New Arrival PDI",
+  "used-arrival": "Used Arrival PDI",
+  "periodic-fluid": "Periodic — Fluid Check",
+  "periodic-damage": "Periodic — Damage Scan",
+  "start-and-run": "Start & Run Cycle",
+};
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   available: "Available",
@@ -194,14 +207,28 @@ export default function VehicleDetailScreen() {
               <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
                 Cycle: every {rec.inspectionIntervalDays} days
               </Text>
-              {rec.lastInspectedAt && (
+              {rec.lastInspectedAt ? (
                 <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
                   Last: {new Date(rec.lastInspectedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </Text>
+              ) : (
+                <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
+                  Last: Never
                 </Text>
               )}
               <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
                 Due: {new Date(rec.nextDueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
               </Text>
+              {rec.lastInspectionType && (
+                <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
+                  Type: {INSPECTION_TYPE_LABELS[rec.lastInspectionType] ?? rec.lastInspectionType}
+                </Text>
+              )}
+              {rec.lastInspectionTechnician && (
+                <Text style={[styles.recMetaText, { color: URGENCY_COLOR[rec.urgency] + "bb" }]}>
+                  Tech: {rec.lastInspectionTechnician}
+                </Text>
+              )}
             </View>
           </View>
         )}
