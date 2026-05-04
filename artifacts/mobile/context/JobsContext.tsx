@@ -146,6 +146,8 @@ type Action =
   | { type: "SET_JOBS"; payload: Job[] }
   | { type: "MERGE_JOBS"; payload: Job[] }
   | { type: "MARK_JOBS_LOADED" }
+  | { type: "SET_TECHNICIANS"; payload: Technician[] }
+  | { type: "SET_STATS"; payload: DashboardStats }
   | { type: "ADD_JOB"; payload: Job }
   | { type: "REMOVE_JOB"; payload: { jobId: string } }
   | { type: "CLOCK_IN"; payload: { jobId: string; taskId: string } }
@@ -263,6 +265,8 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "SET_JOBS": return { ...state, jobs: action.payload, jobsLoaded: true };
     case "MERGE_JOBS": return { ...state, jobs: mergeJobsWithLocal(action.payload, state.jobs), jobsLoaded: true };
     case "MARK_JOBS_LOADED": return { ...state, jobsLoaded: true };
+    case "SET_TECHNICIANS": return { ...state, technicians: action.payload };
+    case "SET_STATS": return { ...state, stats: action.payload };
     case "ADD_JOB": return { ...state, jobs: [...state.jobs, action.payload] };
     case "REMOVE_JOB": return { ...state, jobs: state.jobs.filter((j) => j.id !== action.payload.jobId) };
 
@@ -682,6 +686,35 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const fetchLiveKpis = useCallback(async () => {
+    try {
+      const userCode = (await AsyncStorage.getItem("igmma_code")) ?? "MR";
+      const [techRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/technicians`),
+        fetch(`${API_BASE}/technicians/me/stats?userCode=${encodeURIComponent(userCode)}`),
+      ]);
+      if (techRes.ok) {
+        const data: { technicians?: Technician[] } = await techRes.json();
+        if (Array.isArray(data.technicians) && data.technicians.length > 0) {
+          dispatch({ type: "SET_TECHNICIANS", payload: data.technicians });
+        }
+      }
+      if (statsRes.ok) {
+        const stats: { totalTimeTracked?: string; productivity?: number; workingPattern?: Record<string, "worked" | "partial" | "off"> } = await statsRes.json();
+        if (stats.totalTimeTracked !== undefined) {
+          dispatch({
+            type: "SET_STATS",
+            payload: {
+              totalTimeTracked: stats.totalTimeTracked,
+              productivity: stats.productivity ?? 0,
+              workingPattern: stats.workingPattern ?? {},
+            },
+          });
+        }
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     AsyncStorage.getItem("jobs_v2").then((cached) => {
       if (cached) {
@@ -703,7 +736,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: "SET_JOBS", payload: migrated });
         } catch {}
       }
-      fetchAndMergeJobs(true).finally(() => { initialLoadDone.current = true; });
+      Promise.all([fetchAndMergeJobs(true), fetchLiveKpis()]).finally(() => {
+        initialLoadDone.current = true;
+      });
     });
 
     AsyncStorage.getItem("odometer_queue_v1").then((raw) => {
@@ -739,20 +774,24 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      if (initialLoadDone.current) fetchAndMergeJobs(false);
+      if (initialLoadDone.current) {
+        fetchAndMergeJobs(false);
+        fetchLiveKpis();
+      }
     }, 60000);
     return () => clearInterval(id);
-  }, [fetchAndMergeJobs]);
+  }, [fetchAndMergeJobs, fetchLiveKpis]);
 
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active" && initialLoadDone.current) {
         fetchAndMergeJobs(false);
+        fetchLiveKpis();
       }
     };
     const sub = AppState.addEventListener("change", handleAppStateChange);
     return () => sub.remove();
-  }, [fetchAndMergeJobs]);
+  }, [fetchAndMergeJobs, fetchLiveKpis]);
 
   const refreshJobs = useCallback(async () => {
     setIsRefreshing(true);

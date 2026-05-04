@@ -39,7 +39,7 @@ export default function DashboardScreen() {
   const { logout, userCode } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const today = new Date("2026-04-30");
+  const today = new Date();
   const [calYear] = useState(today.getFullYear());
   const [calMonth] = useState(today.getMonth());
   const calDays = getCalendarDays(calYear, calMonth);

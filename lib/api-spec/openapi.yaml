@@ -24,6 +24,8 @@ tags:
     description: PDI & inspections
   - name: yard-dashboard
     description: Dashboard statistics
+  - name: technicians
+    description: Technician data and KPI stats
 paths:
   # ── Estimates ─────────────────────────────────────────────────────────────
   /estimates/account-types:
@@ -86,6 +88,44 @@ paths:
           description: Invalid request
         "500":
           description: DMS submission failed
+
+  # ── Technicians ───────────────────────────────────────────────────────────
+  /technicians:
+    get:
+      operationId: listTechnicians
+      tags: [technicians]
+      summary: List all technicians with live status derived from jobs
+      responses:
+        "200":
+          description: Technician list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TechnicianListResponse"
+        "500":
+          description: Server error
+
+  /technicians/me/stats:
+    get:
+      operationId: getTechnicianStats
+      tags: [technicians]
+      summary: Get KPI stats for the authenticated technician
+      parameters:
+        - name: userCode
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Two-letter technician initials (e.g. MR, JW). Defaults to MR.
+      responses:
+        "200":
+          description: Technician KPI stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TechnicianStats"
+        "500":
+          description: Server error
 
   /healthz:
     get:
@@ -445,6 +485,66 @@ components:
         status:
           type: string
       required: [status]
+
+    # ── Technicians ──────────────────────────────────────────────────────────
+    TechnicianRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        avatar:
+          type: string
+        currentJobId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, idle, break, absent]
+        totalHoursToday:
+          type: number
+        efficiency:
+          type: integer
+        weekHoursBooked:
+          type: number
+        monthHoursBooked:
+          type: number
+        specializations:
+          type: array
+          items:
+            type: string
+        completedJobs:
+          type: integer
+      required: [id, name, role, avatar, status, totalHoursToday, efficiency, weekHoursBooked, monthHoursBooked, specializations, completedJobs]
+
+    TechnicianListResponse:
+      type: object
+      properties:
+        technicians:
+          type: array
+          items:
+            $ref: "#/components/schemas/TechnicianRecord"
+      required: [technicians]
+
+    TechnicianStats:
+      type: object
+      properties:
+        totalTimeTracked:
+          type: string
+          description: Formatted string e.g. "12h 30m"
+        productivity:
+          type: integer
+          description: Percentage 0-100
+        workingPattern:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [worked, partial, off]
+          description: Map of ISO date string to work status
+      required: [totalTimeTracked, productivity, workingPattern]
 
     # ── Auth ────────────────────────────────────────────────────────────────
     YardLoginBody:

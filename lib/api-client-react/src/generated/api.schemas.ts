@@ -9,6 +9,51 @@ export interface HealthStatus {
   status: string;
 }
 
+export type TechnicianRecordStatus =
+  (typeof TechnicianRecordStatus)[keyof typeof TechnicianRecordStatus];
+
+export const TechnicianRecordStatus = {
+  active: "active",
+  idle: "idle",
+  break: "break",
+  absent: "absent",
+} as const;
+
+export interface TechnicianRecord {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  currentJobId?: string | null;
+  status: TechnicianRecordStatus;
+  totalHoursToday: number;
+  efficiency: number;
+  weekHoursBooked: number;
+  monthHoursBooked: number;
+  specializations: string[];
+  completedJobs: number;
+}
+
+export interface TechnicianListResponse {
+  technicians: TechnicianRecord[];
+}
+
+/**
+ * Map of ISO date string to work status
+ */
+export type TechnicianStatsWorkingPattern = {
+  [key: string]: "worked" | "partial" | "off";
+};
+
+export interface TechnicianStats {
+  /** Formatted string e.g. "12h 30m" */
+  totalTimeTracked: string;
+  /** Percentage 0-100 */
+  productivity: number;
+  /** Map of ISO date string to work status */
+  workingPattern: TechnicianStatsWorkingPattern;
+}
+
 export interface YardLoginBody {
   username: string;
   password: string;
@@ -416,6 +461,13 @@ export interface SubmitEstimateResponse {
   dmsRoNumber?: string | null;
   message: string;
 }
+
+export type GetTechnicianStatsParams = {
+  /**
+   * Two-letter technician initials (e.g. MR, JW). Defaults to MR.
+   */
+  userCode?: string;
+};
 
 export type GetLocationMovementFeedParams = {
   limit?: number;

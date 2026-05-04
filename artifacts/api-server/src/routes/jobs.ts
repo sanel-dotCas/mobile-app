@@ -243,7 +243,7 @@ const SEED_JOBS = [
   },
 ];
 
-async function seedJobsIfEmpty() {
+export async function seedJobsIfEmpty() {
   const existing = await db.select({ id: jobsTable.id }).from(jobsTable).limit(1);
   if (existing.length > 0) return;
 

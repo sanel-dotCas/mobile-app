@@ -127,6 +127,46 @@ export const SubmitEstimateToDmsResponse = zod.object({
 });
 
 /**
+ * @summary List all technicians with live status derived from jobs
+ */
+export const ListTechniciansResponse = zod.object({
+  technicians: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      role: zod.string(),
+      avatar: zod.string(),
+      currentJobId: zod.string().nullish(),
+      status: zod.enum(["active", "idle", "break", "absent"]),
+      totalHoursToday: zod.number(),
+      efficiency: zod.number(),
+      weekHoursBooked: zod.number(),
+      monthHoursBooked: zod.number(),
+      specializations: zod.array(zod.string()),
+      completedJobs: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get KPI stats for the authenticated technician
+ */
+export const GetTechnicianStatsQueryParams = zod.object({
+  userCode: zod.coerce
+    .string()
+    .optional()
+    .describe("Two-letter technician initials (e.g. MR, JW). Defaults to MR."),
+});
+
+export const GetTechnicianStatsResponse = zod.object({
+  totalTimeTracked: zod.string().describe('Formatted string e.g. \"12h 30m\"'),
+  productivity: zod.number().describe("Percentage 0-100"),
+  workingPattern: zod
+    .record(zod.string(), zod.enum(["worked", "partial", "off"]))
+    .describe("Map of ISO date string to work status"),
+});
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

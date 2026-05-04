@@ -24,12 +24,15 @@ import type {
   CreateYardVehicleBody,
   DmsAccountType,
   GetLocationMovementFeedParams,
+  GetTechnicianStatsParams,
   HealthStatus,
   ListYardInspectionsParams,
   ListYardVehiclesParams,
   MovementEntry,
   SubmitEstimateRequest,
   SubmitEstimateResponse,
+  TechnicianListResponse,
+  TechnicianStats,
   UpdateYardInspectionBody,
   UpdateYardSpotBody,
   UpdateYardVehicleBody,
@@ -301,6 +304,178 @@ export const useSubmitEstimateToDms = <
 > => {
   return useMutation(getSubmitEstimateToDmsMutationOptions(options));
 };
+
+/**
+ * @summary List all technicians with live status derived from jobs
+ */
+export const getListTechniciansUrl = () => {
+  return `/api/technicians`;
+};
+
+export const listTechnicians = async (
+  options?: RequestInit,
+): Promise<TechnicianListResponse> => {
+  return customFetch<TechnicianListResponse>(getListTechniciansUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTechniciansQueryKey = () => {
+  return [`/api/technicians`] as const;
+};
+
+export const getListTechniciansQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTechnicians>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listTechnicians>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTechniciansQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTechnicians>>> = ({
+    signal,
+  }) => listTechnicians({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTechnicians>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTechniciansQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTechnicians>>
+>;
+export type ListTechniciansQueryError = ErrorType<void>;
+
+/**
+ * @summary List all technicians with live status derived from jobs
+ */
+
+export function useListTechnicians<
+  TData = Awaited<ReturnType<typeof listTechnicians>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listTechnicians>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTechniciansQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get KPI stats for the authenticated technician
+ */
+export const getGetTechnicianStatsUrl = (params?: GetTechnicianStatsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/technicians/me/stats?${stringifiedParams}`
+    : `/api/technicians/me/stats`;
+};
+
+export const getTechnicianStats = async (
+  params?: GetTechnicianStatsParams,
+  options?: RequestInit,
+): Promise<TechnicianStats> => {
+  return customFetch<TechnicianStats>(getGetTechnicianStatsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTechnicianStatsQueryKey = (
+  params?: GetTechnicianStatsParams,
+) => {
+  return [`/api/technicians/me/stats`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTechnicianStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTechnicianStats>>,
+  TError = ErrorType<void>,
+>(
+  params?: GetTechnicianStatsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTechnicianStats>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTechnicianStatsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTechnicianStats>>
+  > = ({ signal }) => getTechnicianStats(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTechnicianStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTechnicianStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTechnicianStats>>
+>;
+export type GetTechnicianStatsQueryError = ErrorType<void>;
+
+/**
+ * @summary Get KPI stats for the authenticated technician
+ */
+
+export function useGetTechnicianStats<
+  TData = Awaited<ReturnType<typeof getTechnicianStats>>,
+  TError = ErrorType<void>,
+>(
+  params?: GetTechnicianStatsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTechnicianStats>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTechnicianStatsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Health check
