@@ -20,7 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
-import { CarPartsDiagram, useVinDecoder } from "@/components/CarPartsDiagram";
+import { useVinDecoder } from "@/components/CarPartsDiagram";
 import type { EstimateLine, EstimateStatus, LaborCategory } from "@/context/EstimatesContext";
 import { useEstimates } from "@/context/EstimatesContext";
 import { useLang } from "@/context/LanguageContext";
@@ -356,29 +356,21 @@ function LineRow({
   );
 }
 
-type AddMode = "manual" | "package" | "diagram";
+type AddMode = "manual" | "package";
 
 function AddLineSheet({
   visible,
   onClose,
   onAddManual,
   onAddPackage,
-  onAddDiagram,
   vehicle,
-  make,
-  model,
-  year,
   currency,
 }: {
   visible: boolean;
   onClose: () => void;
   onAddManual: (line: Omit<EstimateLine, "id">) => void;
   onAddPackage: (pkg: PackageDef) => void;
-  onAddDiagram: (line: Omit<EstimateLine, "id">) => void;
   vehicle: string;
-  make: string;
-  model: string;
-  year: string;
   currency: string;
 }) {
   const colors = useColors();
@@ -452,12 +444,11 @@ function AddLineSheet({
               {([
                 { id: "manual",  icon: "edit-3", label: "Manual" },
                 { id: "package", icon: "layers",  label: "Package" },
-                { id: "diagram", icon: "grid",    label: "Car Parts" },
               ] as { id: AddMode; icon: string; label: string }[]).map(({ id: m, icon, label }) => (
                 <Pressable
                   key={m}
                   onPress={() => setMode(m)}
-                  style={[styles.modeTab, mode === m && [styles.modeTabActive, { backgroundColor: m === "diagram" ? "#7c3aed" : colors.primary }]]}
+                  style={[styles.modeTab, mode === m && [styles.modeTabActive, { backgroundColor: colors.primary }]]}
                 >
                   <Feather name={icon as any} size={13} color={mode === m ? "#fff" : colors.mutedForeground} />
                   <Text style={[styles.modeTabText, { color: mode === m ? "#fff" : colors.mutedForeground }]}>
@@ -467,19 +458,6 @@ function AddLineSheet({
               ))}
             </View>
 
-            {mode === "diagram" && (
-              <View style={{ height: 530 }}>
-                <CarPartsDiagram
-                  vehicle={vehicle}
-                  make={make}
-                  model={model}
-                  year={year}
-                  currency={currency}
-                  onAddPart={(line) => { onAddDiagram(line); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}
-                />
-              </View>
-            )}
-            {mode !== "diagram" && (
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
               {mode === "manual" ? (
                 <View style={styles.manualForm}>
@@ -643,7 +621,6 @@ function AddLineSheet({
                 </View>
               )}
             </ScrollView>
-            )}
           </Pressable>
 
         </KeyboardAvoidingView>
@@ -847,11 +824,6 @@ export default function EstimateDetailScreen() {
   const handleAddManual = useCallback((line: Omit<EstimateLine, "id">) => {
     addLine(estimate.id, line);
     setShowAddModal(false);
-  }, [estimate.id, addLine]);
-
-  const handleAddDiagram = useCallback((line: Omit<EstimateLine, "id">) => {
-    addLine(estimate.id, line);
-    // intentionally keep modal open so user can add multiple parts
   }, [estimate.id, addLine]);
 
   const handleAddPackage = useCallback((pkg: PackageDef) => {
@@ -1184,11 +1156,7 @@ export default function EstimateDetailScreen() {
         onClose={() => setShowAddModal(false)}
         onAddManual={handleAddManual}
         onAddPackage={handleAddPackage}
-        onAddDiagram={handleAddDiagram}
         vehicle={estimate.vehicle}
-        make={estimate.make}
-        model={estimate.model}
-        year={estimate.year}
         currency={currency}
       />
     </View>
