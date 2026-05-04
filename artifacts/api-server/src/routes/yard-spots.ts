@@ -8,6 +8,7 @@ import {
   yardMovementsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
 
@@ -87,7 +88,7 @@ router.patch("/yard/spots/:spotId", async (req, res) => {
           .from(yardVehiclesTable)
           .where(eq(yardVehiclesTable.id, vehicleId))
           .limit(1);
-        vehicleName = v ? `${v.year} ${v.make} ${v.model}` : null;
+        vehicleName = v ? formatVehicleName(v) : null;
         action = vehicleName
           ? `${vehicleName} added to ${zone[0]?.name} - ${existing.code}`
           : `Vehicle added to Spot ${existing.code}`;

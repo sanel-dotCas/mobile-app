@@ -9,6 +9,7 @@ import {
   yardMovementsTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, SQL, desc } from "drizzle-orm";
+import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
 
@@ -104,11 +105,12 @@ router.post("/yard/vehicles", async (req, res) => {
   if (vehicle.locationId) {
     const [loc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, vehicle.locationId)).limit(1);
     if (loc) {
+      const arrivedVehicleName = formatVehicleName(vehicle);
       await db.insert(yardMovementsTable).values({
         locationId: loc.id,
         vehicleId: vehicle.id,
-        vehicleName: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-        action: `New vehicle arrived: ${vehicle.year} ${vehicle.make} ${vehicle.model} (Stock #${vehicle.stockNumber})`,
+        vehicleName: arrivedVehicleName,
+        action: `New vehicle arrived: ${arrivedVehicleName} (Stock #${vehicle.stockNumber})`,
         actor: "DMS",
       });
     }
@@ -189,7 +191,7 @@ router.patch("/yard/vehicles/:vehicleId", async (req, res) => {
     locationName = loc?.name ?? null;
   }
 
-  const vehicleName = `${updated.year} ${updated.make} ${updated.model}`;
+  const vehicleName = formatVehicleName(updated);
   const actorName = actor ?? "DMS";
 
   // Record movement on status change

@@ -7,6 +7,7 @@ import {
   yardMovementsTable,
 } from "@workspace/db";
 import { eq, desc, and, SQL } from "drizzle-orm";
+import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
 
@@ -33,7 +34,7 @@ async function resolveTransfer(transfer: typeof yardTransfersTable.$inferSelect)
     id: transfer.id,
     transferNumber: transfer.transferNumber,
     vehicleId: transfer.vehicleId,
-    vehicleName: vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : "Unknown",
+    vehicleName: formatVehicleName(vehicle),
     vehicleVin: vehicle?.vin ?? null,
     vehicleStockNumber: vehicle?.stockNumber ?? null,
     fromLocationId: transfer.fromLocationId,

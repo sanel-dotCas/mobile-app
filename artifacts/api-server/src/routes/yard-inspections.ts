@@ -6,6 +6,7 @@ import {
   yardLocationsTable,
 } from "@workspace/db";
 import { eq, and, SQL, desc } from "drizzle-orm";
+import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
 
@@ -21,9 +22,7 @@ function formatInspection(
     stockVin: vehicle
       ? `Stock inventory # ${vehicle.stockNumber} · VIN: ${vehicle.vin}`
       : "",
-    vehicleName: vehicle
-      ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ")
-      : "Unknown",
+    vehicleName: formatVehicleName(vehicle),
     vehicleYear: vehicle?.year ?? null,
     stockNumber: vehicle?.stockNumber ?? null,
     type: insp.type,

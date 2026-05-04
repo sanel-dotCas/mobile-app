@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { yardVehiclesTable, yardInspectionsTable, yardLocationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
+import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
 
@@ -137,7 +138,7 @@ router.get("/yard/inspection-recommendations", async (req, res) => {
         return {
           vehicleId: v.id,
           stockNumber: v.stockNumber,
-          vehicleName: `${v.year} ${v.make} ${v.model}`,
+          vehicleName: formatVehicleName(v),
           vin: v.vin,
           status: v.status,
           locationName,
