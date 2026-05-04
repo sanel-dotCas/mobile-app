@@ -158,16 +158,25 @@ const PACKAGES: PackageDef[] = [
   },
 ];
 
+const DEFAULT_ACCOUNT_TYPES = [
+  { id: 1, name: "Customer Pay", code: "CP" },
+  { id: 2, name: "Warranty",     code: "WR" },
+  { id: 3, name: "Internal",     code: "IN" },
+  { id: 4, name: "Sublet",       code: "SL" },
+];
+
 function LineRow({
   line,
   estimateId,
   onRemove,
   currency,
+  accountTypes,
 }: {
   line: EstimateLine;
   estimateId: string;
   onRemove: () => void;
   currency: string;
+  accountTypes: { id: number; name: string; code: string }[];
 }) {
   const colors = useColors();
   const { updateLine } = useEstimates();
@@ -187,6 +196,11 @@ function LineRow({
   const [qtyInput, setQtyInput] = useState("");
   const [qtyError, setQtyError] = useState(false);
   const cancellingQtyRef = useRef(false);
+
+  const [editingOperation, setEditingOperation] = useState(false);
+  const [editingAccountType, setEditingAccountType] = useState(false);
+
+  const resolvedAccountTypes = accountTypes.length > 0 ? accountTypes : DEFAULT_ACCOUNT_TYPES;
 
   function startEditHours() {
     cancellingRef.current = false;
@@ -269,20 +283,95 @@ function LineRow({
       <Text style={[styles.lineDesc, { color: colors.foreground }]} numberOfLines={2}>
         {line.description}
       </Text>
-      {(line.operation || line.accountType) && (
-        <View style={styles.lineBadgeRow}>
-          {line.operation && (
-            <View style={[styles.lineBadge, { backgroundColor: "#ecfeff" }]}>
-              <Text style={[styles.lineBadgeText, { color: "#0891b2" }]}>{line.operation}</Text>
+      <View style={styles.lineBadgeRow}>
+        {/* Operation inline edit */}
+        {editingOperation ? (
+          <View style={styles.inlinePickerWrap}>
+            <Text style={[styles.inlinePickerLabel, { color: colors.mutedForeground }]}>Operation</Text>
+            <View style={styles.inlinePickerChips}>
+              {OPERATION_OPTIONS.map((op) => {
+                const active = op === line.operation;
+                return (
+                  <Pressable
+                    key={op}
+                    onPress={() => {
+                      updateLine(estimateId, line.id, { operation: op });
+                      setEditingOperation(false);
+                      Haptics.selectionAsync();
+                    }}
+                    style={[styles.inlineChip, { borderColor: active ? "#0891b2" : colors.border, backgroundColor: active ? "#ecfeff" : colors.secondary }]}
+                  >
+                    <Text style={[styles.inlineChipText, { color: active ? "#0891b2" : colors.mutedForeground }]}>{op}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable onPress={() => setEditingOperation(false)} hitSlop={8}>
+                <Feather name="x-circle" size={13} color={colors.mutedForeground} />
+              </Pressable>
             </View>
-          )}
-          {line.accountType && (
-            <View style={[styles.lineBadge, { backgroundColor: "#f0fdf4" }]}>
-              <Text style={[styles.lineBadgeText, { color: "#16a34a" }]}>{line.accountType}</Text>
+          </View>
+        ) : line.operation ? (
+          <Pressable
+            onPress={() => { setEditingAccountType(false); setEditingOperation(true); }}
+            style={[styles.lineBadge, { backgroundColor: "#ecfeff", flexDirection: "row", alignItems: "center" }]}
+          >
+            <Text style={[styles.lineBadgeText, { color: "#0891b2" }]}>{line.operation}</Text>
+            <Feather name="edit-2" size={9} color="#0891b2" style={{ marginLeft: 3 }} />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => { setEditingAccountType(false); setEditingOperation(true); }}
+            style={[styles.lineBadge, styles.lineBadgeDashed, { borderColor: "#0891b2" }]}
+          >
+            <Feather name="plus" size={9} color="#0891b2" />
+            <Text style={[styles.lineBadgeText, { color: "#0891b2", marginLeft: 2 }]}>Op</Text>
+          </Pressable>
+        )}
+
+        {/* Account Type inline edit */}
+        {editingAccountType ? (
+          <View style={styles.inlinePickerWrap}>
+            <Text style={[styles.inlinePickerLabel, { color: colors.mutedForeground }]}>Account Type</Text>
+            <View style={styles.inlinePickerChips}>
+              {resolvedAccountTypes.map((at) => {
+                const active = at.name === line.accountType;
+                return (
+                  <Pressable
+                    key={at.id}
+                    onPress={() => {
+                      updateLine(estimateId, line.id, { accountType: at.name });
+                      setEditingAccountType(false);
+                      Haptics.selectionAsync();
+                    }}
+                    style={[styles.inlineChip, { borderColor: active ? "#16a34a" : colors.border, backgroundColor: active ? "#f0fdf4" : colors.secondary }]}
+                  >
+                    <Text style={[styles.inlineChipText, { color: active ? "#16a34a" : colors.mutedForeground }]}>{at.name}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable onPress={() => setEditingAccountType(false)} hitSlop={8}>
+                <Feather name="x-circle" size={13} color={colors.mutedForeground} />
+              </Pressable>
             </View>
-          )}
-        </View>
-      )}
+          </View>
+        ) : line.accountType ? (
+          <Pressable
+            onPress={() => { setEditingOperation(false); setEditingAccountType(true); }}
+            style={[styles.lineBadge, { backgroundColor: "#f0fdf4", flexDirection: "row", alignItems: "center" }]}
+          >
+            <Text style={[styles.lineBadgeText, { color: "#16a34a" }]}>{line.accountType}</Text>
+            <Feather name="edit-2" size={9} color="#16a34a" style={{ marginLeft: 3 }} />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => { setEditingOperation(false); setEditingAccountType(true); }}
+            style={[styles.lineBadge, styles.lineBadgeDashed, { borderColor: "#16a34a" }]}
+          >
+            <Feather name="plus" size={9} color="#16a34a" />
+            <Text style={[styles.lineBadgeText, { color: "#16a34a", marginLeft: 2 }]}>Type</Text>
+          </Pressable>
+        )}
+      </View>
       <View style={styles.lineBottom}>
         {isLabor && line.hours !== undefined && (
           <View style={styles.hoursEditRow}>
@@ -732,6 +821,17 @@ export default function EstimateDetailScreen() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
+  const [screenAccountTypes, setScreenAccountTypes] = useState<{ id: number; name: string; code: string }[]>([]);
+  React.useEffect(() => {
+    const apiBase = BASE_URL || "http://localhost:80";
+    fetch(`${apiBase}/api/estimates/account-types`)
+      .then((r) => r.json())
+      .then((data: { id: number; name: string; code: string }[]) => {
+        if (Array.isArray(data) && data.length > 0) setScreenAccountTypes(data);
+      })
+      .catch(() => {});
+  }, []);
+
   const { decode: decodeVin, loading: vinLoading, error: vinError, vinInfo, clear: clearVin } = useVinDecoder();
   const [vinInput, setVinInput] = useState("");
   const [showVinInput, setShowVinInput] = useState(false);
@@ -1156,7 +1256,7 @@ export default function EstimateDetailScreen() {
                     <Text style={[styles.catGroupTotal, { color: catCfg.color }]}>{currency}{catTotal.toFixed(2)}</Text>
                   </View>
                   {catLines.map((l) => (
-                    <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
+                    <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} accountTypes={screenAccountTypes} />
                   ))}
                 </View>
               );
@@ -1175,7 +1275,7 @@ export default function EstimateDetailScreen() {
               <Text style={[styles.linesSectionTotal, { color: "#7c3aed" }]}>{currency}{partsTotal.toFixed(2)}</Text>
             </View>
             {partLines.map((l) => (
-              <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
+              <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} accountTypes={screenAccountTypes} />
             ))}
           </View>
         )}
@@ -1191,7 +1291,7 @@ export default function EstimateDetailScreen() {
               <Text style={[styles.linesSectionTotal, { color: "#d97706" }]}>{currency}{materialsTotal.toFixed(2)}</Text>
             </View>
             {materialLines.map((l) => (
-              <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} />
+              <LineRow key={l.id} line={l} estimateId={estimate.id} currency={currency} onRemove={() => removeLine(estimate.id, l.id)} accountTypes={screenAccountTypes} />
             ))}
           </View>
         )}
@@ -1322,9 +1422,15 @@ const styles = StyleSheet.create({
   aiTagText:      { fontSize: 9, fontFamily: "Inter_700Bold", color: "#2563eb" },
   lineRemoveBtn:  { marginLeft: "auto" },
   lineDesc:       { fontSize: 13, fontFamily: "Inter_500Medium", lineHeight: 17 },
-  lineBadgeRow:   { flexDirection: "row", gap: 5, flexWrap: "wrap" },
-  lineBadge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-  lineBadgeText:  { fontSize: 9, fontFamily: "Inter_600SemiBold" },
+  lineBadgeRow:     { flexDirection: "row", gap: 5, flexWrap: "wrap" },
+  lineBadge:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  lineBadgeDashed:  { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1, borderStyle: "dashed", flexDirection: "row", alignItems: "center" },
+  lineBadgeText:    { fontSize: 9, fontFamily: "Inter_600SemiBold" },
+  inlinePickerWrap: { width: "100%", gap: 4, marginTop: 2 },
+  inlinePickerLabel:{ fontSize: 9, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.4 },
+  inlinePickerChips:{ flexDirection: "row", flexWrap: "wrap", gap: 5, alignItems: "center" },
+  inlineChip:       { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1.5 },
+  inlineChipText:   { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   lineBottom:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   lineMeta:       { fontSize: 11, fontFamily: "Inter_400Regular" },
   lineTotal:      { fontSize: 13, fontFamily: "Inter_700Bold" },
