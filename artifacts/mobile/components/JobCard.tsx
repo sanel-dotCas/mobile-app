@@ -16,6 +16,16 @@ import { useStages } from "@/context/StagesContext";
 import { StatusPill } from "./StatusPill";
 import { ProgressBar } from "./ProgressBar";
 
+function formatElapsed(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  if (h > 0) return `${h}:${mm}:${ss}`;
+  return `${mm}:${ss}`;
+}
+
 interface JobCardProps {
   job: Job;
 }
@@ -30,7 +40,8 @@ export function JobCard({ job }: JobCardProps) {
   const router = useRouter();
   const { getStage } = useStages();
 
-  const isActive = job.tasks.some((t) => t.clockedIn);
+  const activeTask = job.tasks.find((t) => t.clockedIn) ?? null;
+  const isActive = activeTask !== null;
   const currentStage = getStage(job.currentStageId);
 
   const isDelayed = useMemo(() => {
@@ -57,10 +68,12 @@ export function JobCard({ job }: JobCardProps) {
         },
       ]}
     >
-      {isActive && (
+      {isActive && activeTask && (
         <View style={[styles.activeBanner, { backgroundColor: colors.primary }]}>
           <Feather name="clock" size={11} color="#fff" />
           <Text style={styles.activeBannerText}>Active Timer</Text>
+          <View style={styles.activeBannerSpacer} />
+          <Text style={styles.activeBannerTimer}>{formatElapsed(activeTask.elapsedSeconds)}</Text>
         </View>
       )}
 
@@ -171,6 +184,15 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
+  },
+  activeBannerSpacer: {
+    flex: 1,
+  },
+  activeBannerTimer: {
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
   },
   top: {
     flexDirection: "row",
