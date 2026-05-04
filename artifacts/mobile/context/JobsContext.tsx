@@ -53,6 +53,7 @@ export interface Task {
   laborType: LaborType; status: TaskStatus; estimatedHours: number;
   workedHours: number; description: string; technician: string;
   notes: TaskNote[]; clockedIn: boolean; clockInStart: string | null;
+  clockInBaseElapsed?: number;
   elapsedSeconds: number; parts: Part[];
 }
 
@@ -184,7 +185,8 @@ type Action =
   | { type: "SET_NOTE_QUEUE"; payload: PendingNoteUpdate[] }
   | { type: "QUEUE_INSPECTION"; payload: PendingInspectionUpdate }
   | { type: "DEQUEUE_INSPECTION"; payload: { jobId: string; itemId: string } }
-  | { type: "SET_INSPECTION_QUEUE"; payload: PendingInspectionUpdate[] };
+  | { type: "SET_INSPECTION_QUEUE"; payload: PendingInspectionUpdate[] }
+  | { type: "RESTORE_CLOCK_IN"; payload: { jobId: string; taskId: string; startTime: string; baseElapsed: number } };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128, specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"], completedJobs: 312 },
@@ -266,12 +268,34 @@ function reducer(state: JobsState, action: Action): JobsState {
 
     case "CLOCK_IN": {
       const { jobId, taskId } = action.payload;
+      const now = new Date().toISOString();
       return {
         ...state,
-        activeClockIn: { jobId, taskId, startTime: new Date().toISOString() },
+        activeClockIn: { jobId, taskId, startTime: now },
         jobs: mapJobs(state.jobs, jobId, (job) => ({
           ...job, status: "in_progress" as JobStatus,
-          tasks: mapTasks(job.tasks, taskId, (t) => ({ ...t, clockedIn: true, clockInStart: new Date().toISOString(), status: "in_progress" as TaskStatus })),
+          tasks: mapTasks(job.tasks, taskId, (t) => ({
+            ...t, clockedIn: true, clockInStart: now,
+            clockInBaseElapsed: t.elapsedSeconds,
+            status: "in_progress" as TaskStatus,
+          })),
+        })),
+      };
+    }
+
+    case "RESTORE_CLOCK_IN": {
+      const { jobId, taskId, startTime, baseElapsed } = action.payload;
+      const secondsSinceClockIn = Math.max(0, Math.floor((Date.now() - new Date(startTime).getTime()) / 1000));
+      const restoredElapsed = baseElapsed + secondsSinceClockIn;
+      return {
+        ...state,
+        activeClockIn: { jobId, taskId, startTime },
+        jobs: mapJobs(state.jobs, jobId, (job) => ({
+          ...job,
+          tasks: mapTasks(job.tasks, taskId, (t) => ({
+            ...t,
+            elapsedSeconds: restoredElapsed,
+          })),
         })),
       };
     }
@@ -638,6 +662,20 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         jobsLoadedRef.current = true;
         dispatch({ type: isInitial ? "SET_JOBS" : "MERGE_JOBS", payload: data.jobs });
         AsyncStorage.setItem("jobs_v2", JSON.stringify(data.jobs)).catch(() => {});
+        if (isInitial) {
+          for (const job of data.jobs) {
+            for (const task of job.tasks as Task[]) {
+              if (task.clockedIn && task.clockInStart) {
+                const baseElapsed = task.clockInBaseElapsed ?? task.elapsedSeconds;
+                dispatch({
+                  type: "RESTORE_CLOCK_IN",
+                  payload: { jobId: job.id, taskId: task.id, startTime: task.clockInStart, baseElapsed },
+                });
+                return;
+              }
+            }
+          }
+        }
       } else if (Array.isArray(data.jobs)) {
         dispatch({ type: "MARK_JOBS_LOADED" });
       }
@@ -837,7 +875,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     if (!job) return;
     const clockInStart = new Date().toISOString();
     const updatedTasks = mapTasks(job.tasks, taskId, (t) => ({
-      ...t, clockedIn: true, clockInStart, status: "in_progress" as TaskStatus,
+      ...t, clockedIn: true, clockInStart, clockInBaseElapsed: t.elapsedSeconds, status: "in_progress" as TaskStatus,
     }));
     patchJob(jobId, { tasks: updatedTasks, status: "in_progress" });
   }, [state.jobs]);
