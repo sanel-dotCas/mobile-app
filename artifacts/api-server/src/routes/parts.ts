@@ -333,7 +333,7 @@ router.get("/parts/items/by-number/:partNumber", async (req, res) => {
       .select()
       .from(partsItemsTable)
       .where(eq(partsItemsTable.partNumber, req.params.partNumber.toUpperCase()));
-    if (!item) return res.status(404).json({ error: "Part not found" });
+    if (!item) { res.status(404).json({ error: "Part not found" }); return; }
     res.json(item);
   } catch (err) {
     req.log.error(err);
@@ -348,7 +348,7 @@ router.get("/parts/items/:id", async (req, res) => {
       .select()
       .from(partsItemsTable)
       .where(eq(partsItemsTable.id, parseInt(req.params.id)));
-    if (!item) return res.status(404).json({ error: "Part not found" });
+    if (!item) { res.status(404).json({ error: "Part not found" }); return; }
     res.json(item);
   } catch (err) {
     req.log.error(err);
@@ -403,7 +403,7 @@ router.patch("/parts/items/:id", async (req, res) => {
       .set(updates)
       .where(eq(partsItemsTable.id, parseInt(req.params.id)))
       .returning();
-    if (!item) return res.status(404).json({ error: "Part not found" });
+    if (!item) { res.status(404).json({ error: "Part not found" }); return; }
     res.json(item);
   } catch (err) {
     req.log.error(err);
@@ -445,7 +445,7 @@ router.get("/parts/orders/:id", async (req, res) => {
       .select()
       .from(partsOrdersTable)
       .where(eq(partsOrdersTable.id, parseInt(req.params.id)));
-    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
     const items = await db
       .select()
@@ -552,12 +552,13 @@ router.post("/parts/orders/:id/receive", async (req, res) => {
     } = req.body;
 
     const [order] = await db.select().from(partsOrdersTable).where(eq(partsOrdersTable.id, orderId));
-    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
     // Invoice number required if not already set on the order
     const effectiveInvoice = invoiceNumber ?? order.invoiceNumber;
     if (!effectiveInvoice) {
-      return res.status(400).json({ error: "Invoice number is required before receiving parts" });
+      res.status(400).json({ error: "Invoice number is required before receiving parts" });
+      return;
     }
 
     // Save invoice number if this is the first time receiving
@@ -726,7 +727,7 @@ router.get("/parts/sales/:id", async (req, res) => {
       .select()
       .from(partsSalesTable)
       .where(eq(partsSalesTable.id, parseInt(req.params.id)));
-    if (!sale) return res.status(404).json({ error: "Sale not found" });
+    if (!sale) { res.status(404).json({ error: "Sale not found" }); return; }
     const items = await db.select().from(partsSaleItemsTable).where(eq(partsSaleItemsTable.saleId, sale.id));
     res.json({ ...sale, items });
   } catch (err) {
@@ -797,8 +798,8 @@ router.post("/parts/sales/:id/payment", async (req, res) => {
     const { paymentMethod, paymentRef } = req.body as { paymentMethod?: string; paymentRef?: string };
 
     const [sale] = await db.select().from(partsSalesTable).where(eq(partsSalesTable.id, saleId));
-    if (!sale) return res.status(404).json({ error: "Sale not found" });
-    if (sale.status === "paid") return res.status(400).json({ error: "Sale already paid" });
+    if (!sale) { res.status(404).json({ error: "Sale not found" }); return; }
+    if (sale.status === "paid") { res.status(400).json({ error: "Sale already paid" }); return; }
 
     const [updated] = await db
       .update(partsSalesTable)
@@ -864,7 +865,7 @@ router.get("/parts/count-sessions/:id", async (req, res) => {
   await ensureSeeded();
   try {
     const [session] = await db.select().from(partsCountSessionsTable).where(eq(partsCountSessionsTable.id, parseInt(req.params.id)));
-    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (!session) { res.status(404).json({ error: "Session not found" }); return; }
     const items = await db.select().from(partsCountItemsTable).where(eq(partsCountItemsTable.sessionId, session.id));
     res.json({ session, items });
   } catch (err) {
@@ -885,7 +886,7 @@ router.post("/parts/count-sessions/:id/items", async (req, res) => {
         .set({ countedQty: countedQty ?? null })
         .where(eq(partsCountItemsTable.id, countItemId))
         .returning();
-      return res.json({ item });
+      res.json({ item }); return;
     }
 
     const [item] = await db.insert(partsCountItemsTable).values({
@@ -963,8 +964,8 @@ router.get("/parts/suggestions", async (req, res) => {
       })
       .filter(Boolean);
 
-    const priorityOrder = { critical: 0, urgent: 1, warning: 2, info: 3 };
-    suggestions.sort((a: any, b: any) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+    const priorityOrder: Record<string, number> = { critical: 0, urgent: 1, warning: 2, info: 3 };
+    suggestions.sort((a: any, b: any) => (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4));
 
     const summary = {
       critical: suggestions.filter((s: any) => s?.priority === "critical").length,
@@ -1006,7 +1007,7 @@ router.get("/parts/transfers/:id", async (req, res) => {
   await ensureSeeded();
   try {
     const [transfer] = await db.select().from(partsTransfersTable).where(eq(partsTransfersTable.id, parseInt(req.params.id)));
-    if (!transfer) return res.status(404).json({ error: "Transfer not found" });
+    if (!transfer) { res.status(404).json({ error: "Transfer not found" }); return; }
     const items = await db.select().from(partsTransferItemsTable).where(eq(partsTransferItemsTable.transferId, transfer.id));
     res.json({ ...transfer, items });
   } catch (err) {
@@ -1100,7 +1101,7 @@ router.get("/parts/ro-requests/:id", async (req, res) => {
   await ensureSeeded();
   try {
     const [request] = await db.select().from(partsRoRequestsTable).where(eq(partsRoRequestsTable.id, parseInt(req.params.id)));
-    if (!request) return res.status(404).json({ error: "Request not found" });
+    if (!request) { res.status(404).json({ error: "Request not found" }); return; }
     const items = await db.select().from(partsRoRequestItemsTable).where(eq(partsRoRequestItemsTable.requestId, request.id));
     res.json({ ...request, items });
   } catch (err) {
@@ -1153,7 +1154,7 @@ router.post("/parts/ro-requests/:id/issue", async (req, res) => {
     const { items = [] }: { items: { requestItemId: number; qtyIssued: number }[] } = req.body;
 
     const [request] = await db.select().from(partsRoRequestsTable).where(eq(partsRoRequestsTable.id, requestId));
-    if (!request) return res.status(404).json({ error: "Request not found" });
+    if (!request) { res.status(404).json({ error: "Request not found" }); return; }
 
     for (const issue of items) {
       if (issue.qtyIssued <= 0) continue;
@@ -1198,7 +1199,7 @@ router.post("/parts/ro-requests/:id/smart-issue", async (req, res) => {
     const { issuedBy, supplierName, supplierCode } = req.body as { issuedBy?: string; supplierName?: string; supplierCode?: string };
 
     const [request] = await db.select().from(partsRoRequestsTable).where(eq(partsRoRequestsTable.id, requestId));
-    if (!request) return res.status(404).json({ error: "Request not found" });
+    if (!request) { res.status(404).json({ error: "Request not found" }); return; }
 
     const reqItems = await db.select().from(partsRoRequestItemsTable).where(eq(partsRoRequestItemsTable.requestId, requestId));
 
@@ -1318,8 +1319,8 @@ router.patch("/parts/orders/:id/approve", async (req, res) => {
     const orderId = parseInt(req.params.id);
     const { approvedBy } = req.body as { approvedBy?: string };
     const [order] = await db.select().from(partsOrdersTable).where(eq(partsOrdersTable.id, orderId));
-    if (!order) return res.status(404).json({ error: "Order not found" });
-    if (order.status !== "draft") return res.status(400).json({ error: "Only draft orders can be approved" });
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+    if (order.status !== "draft") { res.status(400).json({ error: "Only draft orders can be approved" }); return; }
     const [updated] = await db
       .update(partsOrdersTable)
       .set({ status: "ordered", approvedBy: approvedBy ?? null, approvedAt: new Date(), orderedAt: new Date() } as Partial<typeof partsOrdersTable.$inferInsert>)
@@ -1343,7 +1344,7 @@ router.post("/parts/sales/:id/return", async (req, res) => {
       items: { saleItemId: number; partNumber: string; partName: string; qty: number; unitPrice: string; discountPct?: string; vatPct?: string; reason?: string }[];
     };
     const [sale] = await db.select().from(partsSalesTable).where(eq(partsSalesTable.id, saleId));
-    if (!sale) return res.status(404).json({ error: "Sale not found" });
+    if (!sale) { res.status(404).json({ error: "Sale not found" }); return; }
 
     const existing = await db.select({ returnNumber: partsSalesReturnsTable.returnNumber }).from(partsSalesReturnsTable);
     const returnNumber = nextNumber("CRN", existing.map((r) => r.returnNumber));
@@ -1418,7 +1419,7 @@ router.post("/parts/orders/:id/supplier-return", async (req, res) => {
       items: { partNumber: string; partName: string; qty: number; unitCost?: string; reason?: string }[];
     };
     const [order] = await db.select().from(partsOrdersTable).where(eq(partsOrdersTable.id, orderId));
-    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
     const existing = await db.select({ returnNumber: partsSupplierReturnsTable.returnNumber }).from(partsSupplierReturnsTable);
     const returnNumber = nextNumber("SRN", existing.map((r) => r.returnNumber));
@@ -1474,7 +1475,8 @@ router.post("/parts/ai/stock-review", async (req, res) => {
     const lowStock = allParts.filter((p) => p.qtyOnHand <= Math.ceil(p.minStock * 1.5));
 
     if (lowStock.length === 0) {
-      return res.json({ summary: "All stock levels are healthy — no restocking needed at this time.", draftOrders: [], lowStockCount: 0 });
+      res.json({ summary: "All stock levels are healthy — no restocking needed at this time.", draftOrders: [], lowStockCount: 0 });
+      return;
     }
 
     const anthropic = new Anthropic({
@@ -1598,7 +1600,7 @@ router.post("/parts/rfq", async (req, res) => {
 router.get("/parts/rfq/:token/form", async (req, res) => {
   try {
     const [rfq] = await db.select().from(partsRfqTable).where(eq(partsRfqTable.token, req.params.token));
-    if (!rfq) return res.status(404).send("<h1>RFQ not found or expired</h1>");
+    if (!rfq) { res.status(404).send("<h1>RFQ not found or expired</h1>"); return; }
     const items = await db.select().from(partsRfqItemsTable).where(eq(partsRfqItemsTable.rfqId, rfq.id));
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RFQ ${rfq.rfqNumber}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:16px;color:#1e293b}h1{color:#7c3aed}h2{color:#475569;font-size:15px;font-weight:600;margin-top:24px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#f1f5f9;padding:10px 12px;text-align:left;font-size:13px;color:#475569;border:1px solid #e2e8f0}td{padding:10px 12px;border:1px solid #e2e8f0;font-size:14px}input[type=number],input[type=text]{width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box}button{background:#7c3aed;color:#fff;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:20px}button:hover{background:#6d28d9}.badge{display:inline-block;background:#ede9fe;color:#7c3aed;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}.meta{color:#64748b;font-size:13px;margin-top:4px}.success{background:#dcfce7;color:#16a34a;padding:20px;border-radius:10px;text-align:center;font-size:16px;font-weight:600;display:none}input[name=supplierName]{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:8px;box-sizing:border-box}label{display:block;font-size:13px;color:#64748b;margin-bottom:4px;font-weight:500}</style></head>
@@ -1667,7 +1669,7 @@ async function submitRFQ() {
 router.post("/parts/rfq/:token/submit", async (req, res) => {
   try {
     const [rfq] = await db.select().from(partsRfqTable).where(eq(partsRfqTable.token, req.params.token));
-    if (!rfq) return res.status(404).json({ error: "RFQ not found" });
+    if (!rfq) { res.status(404).json({ error: "RFQ not found" }); return; }
     const { supplierName, contactEmail, notes, responses = [] } = req.body as {
       supplierName: string; contactEmail?: string; notes?: string;
       responses: { rfqItemId: number; unitPrice: number | null; leadTimeDays: number | null; available: number }[];
