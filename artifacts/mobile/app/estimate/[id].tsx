@@ -943,6 +943,7 @@ export default function EstimateDetailScreen() {
   const photoBase64s = estimate?.photos.map((p) => p.base64 ?? "") ?? [];
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [bulkSection, setBulkSection] = useState<"labor" | "part" | "material" | null>(null);
 
@@ -1121,16 +1122,67 @@ export default function EstimateDetailScreen() {
     }
   }, [estimate, photoBase64s, setLines, updateStatus]);
 
-  const handleAdvanceStatus = useCallback(() => {
+  const handleAdvanceStatus = useCallback(async () => {
     const next = STATUS_NEXT[estimate.status];
-    if (next) {
-      updateStatus(estimate.id, next);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (next === "submitted") {
-        Alert.alert("Submitted", `${estimate.estimateNo} has been submitted to the DMS.`);
-        router.back();
+    if (!next) return;
+
+    if (next === "submitted") {
+      setIsSubmitting(true);
+      try {
+        const apiBase = BASE_URL || "http://localhost:80";
+        const response = await fetch(`${apiBase}/api/estimates/submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            estimateId: estimate.id,
+            estimateNo: estimate.estimateNo,
+            vehicle: `${estimate.year} ${estimate.make} ${estimate.model}`,
+            customer: estimate.customer,
+            serviceAdvisor: estimate.serviceAdvisor,
+            odometer: estimate.odometer,
+            lines: estimate.lines.map((l) => ({
+              id: l.id,
+              type: l.type,
+              laborCategory: l.laborCategory,
+              description: l.description,
+              hours: l.hours,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+              total: l.total,
+              operation: l.operation ?? null,
+              accountType: l.accountType ?? null,
+            })),
+          }),
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(errData.error ?? `Server error ${response.status}`);
+        }
+        const data = await response.json() as { success: boolean; dmsRoNumber?: string | null; message: string };
+        if (!data.success) {
+          throw new Error(data.message ?? "DMS submission did not succeed.");
+        }
+        updateStatus(estimate.id, "submitted");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Submitted to DMS",
+          data.dmsRoNumber
+            ? `${estimate.estimateNo} was submitted successfully.\n\nRepair Order: ${data.dmsRoNumber}`
+            : data.message,
+          [{ text: "OK", onPress: () => router.back() }],
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Submission failed. Please try again.";
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Submission Failed", msg);
+      } finally {
+        setIsSubmitting(false);
       }
+      return;
     }
+
+    updateStatus(estimate.id, next);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [estimate, updateStatus, router]);
 
   const handleAddManual = useCallback((line: Omit<EstimateLine, "id">) => {
@@ -1502,10 +1554,20 @@ export default function EstimateDetailScreen() {
         {estimate.status === "approved" && (
           <Pressable
             onPress={handleAdvanceStatus}
-            style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#1d4ed8", opacity: pressed ? 0.85 : 1 }]}
+            disabled={isSubmitting}
+            style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#1d4ed8", opacity: (pressed || isSubmitting) ? 0.75 : 1 }]}
           >
-            <Feather name="send" size={16} color="#fff" />
-            <Text style={styles.actionBtnText}>{t.submitToDMS}</Text>
+            {isSubmitting ? (
+              <>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.actionBtnText}>Submitting…</Text>
+              </>
+            ) : (
+              <>
+                <Feather name="send" size={16} color="#fff" />
+                <Text style={styles.actionBtnText}>{t.submitToDMS}</Text>
+              </>
+            )}
           </Pressable>
         )}
       </ScrollView>
