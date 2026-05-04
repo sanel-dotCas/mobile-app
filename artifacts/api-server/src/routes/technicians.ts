@@ -79,21 +79,38 @@ router.get("/technicians", async (req, res) => {
       const assignedJobs = jobs.filter((j) => j.assignedTechnicianId === tech.id);
       const activeJob = assignedJobs.find((j) => j.status === "in_progress");
 
-      let totalWorked = 0;
-      let totalEstimated = 0;
+      let totalHoursToday = 0;
+      let efficiencyWorked = 0;
+      let efficiencyEstimated = 0;
       let hasClockedInTask = false;
+
+      const today = new Date().toISOString().split("T")[0];
 
       for (const job of assignedJobs) {
         const tasks = Array.isArray(job.tasks) ? (job.tasks as TaskShape[]) : [];
+        const jobDate = job.appointmentDate ? job.appointmentDate.split("T")[0] : null;
+        const isToday = jobDate === today;
+
         for (const task of tasks) {
-          totalWorked += typeof task.workedHours === "number" ? task.workedHours : 0;
-          totalEstimated += typeof task.estimatedHours === "number" ? task.estimatedHours : 0;
+          const worked = typeof task.workedHours === "number" ? task.workedHours : 0;
+          const estimated = typeof task.estimatedHours === "number" ? task.estimatedHours : 0;
+          const hasWork = worked > 0;
+
+          if (hasWork) {
+            efficiencyWorked += worked;
+            efficiencyEstimated += estimated;
+          }
+          if (isToday && hasWork) {
+            totalHoursToday += worked;
+          }
           if (task.clockedIn) hasClockedInTask = true;
         }
       }
 
       const efficiency =
-        totalEstimated > 0 ? Math.min(Math.round((totalWorked / totalEstimated) * 100), 100) : 0;
+        efficiencyEstimated > 0
+          ? Math.min(Math.round((efficiencyWorked / efficiencyEstimated) * 100), 100)
+          : 0;
 
       let status: "active" | "idle" | "break" | "absent";
       if (tech.id === "tech-005") {
@@ -111,7 +128,7 @@ router.get("/technicians", async (req, res) => {
         avatar: tech.avatar,
         currentJobId: activeJob?.id ?? null,
         status,
-        totalHoursToday: parseFloat(totalWorked.toFixed(1)),
+        totalHoursToday: parseFloat(totalHoursToday.toFixed(1)),
         efficiency,
         weekHoursBooked: tech.weekHoursBooked,
         monthHoursBooked: tech.monthHoursBooked,
