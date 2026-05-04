@@ -177,8 +177,17 @@ function GenerateSheet({ visible, onClose, onGenerated, recommendations }: Gener
   const [autoAssign, setAutoAssign] = useState(true);
   const [inspType, setInspType] = useState<PeriodicType>("periodic-fluid");
   const [generating, setGenerating] = useState(false);
+  const [availTechs, setAvailTechs] = useState<{ name: string; status: string }[]>([]);
 
   const effectiveInterval = isCustom ? Number(customDays) || 0 : intervalDays;
+
+  useEffect(() => {
+    if (!visible) return;
+    fetch(`${BASE}/yard/inspections/available-techs`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setAvailTechs(data.techs ?? []); })
+      .catch(() => {});
+  }, [visible]);
 
   const previewRecs = recommendations.filter(
     (r) => r.daysRemaining <= effectiveInterval || r.urgency === "overdue"
@@ -292,19 +301,43 @@ function GenerateSheet({ visible, onClose, onGenerated, recommendations }: Gener
           </View>
 
           {/* Auto-assign toggle */}
-          <View style={[styles.sheetSection, styles.toggleRow]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.sheetLabel, { color: colors.foreground }]}>Auto-Assign</Text>
-              <Text style={[styles.modalSub, { color: colors.mutedForeground, marginTop: 2 }]}>
-                Distribute evenly across available technicians
-              </Text>
+          <View style={styles.sheetSection}>
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sheetLabel, { color: colors.foreground }]}>Auto-Assign</Text>
+                <Text style={[styles.modalSub, { color: colors.mutedForeground, marginTop: 2 }]}>
+                  Distribute evenly across available technicians
+                </Text>
+              </View>
+              <Switch
+                value={autoAssign}
+                onValueChange={setAutoAssign}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#fff"
+              />
             </View>
-            <Switch
-              value={autoAssign}
-              onValueChange={setAutoAssign}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor="#fff"
-            />
+            {autoAssign && (
+              availTechs.length === 0 ? (
+                <View style={[styles.availWarn, { backgroundColor: "#fef2f2", borderColor: "#fca5a5" }]}>
+                  <Feather name="alert-triangle" size={12} color="#dc2626" />
+                  <Text style={[styles.availWarnText, { color: "#dc2626" }]}>
+                    No techs available — all on break or absent. Inspections will be unassigned.
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.availInfo, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
+                  <Feather name="users" size={12} color="#16a34a" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.availInfoText, { color: "#16a34a" }]}>
+                      {availTechs.length} tech{availTechs.length !== 1 ? "s" : ""} available — round-robin
+                    </Text>
+                    <Text style={[styles.availNames, { color: "#15803d" }]}>
+                      {availTechs.map((t) => t.name.split(" ")[0]).join(", ")}
+                    </Text>
+                  </View>
+                </View>
+              )
+            )}
           </View>
 
           {/* Preview */}
@@ -1065,6 +1098,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  availWarn: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  availWarnText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
+    lineHeight: 16,
+  },
+  availInfo: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  availInfoText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  availNames: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
   },
   previewList: {
     maxHeight: 180,

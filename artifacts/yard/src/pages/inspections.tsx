@@ -346,6 +346,16 @@ function ScheduleInspectionsPanel({ onSuccess }: { onSuccess: () => void }) {
     enabled: open,
   });
 
+  const { data: availTechData } = useQuery<{ techs: { name: string; status: string }[]; count: number }>({
+    queryKey: ["available-techs"],
+    queryFn: async () => {
+      const r = await fetch("/api/yard/inspections/available-techs");
+      return r.json();
+    },
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
+
   const generateMutation = useGenerateYardInspections({
     mutation: {
       onSuccess: (data) => {
@@ -461,24 +471,50 @@ function ScheduleInspectionsPanel({ onSuccess }: { onSuccess: () => void }) {
           </div>
 
           {/* Auto-assign toggle */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setAutoAssign((a) => !a)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${
-                autoAssign ? "bg-[hsl(221,83%,53%)]" : "bg-muted"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                  autoAssign ? "translate-x-5" : "translate-x-0.5"
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setAutoAssign((a) => !a)}
+                className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
+                  autoAssign ? "bg-[hsl(221,83%,53%)]" : "bg-muted"
                 }`}
-              />
-            </button>
-            <span className="text-xs text-foreground font-medium">
-              Auto-Assign to technicians
-            </span>
-            {autoAssign && (
-              <span className="text-xs text-muted-foreground">(round-robin across available techs)</span>
+              >
+                <span
+                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                    autoAssign ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+              <span className="text-xs text-foreground font-medium">
+                Auto-Assign to technicians
+              </span>
+            </div>
+            {autoAssign && availTechData && (
+              <div className="ml-13 pl-[52px]">
+                {availTechData.count === 0 ? (
+                  <p className="text-xs text-red-600 font-medium">
+                    No technicians available — all are on break or absent. Inspections will be created unassigned.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-emerald-600">{availTechData.count} tech{availTechData.count !== 1 ? "s" : ""} available</span>
+                      {" "}— round-robin distribution
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {availTechData.techs.map((t) => (
+                        <span
+                          key={t.name}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-700"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                          {t.name.split(" ")[0]}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

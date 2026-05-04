@@ -5,11 +5,42 @@ import {
   yardVehiclesTable,
   yardLocationsTable,
   yardUsersTable,
+  techniciansTable,
 } from "@workspace/db";
 import { eq, and, SQL, desc, or, inArray, isNull } from "drizzle-orm";
 import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
+
+/**
+ * Returns the list of technician names that are currently available for
+ * assignment (status = active or idle). Cross-references yard_operator users
+ * against the technicians table by name. Falls back to all yard_operators if
+ * none have a matching row in the technicians table.
+ */
+async function getAvailableTechs(): Promise<{ name: string; status: string }[]> {
+  const operators = await db
+    .select()
+    .from(yardUsersTable)
+    .where(eq(yardUsersTable.role, "yard_operator"));
+
+  const techRows = await db
+    .select({ name: techniciansTable.name, status: techniciansTable.status })
+    .from(techniciansTable);
+
+  const statusByName = new Map(techRows.map((t) => [t.name, t.status]));
+
+  const available = operators
+    .map((u) => ({ name: u.name, status: statusByName.get(u.name) ?? "idle" }))
+    .filter((t) => t.status === "active" || t.status === "idle");
+
+  // Fallback: if no tech has a matching row, return all operators as idle
+  if (available.length === 0) {
+    return operators.map((u) => ({ name: u.name, status: "idle" }));
+  }
+
+  return available;
+}
 
 type InspType =
   | "pre-inspection"
@@ -68,6 +99,12 @@ async function resolveDetails(insp: typeof yardInspectionsTable.$inferSelect) {
   }
   return formatInspection(insp, vehicle, locationName);
 }
+
+// ── Available technicians for assignment ──────────────────────────────────────
+router.get("/yard/inspections/available-techs", async (_req, res) => {
+  const available = await getAvailableTechs();
+  res.json({ techs: available, count: available.length });
+});
 
 // ── List inspections ──────────────────────────────────────────────────────────
 router.get("/yard/inspections", async (req, res) => {
@@ -308,18 +345,14 @@ router.post("/yard/inspections/generate", async (req, res) => {
     ? Number(lastInspRecord.inspectionNumber) + 1
     : 1;
 
-  // Determine technicians for auto-assign
+  // Determine technicians for auto-assign — only available (active/idle) techs
   let techList: string[] = [];
   if (autoAssign) {
     if (technicianIds && technicianIds.length > 0) {
       techList = technicianIds;
     } else {
-      // Fetch yard_operator users only — managers and admins are not assigned inspections
-      const users = await db
-        .select()
-        .from(yardUsersTable)
-        .where(eq(yardUsersTable.role, "yard_operator"));
-      techList = users.map((u) => u.name);
+      const available = await getAvailableTechs();
+      techList = available.map((t) => t.name);
     }
   }
 
@@ -367,6 +400,7 @@ router.post("/yard/inspections/generate", async (req, res) => {
     created: createdInspections.length,
     assigned: assignedCount,
     skipped: skipped.length,
+    availableTechCount: techList.length,
     inspections: withDetails,
   });
 });
@@ -395,12 +429,9 @@ router.post("/yard/inspections/auto-assign", async (req, res) => {
     return;
   }
 
-  // Get technician-capable users only (yard_operator role)
-  const users = await db
-    .select()
-    .from(yardUsersTable)
-    .where(eq(yardUsersTable.role, "yard_operator"));
-  const techList = users.map((u) => u.name);
+  // Get only available (active/idle) technicians — skip those on break or absent
+  const available = await getAvailableTechs();
+  const techList = available.map((t) => t.name);
 
   if (techList.length === 0) {
     res.json({ assigned: 0, total: unassigned.length });
