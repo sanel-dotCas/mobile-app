@@ -570,6 +570,135 @@ router.delete("/jobs/:id", async (req, res) => {
   }
 });
 
+router.post("/jobs/:id/notes", async (req, res) => {
+  const { id } = req.params;
+  const note = req.body as { id?: string; author?: string; text?: string; timestamp?: string; subject?: string };
+
+  if (!note || typeof note.text !== "string" || !note.text.trim()) {
+    res.status(400).json({ error: "note.text is required" });
+    return;
+  }
+
+  try {
+    const rows = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    const existing = rows[0];
+    const notes = Array.isArray(existing.notes) ? (existing.notes as unknown[]) : [];
+    const newNote = {
+      id: note.id ?? `jn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      author: note.author ?? "Technician",
+      text: note.text,
+      timestamp: note.timestamp ?? new Date().toISOString(),
+      subject: note.subject,
+    };
+    const alreadyExists = notes.some((n) => typeof n === "object" && n !== null && (n as { id?: string }).id === newNote.id);
+    const updatedNotes = alreadyExists ? notes : [...notes, newNote];
+    const [updated] = await db
+      .update(jobsTable)
+      .set({ notes: updatedNotes, updatedAt: new Date() })
+      .where(eq(jobsTable.id, id))
+      .returning();
+    res.status(201).json({ note: newNote, job: rowToJob(updated) });
+  } catch (err) {
+    req.log.error(err, "Failed to add note");
+    res.status(500).json({ error: "Failed to add note" });
+  }
+});
+
+router.post("/jobs/:id/tasks/:taskId/notes", async (req, res) => {
+  const { id, taskId } = req.params;
+  const note = req.body as { id?: string; author?: string; text?: string; timestamp?: string; subject?: string };
+
+  if (!note || typeof note.text !== "string" || !note.text.trim()) {
+    res.status(400).json({ error: "note.text is required" });
+    return;
+  }
+
+  try {
+    const rows = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    const existing = rows[0];
+    const tasks = Array.isArray(existing.tasks) ? (existing.tasks as Array<{ id: string; notes?: unknown[] }>) : [];
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex === -1) {
+      res.status(404).json({ error: "Task not found" });
+      return;
+    }
+    const newNote = {
+      id: note.id ?? `tn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      author: note.author ?? "Technician",
+      text: note.text,
+      timestamp: note.timestamp ?? new Date().toISOString(),
+      subject: note.subject,
+    };
+    const existingTaskNotes: unknown[] = Array.isArray(tasks[taskIndex].notes) ? (tasks[taskIndex].notes as unknown[]) : [];
+    const alreadyExists = existingTaskNotes.some((n) => typeof n === "object" && n !== null && (n as { id?: string }).id === newNote.id);
+    const updatedTasks = tasks.map((t, i) =>
+      i === taskIndex ? { ...t, notes: alreadyExists ? existingTaskNotes : [...existingTaskNotes, newNote] } : t
+    );
+    const [updated] = await db
+      .update(jobsTable)
+      .set({ tasks: updatedTasks, updatedAt: new Date() })
+      .where(eq(jobsTable.id, id))
+      .returning();
+    res.status(201).json({ note: newNote, job: rowToJob(updated) });
+  } catch (err) {
+    req.log.error(err, "Failed to add task note");
+    res.status(500).json({ error: "Failed to add task note" });
+  }
+});
+
+router.patch("/jobs/:id/inspections/:itemId", async (req, res) => {
+  const { id, itemId } = req.params;
+  const { status, notes } = req.body as { status?: string; notes?: string };
+
+  const validStatuses = ["pass", "fail", "attention", "pending"];
+  if (status !== undefined && !validStatuses.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${validStatuses.join(", ")}` });
+    return;
+  }
+
+  try {
+    const rows = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    const existing = rows[0];
+    const inspections = Array.isArray(existing.inspections)
+      ? (existing.inspections as Array<{ id: string; status?: string; notes?: string }>)
+      : [];
+    const itemIndex = inspections.findIndex((ins) => ins.id === itemId);
+    if (itemIndex === -1) {
+      res.status(404).json({ error: "Inspection item not found" });
+      return;
+    }
+    const updatedInspections = inspections.map((ins, i) => {
+      if (i !== itemIndex) return ins;
+      return {
+        ...ins,
+        ...(status !== undefined ? { status } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+      };
+    });
+    const [updated] = await db
+      .update(jobsTable)
+      .set({ inspections: updatedInspections, updatedAt: new Date() })
+      .where(eq(jobsTable.id, id))
+      .returning();
+    res.json({ inspection: updatedInspections[itemIndex], job: rowToJob(updated) });
+  } catch (err) {
+    req.log.error(err, "Failed to update inspection item");
+    res.status(500).json({ error: "Failed to update inspection item" });
+  }
+});
+
 router.patch("/jobs/:id/odometer", async (req, res) => {
   const { id } = req.params;
   const { odometer } = req.body as { odometer?: unknown };

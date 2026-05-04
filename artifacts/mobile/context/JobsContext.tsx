@@ -112,6 +112,20 @@ interface PendingOdometerUpdate {
   odometer: number;
 }
 
+interface PendingNoteUpdate {
+  id: string;
+  jobId: string;
+  taskId?: string;
+  note: JobNote | TaskNote;
+}
+
+interface PendingInspectionUpdate {
+  jobId: string;
+  itemId: string;
+  status: InspectionItem["status"];
+  notes: string;
+}
+
 interface JobsState {
   jobs: Job[]; stats: DashboardStats;
   activeClockIn: { jobId: string; taskId: string; startTime: string } | null;
@@ -122,6 +136,8 @@ interface JobsState {
   activeNonProd: { taskType: string; elapsedSeconds: number } | null;
   jobsLoaded: boolean;
   pendingOdometerUpdates: PendingOdometerUpdate[];
+  pendingNoteUpdates: PendingNoteUpdate[];
+  pendingInspectionUpdates: PendingInspectionUpdate[];
 }
 
 type Action =
@@ -161,7 +177,13 @@ type Action =
   | { type: "UPDATE_ODOMETER"; payload: { jobId: string; odometer: number } }
   | { type: "QUEUE_ODOMETER"; payload: PendingOdometerUpdate }
   | { type: "DEQUEUE_ODOMETER"; payload: { jobId: string } }
-  | { type: "SET_ODOMETER_QUEUE"; payload: PendingOdometerUpdate[] };
+  | { type: "SET_ODOMETER_QUEUE"; payload: PendingOdometerUpdate[] }
+  | { type: "QUEUE_NOTE"; payload: PendingNoteUpdate }
+  | { type: "DEQUEUE_NOTE"; payload: { id: string } }
+  | { type: "SET_NOTE_QUEUE"; payload: PendingNoteUpdate[] }
+  | { type: "QUEUE_INSPECTION"; payload: PendingInspectionUpdate }
+  | { type: "DEQUEUE_INSPECTION"; payload: { jobId: string; itemId: string } }
+  | { type: "SET_INSPECTION_QUEUE"; payload: PendingInspectionUpdate[] };
 
 const INITIAL_TECHNICIANS: Technician[] = [
   { id: "tech-001", name: "Mike Rodriguez", role: "Senior Technician", avatar: "MR", currentJobId: "job-001", status: "active", totalHoursToday: 5.5, efficiency: 92, weekHoursBooked: 32, monthHoursBooked: 128, specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"], completedJobs: 312 },
@@ -360,6 +382,33 @@ function reducer(state: JobsState, action: Action): JobsState {
     case "SET_ODOMETER_QUEUE":
       return { ...state, pendingOdometerUpdates: action.payload };
 
+    case "QUEUE_NOTE":
+      return { ...state, pendingNoteUpdates: [...state.pendingNoteUpdates.filter((u) => u.id !== action.payload.id), action.payload] };
+
+    case "DEQUEUE_NOTE":
+      return { ...state, pendingNoteUpdates: state.pendingNoteUpdates.filter((u) => u.id !== action.payload.id) };
+
+    case "SET_NOTE_QUEUE":
+      return { ...state, pendingNoteUpdates: action.payload };
+
+    case "QUEUE_INSPECTION": {
+      const filtered = state.pendingInspectionUpdates.filter(
+        (u) => !(u.jobId === action.payload.jobId && u.itemId === action.payload.itemId)
+      );
+      return { ...state, pendingInspectionUpdates: [...filtered, action.payload] };
+    }
+
+    case "DEQUEUE_INSPECTION":
+      return {
+        ...state,
+        pendingInspectionUpdates: state.pendingInspectionUpdates.filter(
+          (u) => !(u.jobId === action.payload.jobId && u.itemId === action.payload.itemId)
+        ),
+      };
+
+    case "SET_INSPECTION_QUEUE":
+      return { ...state, pendingInspectionUpdates: action.payload };
+
     case "ASSIGN_JOB":
       return { ...state, jobs: mapJobs(state.jobs, action.payload.jobId, (j) => ({ ...j, assignedTechnicianId: action.payload.technicianId })) };
 
@@ -524,6 +573,8 @@ interface JobsContextValue {
   isRefreshing: boolean;
   unreadCount: number;
   pendingOdometerUpdates: PendingOdometerUpdate[];
+  pendingNoteUpdates: PendingNoteUpdate[];
+  pendingInspectionUpdates: PendingInspectionUpdate[];
   createJob: (fields: { estimateNumber: string; licensePlate: string; vehicle: string; serviceAdvisor: string; customerNotes: string; appointmentDate: string; totalEstimatedHours: number; odometer: number }) => Promise<Job>;
   deleteJob: (jobId: string) => Promise<void>;
 }
@@ -545,6 +596,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     timeRecords: [], activeShift: null, technicians: INITIAL_TECHNICIANS,
     activeBreak: false, activeNonProd: null, jobsLoaded: false,
     pendingOdometerUpdates: [],
+    pendingNoteUpdates: [],
+    pendingInspectionUpdates: [],
   });
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -554,6 +607,12 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
 
   const pendingOdometerRef = useRef(state.pendingOdometerUpdates);
   pendingOdometerRef.current = state.pendingOdometerUpdates;
+
+  const pendingNoteRef = useRef(state.pendingNoteUpdates);
+  pendingNoteRef.current = state.pendingNoteUpdates;
+
+  const pendingInspectionRef = useRef(state.pendingInspectionUpdates);
+  pendingInspectionRef.current = state.pendingInspectionUpdates;
 
   useEffect(() => {
     const id = setInterval(() => dispatch({ type: "TICK_CLOCK" }), 1000);
@@ -609,6 +668,26 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
     });
+
+    AsyncStorage.getItem("note_queue_v1").then((raw) => {
+      if (!raw) return;
+      try {
+        const queue: PendingNoteUpdate[] = JSON.parse(raw);
+        if (Array.isArray(queue) && queue.length > 0) {
+          dispatch({ type: "SET_NOTE_QUEUE", payload: queue });
+        }
+      } catch {}
+    });
+
+    AsyncStorage.getItem("inspection_queue_v1").then((raw) => {
+      if (!raw) return;
+      try {
+        const queue: PendingInspectionUpdate[] = JSON.parse(raw);
+        if (Array.isArray(queue) && queue.length > 0) {
+          dispatch({ type: "SET_INSPECTION_QUEUE", payload: queue });
+        }
+      } catch {}
+    });
   }, [fetchAndMergeJobs]);
 
   useEffect(() => {
@@ -659,6 +738,64 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     AsyncStorage.setItem("odometer_queue_v1", JSON.stringify(state.pendingOdometerUpdates)).catch(() => {});
   }, [state.pendingOdometerUpdates]);
+
+  useEffect(() => {
+    AsyncStorage.setItem("note_queue_v1", JSON.stringify(state.pendingNoteUpdates)).catch(() => {});
+  }, [state.pendingNoteUpdates]);
+
+  useEffect(() => {
+    AsyncStorage.setItem("inspection_queue_v1", JSON.stringify(state.pendingInspectionUpdates)).catch(() => {});
+  }, [state.pendingInspectionUpdates]);
+
+  useEffect(() => {
+    const flushNoteQueue = () => {
+      const queue = pendingNoteRef.current;
+      if (queue.length === 0) return;
+      queue.forEach((pending) => {
+        const { id, jobId, taskId, note } = pending;
+        if (taskId) {
+          fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/tasks/${encodeURIComponent(taskId)}/notes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(note),
+          })
+            .then((r) => { if (r.ok) dispatch({ type: "DEQUEUE_NOTE", payload: { id } }); })
+            .catch(() => {});
+        } else {
+          fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/notes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(note),
+          })
+            .then((r) => { if (r.ok) dispatch({ type: "DEQUEUE_NOTE", payload: { id } }); })
+            .catch(() => {});
+        }
+      });
+    };
+
+    const id = setInterval(flushNoteQueue, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const flushInspectionQueue = () => {
+      const queue = pendingInspectionRef.current;
+      if (queue.length === 0) return;
+      queue.forEach((pending) => {
+        const { jobId, itemId, status, notes } = pending;
+        fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/inspections/${encodeURIComponent(itemId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status, notes }),
+        })
+          .then((r) => { if (r.ok) dispatch({ type: "DEQUEUE_INSPECTION", payload: { jobId, itemId } }); })
+          .catch(() => {});
+      });
+    };
+
+    const id = setInterval(flushInspectionQueue, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const flushOdometerQueue = () => {
@@ -716,19 +853,30 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const addNote = useCallback((jobId: string, text: string, subject?: string, attachments?: NoteAttachment[]) => {
     const note: JobNote = { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), author: "Mike Rodriguez", text, timestamp: new Date().toISOString(), subject, attachments };
     dispatch({ type: "ADD_NOTE", payload: { jobId, note } });
-    const job = state.jobs.find((j) => j.id === jobId);
-    if (job) patchJob(jobId, { notes: [...job.notes, note] });
-  }, [state.jobs]);
+    fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(note),
+    })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+      .catch(() => {
+        dispatch({ type: "QUEUE_NOTE", payload: { id: note.id, jobId, note } });
+      });
+  }, []);
 
   const addTaskNote = useCallback((jobId: string, taskId: string, text: string, subject?: string, attachments?: NoteAttachment[]) => {
     const note: TaskNote = { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), author: "Mike Rodriguez", text, timestamp: new Date().toISOString(), subject, attachments };
     dispatch({ type: "ADD_TASK_NOTE", payload: { jobId, taskId, note } });
-    const job = state.jobs.find((j) => j.id === jobId);
-    if (job) {
-      const updatedTasks = mapTasks(job.tasks, taskId, (t) => ({ ...t, notes: [...t.notes, note] }));
-      patchJob(jobId, { tasks: updatedTasks });
-    }
-  }, [state.jobs]);
+    fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/tasks/${encodeURIComponent(taskId)}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(note),
+    })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+      .catch(() => {
+        dispatch({ type: "QUEUE_NOTE", payload: { id: note.id, jobId, taskId, note } });
+      });
+  }, []);
 
   const markTaskDone = useCallback((jobId: string, taskId: string) => {
     dispatch({ type: "MARK_TASK_DONE", payload: { jobId, taskId } });
@@ -790,8 +938,18 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "ADD_INSPECTION", payload: { jobId, item: newItem } });
   }, []);
 
-  const updateInspection = useCallback((jobId: string, itemId: string, status: InspectionItem["status"], notes: string) =>
-    dispatch({ type: "UPDATE_INSPECTION", payload: { jobId, itemId, status, notes } }), []);
+  const updateInspection = useCallback((jobId: string, itemId: string, status: InspectionItem["status"], notes: string) => {
+    dispatch({ type: "UPDATE_INSPECTION", payload: { jobId, itemId, status, notes } });
+    fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/inspections/${encodeURIComponent(itemId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, notes }),
+    })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+      .catch(() => {
+        dispatch({ type: "QUEUE_INSPECTION", payload: { jobId, itemId, status, notes } });
+      });
+  }, []);
 
   const loadInspectionTemplate = useCallback((jobId: string) => {
     const job = state.jobs.find((j) => j.id === jobId);
@@ -884,7 +1042,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = state.notifications.filter((n) => !n.read).length;
 
   return (
-    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount, pendingOdometerUpdates: state.pendingOdometerUpdates, createJob, deleteJob }}>
+    <JobsContext.Provider value={{ state, clockIn, clockOut, addNote, addTaskNote, markTaskDone, markJobComplete, markNotificationRead, markAllRead, getJob, startShift, endShift, startBreak, endBreak, startNonProd, endNonProd, assignJob, receivePart, addPart, updatePartStatus, advanceStage, addDelayNotification, addYardNotification, addInspection, updateInspection, loadInspectionTemplate, holdJob, unholdJob, updateOdometer, refreshJobs, isRefreshing, unreadCount, pendingOdometerUpdates: state.pendingOdometerUpdates, pendingNoteUpdates: state.pendingNoteUpdates, pendingInspectionUpdates: state.pendingInspectionUpdates, createJob, deleteJob }}>
       {children}
     </JobsContext.Provider>
   );
