@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useCallback, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -8,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -16,9 +18,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { LanguagePicker } from "@/components/LanguagePicker";
-import { useAuth } from "@/context/AuthContext";
+import { MOBILE_SESSION_KEY, useAuth } from "@/context/AuthContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
+
+const BASE =
+  Platform.OS === "web"
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+    : "/api";
+
+const NOTIF_PREF_KEY = "yard_notifications_enabled";
 
 type ProfileTab = "info" | "leave" | "settings";
 type LeaveStatus = "pending" | "approved" | "rejected";
@@ -159,6 +168,46 @@ export function ProfileScreen() {
   const initials = profile.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
   const [activeTab, setActiveTab] = useState<ProfileTab>("info");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [togglingNotifs, setTogglingNotifs] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(NOTIF_PREF_KEY).then((v) => {
+      if (v !== null) setNotificationsEnabled(v === "true");
+    });
+  }, []);
+
+  const handleToggleNotifications = useCallback(
+    async (value: boolean) => {
+      if (togglingNotifs) return;
+      setTogglingNotifs(true);
+      // Optimistic update
+      setNotificationsEnabled(value);
+      await AsyncStorage.setItem(NOTIF_PREF_KEY, String(value));
+      try {
+        const sessionToken = await AsyncStorage.getItem(MOBILE_SESSION_KEY);
+        if (sessionToken) {
+          const res = await fetch(`${BASE}/yard/auth/notifications-enabled`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "x-mobile-session": sessionToken,
+            },
+            body: JSON.stringify({ enabled: value }),
+          });
+          if (!res.ok) throw new Error("API error");
+        }
+      } catch {
+        // Rollback both local state and persisted preference on failure
+        setNotificationsEnabled(!value);
+        await AsyncStorage.setItem(NOTIF_PREF_KEY, String(!value));
+      } finally {
+        setTogglingNotifs(false);
+      }
+    },
+    [togglingNotifs]
+  );
+
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(SEED_LEAVE);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
@@ -378,11 +427,27 @@ export function ProfileScreen() {
                 <LanguagePicker />
               </View>
               <View style={[styles.settingRow, { borderTopColor: colors.border }]}>
-                <Feather name="bell" size={15} color={colors.mutedForeground} />
-                <Text style={[styles.settingLabel, { color: colors.foreground }]}>{t.notifications}</Text>
-                <View style={[styles.comingSoon, { backgroundColor: colors.secondary }]}>
-                  <Text style={[styles.comingSoonText, { color: colors.mutedForeground }]}>Coming soon</Text>
+                <Feather name="bell" size={15} color={notificationsEnabled ? colors.primary : colors.mutedForeground} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: colors.foreground }]}>{t.notifications}</Text>
+                  {Platform.OS !== "web" && (
+                    <Text style={[{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 1 }]}>
+                      {notificationsEnabled ? "Push alerts for new inspections" : "Notifications disabled"}
+                    </Text>
+                  )}
+                  {Platform.OS === "web" && (
+                    <Text style={[{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 1 }]}>
+                      Push notifications require the mobile app
+                    </Text>
+                  )}
                 </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={handleToggleNotifications}
+                  disabled={togglingNotifs || Platform.OS === "web"}
+                  trackColor={{ false: colors.border, true: colors.primary + "88" }}
+                  thumbColor={notificationsEnabled ? colors.primary : colors.mutedForeground}
+                />
               </View>
               <View style={[styles.settingRow, { borderTopColor: colors.border }]}>
                 <Feather name="moon" size={15} color={colors.mutedForeground} />

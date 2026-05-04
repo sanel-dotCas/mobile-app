@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, and, SQL, desc, or, inArray, isNull } from "drizzle-orm";
 import { formatVehicleName } from "../lib/formatVehicleName";
+import { notifyTechnicianAssigned, notifyMultipleTechnicians } from "../lib/pushNotifications";
 
 const router: IRouter = Router();
 
@@ -239,7 +240,19 @@ router.post("/yard/inspections", async (req, res) => {
     })
     .returning();
 
-  res.status(201).json(await resolveDetails(insp));
+  const resolved = await resolveDetails(insp);
+
+  if (assignedTo) {
+    notifyTechnicianAssigned(
+      assignedTo,
+      insp.id,
+      resolved.vehicleName,
+      insp.type,
+      resolved.locationName
+    ).catch(() => {});
+  }
+
+  res.status(201).json(resolved);
 });
 
 // ── Batch generate periodic inspections ───────────────────────────────────────
@@ -396,6 +409,20 @@ router.post("/yard/inspections/generate", async (req, res) => {
   // Resolve details for all created inspections
   const withDetails = await Promise.all(createdInspections.map(resolveDetails));
 
+  // Fire push notifications for all auto-assigned inspections (non-blocking)
+  if (autoAssign && assignedCount > 0) {
+    const assignments = withDetails
+      .filter((d) => d.assignedTo)
+      .map((d) => ({
+        technicianName: d.assignedTo!,
+        inspectionId: d.id,
+        vehicleName: d.vehicleName,
+        inspectionType: d.type,
+        locationName: d.locationName,
+      }));
+    notifyMultipleTechnicians(assignments).catch(() => {});
+  }
+
   res.json({
     created: createdInspections.length,
     assigned: assignedCount,
@@ -440,6 +467,14 @@ router.post("/yard/inspections/auto-assign", async (req, res) => {
 
   // Round-robin assign
   let assignedCount = 0;
+  const notifyAssignments: Array<{
+    technicianName: string;
+    inspectionId: number;
+    vehicleName: string;
+    inspectionType: string;
+    locationName: string | null;
+  }> = [];
+
   for (let i = 0; i < unassigned.length; i++) {
     const insp = unassigned[i];
     const techName = techList[i % techList.length];
@@ -448,7 +483,20 @@ router.post("/yard/inspections/auto-assign", async (req, res) => {
       .set({ assignedTo: techName, assignedAt: new Date() })
       .where(eq(yardInspectionsTable.id, insp.id));
     assignedCount++;
+
+    // Collect info for push notifications
+    const resolved = await resolveDetails({ ...insp, assignedTo: techName, assignedAt: new Date() });
+    notifyAssignments.push({
+      technicianName: techName,
+      inspectionId: insp.id,
+      vehicleName: resolved.vehicleName,
+      inspectionType: insp.type,
+      locationName: resolved.locationName,
+    });
   }
+
+  // Fire push notifications (non-blocking)
+  notifyMultipleTechnicians(notifyAssignments).catch(() => {});
 
   res.json({ assigned: assignedCount, total: unassigned.length });
 });
@@ -496,7 +544,20 @@ router.patch("/yard/inspections/:inspectionId", async (req, res) => {
     }
   }
 
-  res.json(await resolveDetails(updated));
+  const resolved = await resolveDetails(updated);
+
+  // Fire push notification when manually assigning a technician
+  if (assignedTo && typeof assignedTo === "string" && assignedTo.length > 0) {
+    notifyTechnicianAssigned(
+      assignedTo,
+      updated.id,
+      resolved.vehicleName,
+      updated.type,
+      resolved.locationName
+    ).catch(() => {});
+  }
+
+  res.json(resolved);
 });
 
 export default router;

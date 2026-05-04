@@ -78,6 +78,8 @@ export const yardUsersTable = pgTable("yard_users", {
   name: text("name").notNull(),
   role: yardUserRoleEnum("role").notNull().default("yard_operator"),
   locationId: integer("location_id"),
+  expoPushToken: text("expo_push_token"),
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

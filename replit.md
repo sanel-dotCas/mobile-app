@@ -159,11 +159,29 @@ Recorded in `yard_movements` table for:
 - Loads single inspection via `GET /api/yard/inspections/:id` (not batch fetch)
 - Timeline card includes "Assigned" date row when `assignedAt` is set
 
-**Notification System** (`_layout.tsx` + `JobsContext.tsx`):
+**In-app Notification System** (`_layout.tsx` + `JobsContext.tsx`):
 - `YardPDIChecker` component polls every 60 seconds for `assignedTo={userCode}&status=queued` inspections
 - New assignments are de-duplicated via AsyncStorage (`yard_pdi_notified_ids`)
 - New assignments → `ADD_YARD_NOTIFICATION` action → appears in bell notification center
 - Bell notifications show "New PDI Assignment: You've been assigned to inspect [Vehicle] — PDI #XXXXX"
+
+**Expo Push Notification System** (`artifacts/mobile/components/NotificationSetup.tsx`):
+- `NotificationSetup` component registers for push permissions on login (technician role, native only)
+- Gets Expo push token and registers it to DB via `POST /api/yard/auth/push-token` (by technician name)
+- Token stored in `yard_users.expo_push_token`; preference in `yard_users.notifications_enabled`
+- Notification tap handler routes to `/yard/inspection?id=<inspectionId>`
+- Push notifications fire from API on all 4 assignment paths: single create, batch generate, auto-assign, and manual PATCH
+- API utility: `artifacts/api-server/src/lib/pushNotifications.ts` — calls Expo push API
+- All notification calls are fire-and-forget (non-blocking, won't fail inspection routes)
+
+**Push Notification API Endpoints** (`artifacts/api-server/src/routes/yard-auth.ts`):
+- `POST /api/yard/auth/push-token` — registers Expo push token by `userId` or `technicianName`
+- `PATCH /api/yard/auth/notifications-enabled` — toggles push preference by `userId` or `technicianName`
+
+**Notification preference toggle** (`artifacts/mobile/components/ProfileScreen.tsx`):
+- Settings tab now shows a real `Switch` component for push notifications (was "Coming soon")
+- Web platform: toggle is disabled with label explaining push requires native app
+- Toggle persists to AsyncStorage locally AND syncs to DB via API
 
 ## Database Schema (lib/db/src/schema/yard.ts)
 
@@ -171,6 +189,7 @@ Key tables: `yard_users`, `yard_locations`, `yard_zones`, `yard_spots`, `yard_ve
 
 `yard_vehicles` has `inspection_interval_days` integer column (default 30).
 `yard_inspections` has `assigned_to` text and `assigned_at` timestamp columns.
+`yard_users` has `expo_push_token` text and `notifications_enabled` boolean (default true) columns.
 
 Seed data: 8 locations, 12 vehicles, 6 inspections, 10 movement entries, ~55 spots across 7 zones.
 
