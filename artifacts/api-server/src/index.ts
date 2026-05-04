@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startSubmissionCleanup } from "./lib/submissionCleanup";
+import { seedDatabase } from "./lib/seedDatabase";
 
 const rawPort = process.env["PORT"];
 
@@ -16,12 +17,19 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+seedDatabase()
+  .then(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
 
-  logger.info({ port }, "Server listening");
-  startSubmissionCleanup();
-});
+      logger.info({ port }, "Server listening");
+      startSubmissionCleanup();
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, "Database seeding failed — aborting startup");
+    process.exit(1);
+  });

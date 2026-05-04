@@ -1,66 +1,9 @@
 import { Router } from "express";
-import { db, jobsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { db, jobsTable, techniciansTable, updateTechnicianStatusSchema } from "@workspace/db";
 import { seedJobsIfEmpty } from "./jobs";
 
 const router = Router();
-
-const SEED_TECHNICIANS = [
-  {
-    id: "tech-001",
-    name: "Mike Rodriguez",
-    role: "Senior Technician",
-    avatar: "MR",
-    userCode: "MR",
-    weekHoursBooked: 32,
-    monthHoursBooked: 128,
-    specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC"],
-    completedJobs: 312,
-  },
-  {
-    id: "tech-002",
-    name: "James Wilson",
-    role: "Technician",
-    avatar: "JW",
-    userCode: "JW",
-    weekHoursBooked: 24,
-    monthHoursBooked: 98,
-    specializations: ["ELECTRICAL", "DIAGNOSTIC"],
-    completedJobs: 187,
-  },
-  {
-    id: "tech-003",
-    name: "Carlos Mendez",
-    role: "Junior Technician",
-    avatar: "CM",
-    userCode: "CM",
-    weekHoursBooked: 18,
-    monthHoursBooked: 72,
-    specializations: ["MECHANICAL"],
-    completedJobs: 95,
-  },
-  {
-    id: "tech-004",
-    name: "Ahmed Hassan",
-    role: "Technician",
-    avatar: "AH",
-    userCode: "AH",
-    weekHoursBooked: 38,
-    monthHoursBooked: 152,
-    specializations: ["MECHANICAL", "BODY", "PAINT"],
-    completedJobs: 241,
-  },
-  {
-    id: "tech-005",
-    name: "David Park",
-    role: "Senior Technician",
-    avatar: "DP",
-    userCode: "DP",
-    weekHoursBooked: 0,
-    monthHoursBooked: 0,
-    specializations: ["MECHANICAL", "ELECTRICAL", "DIAGNOSTIC", "BODY"],
-    completedJobs: 289,
-  },
-];
 
 type TaskShape = {
   workedHours?: number;
@@ -73,16 +16,19 @@ type TaskShape = {
 router.get("/technicians", async (req, res) => {
   try {
     await seedJobsIfEmpty();
-    const jobs = await db.select().from(jobsTable);
 
-    const technicians = SEED_TECHNICIANS.map((tech) => {
+    const [techRows, jobs] = await Promise.all([
+      db.select().from(techniciansTable),
+      db.select().from(jobsTable),
+    ]);
+
+    const technicians = techRows.map((tech) => {
       const assignedJobs = jobs.filter((j) => j.assignedTechnicianId === tech.id);
       const activeJob = assignedJobs.find((j) => j.status === "in_progress");
 
       let totalHoursToday = 0;
       let efficiencyWorked = 0;
       let efficiencyEstimated = 0;
-      let hasClockedInTask = false;
 
       const today = new Date().toISOString().split("T")[0];
 
@@ -103,7 +49,6 @@ router.get("/technicians", async (req, res) => {
           if (isToday && hasWork) {
             totalHoursToday += worked;
           }
-          if (task.clockedIn) hasClockedInTask = true;
         }
       }
 
@@ -112,22 +57,13 @@ router.get("/technicians", async (req, res) => {
           ? Math.min(Math.round((efficiencyWorked / efficiencyEstimated) * 100), 100)
           : 0;
 
-      let status: "active" | "idle" | "break" | "absent";
-      if (tech.id === "tech-005") {
-        status = "absent";
-      } else if (hasClockedInTask || activeJob) {
-        status = "active";
-      } else {
-        status = "idle";
-      }
-
       return {
         id: tech.id,
         name: tech.name,
         role: tech.role,
         avatar: tech.avatar,
         currentJobId: activeJob?.id ?? null,
-        status,
+        status: tech.status as "active" | "idle" | "break" | "absent",
         totalHoursToday: parseFloat(totalHoursToday.toFixed(1)),
         efficiency,
         weekHoursBooked: tech.weekHoursBooked,
@@ -144,14 +80,56 @@ router.get("/technicians", async (req, res) => {
   }
 });
 
+router.patch("/technicians/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const parsed = updateTechnicianStatusSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid status value", details: parsed.error.issues });
+      return;
+    }
+
+    const existing = await db
+      .select()
+      .from(techniciansTable)
+      .where(eq(techniciansTable.id, id));
+
+    if (existing.length === 0) {
+      res.status(404).json({ error: "Technician not found" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(techniciansTable)
+      .set({ status: parsed.data.status, updatedAt: new Date() })
+      .where(eq(techniciansTable.id, id))
+      .returning();
+
+    res.json({ technician: updated });
+  } catch (err) {
+    req.log.error(err, "Failed to update technician status");
+    res.status(500).json({ error: "Failed to update technician status" });
+  }
+});
+
 router.get("/technicians/me/stats", async (req, res) => {
   try {
     await seedJobsIfEmpty();
+
     const userCode =
       typeof req.query.userCode === "string" ? req.query.userCode.toUpperCase() : "MR";
 
-    const tech =
-      SEED_TECHNICIANS.find((t) => t.userCode === userCode) ?? SEED_TECHNICIANS[0];
+    const techRows = await db
+      .select()
+      .from(techniciansTable)
+      .where(eq(techniciansTable.userCode, userCode));
+
+    const tech = techRows[0] ?? (await db.select().from(techniciansTable))[0];
+
+    if (!tech) {
+      res.status(404).json({ error: "Technician not found" });
+      return;
+    }
 
     const jobs = await db.select().from(jobsTable);
     const assignedJobs = jobs.filter((j) => j.assignedTechnicianId === tech.id);
