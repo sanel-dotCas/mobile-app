@@ -154,7 +154,7 @@ const hoursAgo = (h: number) => new Date(_now - h * 3600000).toISOString();
 const INITIAL_JOBS: Job[] = [
   {
     id: "job-001", estimateNumber: "#00095", licensePlate: "Sert432",
-    vehicle: "BMW 325 (1995)", serviceAdvisor: "Sanel Hodzic",
+    vehicle: "1995 BMW 325", serviceAdvisor: "Sanel Hodzic",
     totalEstimatedHours: 3.5, workedHours: 1.25,
     customerNotes: "Customer requested synthetic oil. Please check tire pressure.",
     odometer: 129500, appointmentDate: "2026-04-30T16:00:00Z",
@@ -213,7 +213,7 @@ const INITIAL_JOBS: Job[] = [
   },
   {
     id: "job-002", estimateNumber: "#00102", licensePlate: "ABC123",
-    vehicle: "Toyota Camry (2019)", serviceAdvisor: "Rachel Green",
+    vehicle: "2019 Toyota Camry", serviceAdvisor: "Rachel Green",
     totalEstimatedHours: 2.0, workedHours: 0.0,
     customerNotes: "Squealing brakes when stopping.",
     odometer: 45200, appointmentDate: "2026-04-30T14:00:00Z",
@@ -239,7 +239,7 @@ const INITIAL_JOBS: Job[] = [
   },
   {
     id: "job-003", estimateNumber: "#00088", licensePlate: "XYZ789",
-    vehicle: "Honda Accord (2021)", serviceAdvisor: "David Kim",
+    vehicle: "2021 Honda Accord", serviceAdvisor: "David Kim",
     totalEstimatedHours: 1.5, workedHours: 1.5,
     customerNotes: "Routine service.", odometer: 22100,
     appointmentDate: "2026-04-29T10:00:00Z",
@@ -273,7 +273,7 @@ const INITIAL_JOBS: Job[] = [
   },
   {
     id: "job-004", estimateNumber: "#00110", licensePlate: "DEF456",
-    vehicle: "Ford F-150 (2022)", serviceAdvisor: "Sanel Hodzic",
+    vehicle: "2022 Ford F-150", serviceAdvisor: "Sanel Hodzic",
     totalEstimatedHours: 4.0, workedHours: 0.0,
     customerNotes: "Check engine light on. Rough idle.", odometer: 31800,
     appointmentDate: "2026-05-01T09:00:00Z",
@@ -313,7 +313,7 @@ const INITIAL_JOBS: Job[] = [
   },
   {
     id: "job-005", estimateNumber: "#00098", licensePlate: "GHI012",
-    vehicle: "Tesla Model 3 (2023)", serviceAdvisor: "Rachel Green",
+    vehicle: "2023 Tesla Model 3", serviceAdvisor: "Rachel Green",
     totalEstimatedHours: 0.5, workedHours: 0.25,
     customerNotes: "Charging port issue.", odometer: 8900,
     appointmentDate: "2026-04-30T11:00:00Z",
@@ -338,7 +338,7 @@ const INITIAL_JOBS: Job[] = [
   },
   {
     id: "job-006", estimateNumber: "#00115", licensePlate: "MNO234",
-    vehicle: "Mazda 6 (2020)", serviceAdvisor: "Rachel Green",
+    vehicle: "2020 Mazda 6", serviceAdvisor: "Rachel Green",
     totalEstimatedHours: 2.5, workedHours: 0.5,
     customerNotes: "Intermittent ABS warning. Also reports front-left wheel bearing noise at speed.",
     odometer: 52300,
@@ -720,12 +720,17 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         try {
           const parsed: Job[] = JSON.parse(data);
-          const migrated = parsed.map((job) => ({
-            ...job,
-            currentStageId: job.currentStageId ?? "stage-001",
-            stageHistory: job.stageHistory ?? [{ stageId: "stage-001", enteredAt: job.appointmentDate }],
-            tasks: job.tasks.map((t) => ({ ...t, parts: t.parts ?? [] })),
-          }));
+          const migrated = parsed.map((job) => {
+            const vehicleMatch = /^(.+)\s+\((\d{4})\)$/.exec(job.vehicle);
+            const vehicle = vehicleMatch ? `${vehicleMatch[2]} ${vehicleMatch[1]}` : job.vehicle;
+            return {
+              ...job,
+              vehicle,
+              currentStageId: job.currentStageId ?? "stage-001",
+              stageHistory: job.stageHistory ?? [{ stageId: "stage-001", enteredAt: job.appointmentDate }],
+              tasks: job.tasks.map((t) => ({ ...t, parts: t.parts ?? [] })),
+            };
+          });
           dispatch({ type: "SET_JOBS", payload: migrated });
         } catch {}
       }
