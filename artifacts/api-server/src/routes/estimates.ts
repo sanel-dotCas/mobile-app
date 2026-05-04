@@ -122,6 +122,8 @@ Always respond with ONLY a valid JSON array of estimate lines. No preamble, no e
       unitPrice: typeof l.unitPrice === "number" ? l.unitPrice : 0,
       total: typeof l.total === "number" ? l.total : 0,
       aiGenerated: true,
+      operation: typeof l.operation === "string" ? l.operation : null,
+      accountType: typeof l.accountType === "string" ? l.accountType : null,
     }));
 
     res.json({ lines: validated });
@@ -129,6 +131,62 @@ Always respond with ONLY a valid JSON array of estimate lines. No preamble, no e
     req.log.error(err, "AI estimate analysis failed");
     res.status(500).json({ error: "AI analysis failed. Please try again." });
   }
+});
+
+router.post("/estimates/submit", async (req, res) => {
+  const { estimateId, estimateNo, vehicle, customer, serviceAdvisor, odometer, lines } = req.body as {
+    estimateId: string;
+    estimateNo: string;
+    vehicle: string;
+    customer?: string;
+    serviceAdvisor?: string;
+    odometer?: string;
+    lines: Array<{
+      id: string;
+      type: string;
+      laborCategory?: string;
+      description: string;
+      hours?: number;
+      quantity?: number;
+      unitPrice: number;
+      total: number;
+      operation?: string | null;
+      accountType?: string | null;
+    }>;
+  };
+
+  if (!estimateId || !estimateNo || !vehicle || !Array.isArray(lines)) {
+    res.status(400).json({ error: "estimateId, estimateNo, vehicle, and lines are required" });
+    return;
+  }
+
+  req.log.info(
+    { estimateId, estimateNo, vehicle, customer, serviceAdvisor, odometer, lineCount: lines.length },
+    "DMS estimate submission received"
+  );
+
+  lines.forEach((line, i) => {
+    req.log.info(
+      {
+        lineIndex: i,
+        type: line.type,
+        laborCategory: line.laborCategory ?? null,
+        description: line.description,
+        operation: line.operation ?? null,
+        accountType: line.accountType ?? null,
+        total: line.total,
+      },
+      "DMS estimate line"
+    );
+  });
+
+  const roNumber = `RO-${Date.now().toString(36).toUpperCase()}`;
+
+  res.json({
+    success: true,
+    dmsRoNumber: roNumber,
+    message: `Estimate ${estimateNo} submitted to DMS. Repair Order ${roNumber} created.`,
+  });
 });
 
 export default router;

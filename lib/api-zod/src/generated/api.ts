@@ -8,6 +8,125 @@
 import * as zod from "zod";
 
 /**
+ * @summary List available DMS account types
+ */
+export const GetEstimateAccountTypesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  displayOrder: zod.number(),
+  isActive: zod.boolean(),
+});
+export const GetEstimateAccountTypesResponse = zod.array(
+  GetEstimateAccountTypesResponseItem,
+);
+
+/**
+ * @summary AI-powered damage estimate analysis
+ */
+export const AnalyzeEstimateBody = zod.object({
+  vehicleInfo: zod.string(),
+  damageNotes: zod.string(),
+  imagesBase64: zod.array(zod.string()).optional(),
+});
+
+export const AnalyzeEstimateResponse = zod.object({
+  lines: zod.array(
+    zod.object({
+      id: zod.string(),
+      type: zod.enum(["labor", "part", "material"]),
+      laborCategory: zod
+        .enum([
+          "body",
+          "refinish",
+          "mechanical",
+          "frame",
+          "glass",
+          "electrical",
+          "trim",
+          "other",
+        ])
+        .nullish(),
+      description: zod.string(),
+      hours: zod.number().nullish(),
+      quantity: zod.number().nullish(),
+      unitPrice: zod.number(),
+      total: zod.number(),
+      aiGenerated: zod.boolean().nullish(),
+      isPackage: zod.boolean().nullish(),
+      packageName: zod.string().nullish(),
+      operation: zod
+        .string()
+        .nullish()
+        .describe(
+          "The repair operation type (e.g. Repair, Replace, Refinish, Supplement, Other)",
+        ),
+      accountType: zod
+        .string()
+        .nullish()
+        .describe("The DMS account type code (e.g. CP, WR, IN, SL)"),
+    }),
+  ),
+});
+
+/**
+ * @summary Submit an estimate to the DMS
+ */
+export const SubmitEstimateToDmsBody = zod.object({
+  estimateId: zod.string(),
+  estimateNo: zod.string(),
+  vehicle: zod.string(),
+  customer: zod.string().optional(),
+  serviceAdvisor: zod.string().optional(),
+  odometer: zod.string().optional(),
+  lines: zod.array(
+    zod.object({
+      id: zod.string(),
+      type: zod.enum(["labor", "part", "material"]),
+      laborCategory: zod
+        .enum([
+          "body",
+          "refinish",
+          "mechanical",
+          "frame",
+          "glass",
+          "electrical",
+          "trim",
+          "other",
+        ])
+        .nullish(),
+      description: zod.string(),
+      hours: zod.number().nullish(),
+      quantity: zod.number().nullish(),
+      unitPrice: zod.number(),
+      total: zod.number(),
+      aiGenerated: zod.boolean().nullish(),
+      isPackage: zod.boolean().nullish(),
+      packageName: zod.string().nullish(),
+      operation: zod
+        .string()
+        .nullish()
+        .describe(
+          "The repair operation type (e.g. Repair, Replace, Refinish, Supplement, Other)",
+        ),
+      accountType: zod
+        .string()
+        .nullish()
+        .describe("The DMS account type code (e.g. CP, WR, IN, SL)"),
+    }),
+  ),
+});
+
+export const SubmitEstimateToDmsResponse = zod.object({
+  success: zod.boolean(),
+  dmsRoNumber: zod
+    .string()
+    .nullish()
+    .describe("The Repair Order number assigned by the DMS"),
+  message: zod.string(),
+});
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

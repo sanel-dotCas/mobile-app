@@ -17,14 +17,19 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AnalyzeEstimateRequest,
+  AnalyzeEstimateResponse,
   CreateYardInspectionBody,
   CreateYardLocationBody,
   CreateYardVehicleBody,
+  DmsAccountType,
   GetLocationMovementFeedParams,
   HealthStatus,
   ListYardInspectionsParams,
   ListYardVehiclesParams,
   MovementEntry,
+  SubmitEstimateRequest,
+  SubmitEstimateResponse,
   UpdateYardInspectionBody,
   UpdateYardSpotBody,
   UpdateYardVehicleBody,
@@ -48,6 +53,254 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary List available DMS account types
+ */
+export const getGetEstimateAccountTypesUrl = () => {
+  return `/api/estimates/account-types`;
+};
+
+export const getEstimateAccountTypes = async (
+  options?: RequestInit,
+): Promise<DmsAccountType[]> => {
+  return customFetch<DmsAccountType[]>(getGetEstimateAccountTypesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEstimateAccountTypesQueryKey = () => {
+  return [`/api/estimates/account-types`] as const;
+};
+
+export const getGetEstimateAccountTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEstimateAccountTypes>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEstimateAccountTypes>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEstimateAccountTypesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEstimateAccountTypes>>
+  > = ({ signal }) => getEstimateAccountTypes({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEstimateAccountTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEstimateAccountTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEstimateAccountTypes>>
+>;
+export type GetEstimateAccountTypesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List available DMS account types
+ */
+
+export function useGetEstimateAccountTypes<
+  TData = Awaited<ReturnType<typeof getEstimateAccountTypes>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEstimateAccountTypes>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEstimateAccountTypesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary AI-powered damage estimate analysis
+ */
+export const getAnalyzeEstimateUrl = () => {
+  return `/api/estimates/analyze`;
+};
+
+export const analyzeEstimate = async (
+  analyzeEstimateRequest: AnalyzeEstimateRequest,
+  options?: RequestInit,
+): Promise<AnalyzeEstimateResponse> => {
+  return customFetch<AnalyzeEstimateResponse>(getAnalyzeEstimateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(analyzeEstimateRequest),
+  });
+};
+
+export const getAnalyzeEstimateMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeEstimate>>,
+    TError,
+    { data: BodyType<AnalyzeEstimateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof analyzeEstimate>>,
+  TError,
+  { data: BodyType<AnalyzeEstimateRequest> },
+  TContext
+> => {
+  const mutationKey = ["analyzeEstimate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof analyzeEstimate>>,
+    { data: BodyType<AnalyzeEstimateRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return analyzeEstimate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AnalyzeEstimateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof analyzeEstimate>>
+>;
+export type AnalyzeEstimateMutationBody = BodyType<AnalyzeEstimateRequest>;
+export type AnalyzeEstimateMutationError = ErrorType<void>;
+
+/**
+ * @summary AI-powered damage estimate analysis
+ */
+export const useAnalyzeEstimate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeEstimate>>,
+    TError,
+    { data: BodyType<AnalyzeEstimateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof analyzeEstimate>>,
+  TError,
+  { data: BodyType<AnalyzeEstimateRequest> },
+  TContext
+> => {
+  return useMutation(getAnalyzeEstimateMutationOptions(options));
+};
+
+/**
+ * @summary Submit an estimate to the DMS
+ */
+export const getSubmitEstimateToDmsUrl = () => {
+  return `/api/estimates/submit`;
+};
+
+export const submitEstimateToDms = async (
+  submitEstimateRequest: SubmitEstimateRequest,
+  options?: RequestInit,
+): Promise<SubmitEstimateResponse> => {
+  return customFetch<SubmitEstimateResponse>(getSubmitEstimateToDmsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(submitEstimateRequest),
+  });
+};
+
+export const getSubmitEstimateToDmsMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitEstimateToDms>>,
+    TError,
+    { data: BodyType<SubmitEstimateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitEstimateToDms>>,
+  TError,
+  { data: BodyType<SubmitEstimateRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitEstimateToDms"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitEstimateToDms>>,
+    { data: BodyType<SubmitEstimateRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitEstimateToDms(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitEstimateToDmsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitEstimateToDms>>
+>;
+export type SubmitEstimateToDmsMutationBody = BodyType<SubmitEstimateRequest>;
+export type SubmitEstimateToDmsMutationError = ErrorType<void>;
+
+/**
+ * @summary Submit an estimate to the DMS
+ */
+export const useSubmitEstimateToDms = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitEstimateToDms>>,
+    TError,
+    { data: BodyType<SubmitEstimateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitEstimateToDms>>,
+  TError,
+  { data: BodyType<SubmitEstimateRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitEstimateToDmsMutationOptions(options));
+};
 
 /**
  * @summary Health check

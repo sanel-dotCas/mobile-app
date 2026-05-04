@@ -340,6 +340,83 @@ export interface UpdateYardInspectionBody {
   assignedTo?: string;
 }
 
+export interface DmsAccountType {
+  id: number;
+  name: string;
+  code: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+export type EstimateLineType =
+  (typeof EstimateLineType)[keyof typeof EstimateLineType];
+
+export const EstimateLineType = {
+  labor: "labor",
+  part: "part",
+  material: "material",
+} as const;
+
+export type EstimateLineLaborCategory =
+  | (typeof EstimateLineLaborCategory)[keyof typeof EstimateLineLaborCategory]
+  | null;
+
+export const EstimateLineLaborCategory = {
+  body: "body",
+  refinish: "refinish",
+  mechanical: "mechanical",
+  frame: "frame",
+  glass: "glass",
+  electrical: "electrical",
+  trim: "trim",
+  other: "other",
+} as const;
+
+export interface EstimateLine {
+  id: string;
+  type: EstimateLineType;
+  laborCategory?: EstimateLineLaborCategory;
+  description: string;
+  hours?: number | null;
+  quantity?: number | null;
+  unitPrice: number;
+  total: number;
+  aiGenerated?: boolean | null;
+  isPackage?: boolean | null;
+  packageName?: string | null;
+  /** The repair operation type (e.g. Repair, Replace, Refinish, Supplement, Other) */
+  operation?: string | null;
+  /** The DMS account type code (e.g. CP, WR, IN, SL) */
+  accountType?: string | null;
+}
+
+export interface AnalyzeEstimateRequest {
+  vehicleInfo: string;
+  damageNotes: string;
+  imagesBase64?: string[];
+}
+
+export interface AnalyzeEstimateResponse {
+  lines: EstimateLine[];
+}
+
+export interface SubmitEstimateRequest {
+  estimateId: string;
+  estimateNo: string;
+  vehicle: string;
+  customer?: string;
+  serviceAdvisor?: string;
+  odometer?: string;
+  lines: EstimateLine[];
+}
+
+export interface SubmitEstimateResponse {
+  success: boolean;
+  /** The Repair Order number assigned by the DMS */
+  dmsRoNumber?: string | null;
+  message: string;
+}
+
 export type GetLocationMovementFeedParams = {
   limit?: number;
 };

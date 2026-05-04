@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: estimates
+    description: Estimate analysis and DMS submission
   - name: yard-auth
     description: Yard authentication
   - name: yard-locations
@@ -23,6 +25,68 @@ tags:
   - name: yard-dashboard
     description: Dashboard statistics
 paths:
+  # ── Estimates ─────────────────────────────────────────────────────────────
+  /estimates/account-types:
+    get:
+      operationId: getEstimateAccountTypes
+      tags: [estimates]
+      summary: List available DMS account types
+      responses:
+        "200":
+          description: List of account types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DmsAccountType"
+
+  /estimates/analyze:
+    post:
+      operationId: analyzeEstimate
+      tags: [estimates]
+      summary: AI-powered damage estimate analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeEstimateRequest"
+      responses:
+        "200":
+          description: Generated estimate lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzeEstimateResponse"
+        "400":
+          description: Missing required fields
+        "500":
+          description: AI analysis failed
+
+  /estimates/submit:
+    post:
+      operationId: submitEstimateToDms
+      tags: [estimates]
+      summary: Submit an estimate to the DMS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitEstimateRequest"
+      responses:
+        "200":
+          description: Submission result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitEstimateResponse"
+        "400":
+          description: Invalid request
+        "500":
+          description: DMS submission failed
+
   /healthz:
     get:
       operationId: healthCheck
@@ -784,6 +848,121 @@ components:
           type: string
         assignedTo:
           type: string
+
+    # ── Estimates ────────────────────────────────────────────────────────────
+    DmsAccountType:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        code:
+          type: string
+        displayOrder:
+          type: integer
+        isActive:
+          type: boolean
+      required: [id, name, code, displayOrder, isActive]
+
+    EstimateLine:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [labor, part, material]
+        laborCategory:
+          type: string
+          enum: [body, refinish, mechanical, frame, glass, electrical, trim, other]
+          nullable: true
+        description:
+          type: string
+        hours:
+          type: number
+          nullable: true
+        quantity:
+          type: number
+          nullable: true
+        unitPrice:
+          type: number
+        total:
+          type: number
+        aiGenerated:
+          type: boolean
+          nullable: true
+        isPackage:
+          type: boolean
+          nullable: true
+        packageName:
+          type: string
+          nullable: true
+        operation:
+          type: string
+          nullable: true
+          description: The repair operation type (e.g. Repair, Replace, Refinish, Supplement, Other)
+        accountType:
+          type: string
+          nullable: true
+          description: The DMS account type code (e.g. CP, WR, IN, SL)
+      required: [id, type, description, unitPrice, total]
+
+    AnalyzeEstimateRequest:
+      type: object
+      properties:
+        vehicleInfo:
+          type: string
+        damageNotes:
+          type: string
+        imagesBase64:
+          type: array
+          items:
+            type: string
+      required: [vehicleInfo, damageNotes]
+
+    AnalyzeEstimateResponse:
+      type: object
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLine"
+      required: [lines]
+
+    SubmitEstimateRequest:
+      type: object
+      properties:
+        estimateId:
+          type: string
+        estimateNo:
+          type: string
+        vehicle:
+          type: string
+        customer:
+          type: string
+        serviceAdvisor:
+          type: string
+        odometer:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLine"
+      required: [estimateId, estimateNo, vehicle, lines]
+
+    SubmitEstimateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        dmsRoNumber:
+          type: string
+          nullable: true
+          description: The Repair Order number assigned by the DMS
+        message:
+          type: string
+      required: [success, message]
 
     # ── Movement ──────────────────────────────────────────────────────────────
     MovementEntry:
