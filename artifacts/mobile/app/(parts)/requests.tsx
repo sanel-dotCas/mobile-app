@@ -119,23 +119,11 @@ export default function PartsRequests() {
   const [selectedRo, setSelectedRo] = useState<RoRequest | null>(null);
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueSuccess, setIssueSuccess] = useState(false);
-  const [newRoModal, setNewRoModal] = useState(false);
   const [smartIssueLoading, setSmartIssueLoading] = useState(false);
   const [smartIssueResult, setSmartIssueResult] = useState<SmartIssueResult | null>(null);
   const [smartResultModal, setSmartResultModal] = useState(false);
   const [smartSupplierName, setSmartSupplierName] = useState("");
   const [showSupplierInput, setShowSupplierInput] = useState(false);
-
-  // New RO form
-  const [roNumber, setRoNumber] = useState("");
-  const [roDept, setRoDept] = useState<"Service" | "Body Shop">("Service");
-  const [roNotes, setRoNotes] = useState("");
-  const [roItems, setRoItems] = useState<Array<{ partNumber: string; partName: string; qty: string }>>([]);
-  const [roSubmitting, setRoSubmitting] = useState(false);
-  const [roScanInput, setRoScanInput] = useState("");
-  const [roScanLoading, setRoScanLoading] = useState(false);
-  const [roScanError, setRoScanError] = useState("");
-  const roScanRef = useRef<TextInput>(null);
 
   // Transfers
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -328,26 +316,6 @@ export default function PartsRequests() {
     }
   };
 
-  const handleRoScan = async () => {
-    if (!roScanInput.trim()) return;
-    setRoScanLoading(true);
-    setRoScanError("");
-    try {
-      const res = await fetch(`${BASE}/parts/items/by-number/${roScanInput.trim().toUpperCase()}`);
-      if (res.ok) {
-        const part = await res.json();
-        setRoItems((prev) => [...prev, { partNumber: part.partNumber, partName: part.name, qty: "1" }]);
-        setRoScanInput("");
-      } else {
-        setRoScanError("Part not found");
-      }
-    } catch {
-      setRoScanError("Connection error");
-    } finally {
-      setRoScanLoading(false);
-    }
-  };
-
   const handleTrfScan = async () => {
     if (!trfScanInput.trim()) return;
     setTrfScanLoading(true);
@@ -365,33 +333,6 @@ export default function PartsRequests() {
       setTrfScanError("Connection error");
     } finally {
       setTrfScanLoading(false);
-    }
-  };
-
-  const submitRoRequest = async () => {
-    if (!roNumber.trim() || roItems.length === 0) return;
-    setRoSubmitting(true);
-    try {
-      const res = await fetch(`${BASE}/parts/ro-requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roNumber: roNumber.trim(),
-          department: roDept,
-          notes: roNotes.trim() || null,
-          requestedBy: userCode,
-          items: roItems.map((i) => ({ partNumber: i.partNumber, partName: i.partName, qtyRequested: parseInt(i.qty) || 1 })),
-        }),
-      });
-      if (res.ok) {
-        setNewRoModal(false);
-        setRoNumber(""); setRoDept("Service"); setRoNotes(""); setRoItems([]);
-        loadRo();
-      }
-    } catch {
-      //
-    } finally {
-      setRoSubmitting(false);
     }
   };
 
@@ -443,14 +384,6 @@ export default function PartsRequests() {
 
       {tab === "ro" ? (
         <>
-          <Pressable
-            style={[styles.newBtn, { backgroundColor: "#7c3aed" }]}
-            onPress={() => { setNewRoModal(true); setRoItems([]); }}
-          >
-            <Feather name="plus" size={16} color="#fff" />
-            <Text style={styles.newBtnText}>New RO Request</Text>
-          </Pressable>
-
           {roLoading ? (
             <View style={styles.center}><ActivityIndicator size="large" color="#7c3aed" /></View>
           ) : (
@@ -787,108 +720,6 @@ export default function PartsRequests() {
             </ScrollView>
           </View>
         )}
-      </Modal>
-
-      {/* New RO Request Modal */}
-      <Modal visible={newRoModal} animationType="slide" onRequestClose={() => setNewRoModal(false)}>
-        <View style={[styles.screen, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border, backgroundColor: colors.headerBg }]}>
-            <Pressable onPress={() => setNewRoModal(false)} style={styles.backBtn}>
-              <Feather name="x" size={22} color={colors.foreground} />
-            </Pressable>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>New RO Parts Request</Text>
-          </View>
-          <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: bottomPad + 100 }]} keyboardShouldPersistTaps="handled">
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>RO Number *</Text>
-            <TextInput
-              style={[styles.formInput, { color: colors.foreground, borderColor: colors.border }]}
-              placeholder="e.g. RO-2026-0055"
-              placeholderTextColor={colors.mutedForeground}
-              value={roNumber}
-              onChangeText={setRoNumber}
-              autoCapitalize="characters"
-            />
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Department</Text>
-            <View style={styles.deptRow}>
-              {(["Service", "Body Shop"] as const).map((d) => (
-                <Pressable
-                  key={d}
-                  onPress={() => setRoDept(d)}
-                  style={[styles.deptChip, { backgroundColor: roDept === d ? "#7c3aed" : colors.secondary, borderColor: roDept === d ? "#7c3aed" : colors.border }]}
-                >
-                  <Text style={[styles.deptChipText, { color: roDept === d ? "#fff" : colors.foreground }]}>{d}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Notes</Text>
-            <TextInput
-              style={[styles.formInput, { color: colors.foreground, borderColor: colors.border }]}
-              placeholder="Job description / notes"
-              placeholderTextColor={colors.mutedForeground}
-              value={roNotes}
-              onChangeText={setRoNotes}
-              multiline
-            />
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Parts Required</Text>
-            <View style={styles.scanRow}>
-              <TextInput
-                ref={roScanRef}
-                style={[styles.scanInputSmall, { color: colors.foreground, borderColor: colors.border, flex: 1 }]}
-                placeholder="Scan or type part number"
-                placeholderTextColor={colors.mutedForeground}
-                value={roScanInput}
-                onChangeText={(v) => { setRoScanInput(v); setRoScanError(""); }}
-                autoCapitalize="characters"
-                onSubmitEditing={handleRoScan}
-                returnKeyType="search"
-              />
-              <Pressable
-                style={[styles.scanActionBtn, { backgroundColor: roScanLoading ? "#7c3aed80" : "#7c3aed" }]}
-                onPress={handleRoScan}
-                disabled={roScanLoading}
-              >
-                {roScanLoading ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="plus" size={18} color="#fff" />}
-              </Pressable>
-            </View>
-            {roScanError ? <Text style={styles.scanError}>{roScanError}</Text> : null}
-            {roItems.map((item, idx) => (
-              <View key={idx} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.cardRow}>
-                  <View style={[styles.pnBadge, { backgroundColor: "#7c3aed20" }]}>
-                    <Text style={[styles.pnText, { color: "#7c3aed" }]}>{item.partNumber}</Text>
-                  </View>
-                  <Pressable onPress={() => setRoItems((prev) => prev.filter((_, i) => i !== idx))} hitSlop={8}>
-                    <Feather name="trash-2" size={15} color="#ef4444" />
-                  </Pressable>
-                </View>
-                <Text style={[styles.itemName, { color: colors.foreground }]}>{item.partName}</Text>
-                <View style={styles.qtyRow}>
-                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 0 }]}>Qty:</Text>
-                  <TextInput
-                    style={[styles.qtyInputSmall, { color: colors.foreground, borderColor: colors.border }]}
-                    value={item.qty}
-                    onChangeText={(v) => setRoItems((prev) => prev.map((p, i) => i === idx ? { ...p, qty: v } : p))}
-                    keyboardType="number-pad"
-                  />
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-          <View style={[styles.modalFooter, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
-            <Pressable
-              style={[styles.actionBtn, { backgroundColor: roSubmitting || !roNumber.trim() || roItems.length === 0 ? "#7c3aed80" : "#7c3aed" }]}
-              onPress={submitRoRequest}
-              disabled={roSubmitting || !roNumber.trim() || roItems.length === 0}
-            >
-              {roSubmitting ? <ActivityIndicator size="small" color="#fff" /> : (
-                <>
-                  <Feather name="send" size={18} color="#fff" />
-                  <Text style={styles.actionBtnText}>Submit Request</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-        </View>
       </Modal>
 
       {/* New Transfer Modal */}
