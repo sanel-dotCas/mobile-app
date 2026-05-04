@@ -137,12 +137,126 @@ function InspectionBadge({ rec }: { rec: InspectionRec }) {
   );
 }
 
+// Maps 2-letter technician code → full name (must stay in sync with jobs.tsx)
+const CODE_TO_NAME: Record<string, string> = {
+  MR: "Mike Rodriguez",
+  JW: "James Wilson",
+  CM: "Carlos Mendez",
+  AH: "Ahmed Hassan",
+  DP: "David Park",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  "pre-inspection": "Pre-Inspection",
+  secondary: "Secondary",
+  "final-quality": "Final Quality",
+  "new-arrival": "New Arrival PDI",
+  "used-arrival": "Used Arrival PDI",
+  "periodic-fluid": "Periodic — Fluid Check",
+  "periodic-damage": "Periodic — Damage Scan",
+  "start-and-run": "Start & Run Cycle",
+};
+
+// ── Technician-only view: shows only their own assigned inspections ────────────
+function TechInspectionsView() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { userCode } = useAuth();
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const techName = CODE_TO_NAME[userCode] ?? null;
+
+  const [inspections, setInspections] = useState<YardInspection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    try {
+      if (!techName) { setInspections([]); return; }
+      const params = new URLSearchParams({ assignedTo: techName, limit: "50" });
+      const data = await fetchJson(`/yard/inspections?${params}`);
+      setInspections(data.inspections ?? []);
+    } catch {
+      setInspections([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [techName]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AppHeader title="My Inspections" subtitle="Assigned yard inspections" showNotifications={false} />
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={inspections}
+          keyExtractor={(i) => String(i.id)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
+          contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 16 }]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Feather name="clipboard" size={40} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No inspections assigned to you</Text>
+            </View>
+          }
+          renderItem={({ item: insp }) => (
+            <Pressable
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push({ pathname: "/yard/inspection", params: { id: String(insp.id) } })}
+            >
+              <View style={styles.cardRow}>
+                <View style={styles.cardLeft}>
+                  <View style={styles.inspTopRow}>
+                    <Text style={[styles.inspNum, { color: "#7c3aed" }]}>#{insp.inspectionNumber}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: INSP_BG[insp.status] }]}>
+                      <Text style={[styles.statusText, { color: INSP_COLOR[insp.status] }]}>
+                        {INSP_LABEL[insp.status]}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.cardTitle, { color: colors.foreground }]}>{insp.vehicleName}</Text>
+                  <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
+                    Inspection · {TYPE_LABELS[insp.type] ?? insp.type}
+                  </Text>
+                  {insp.locationName && (
+                    <View style={styles.locationRow}>
+                      <Feather name="map-pin" size={11} color={colors.mutedForeground} />
+                      <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{insp.locationName}</Text>
+                    </View>
+                  )}
+                  <Text style={[styles.cardDate, { color: colors.mutedForeground }]}>
+                    {new Date(insp.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+              </View>
+            </Pressable>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
 export default function YardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { role } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  // Technicians only see their own assigned inspections — no inventory access
+  if (role === "technician") return <TechInspectionsView />;
 
   // Permissions derived from DMS role
   const canViewPrice = role === "supervisor";
