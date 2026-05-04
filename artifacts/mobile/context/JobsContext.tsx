@@ -684,7 +684,7 @@ interface JobsContextValue {
   loadInspectionTemplate: (jobId: string) => void;
   holdJob: (jobId: string) => void;
   unholdJob: (jobId: string) => void;
-  updateOdometer: (jobId: string, odometer: number) => void;
+  updateOdometer: (jobId: string, odometer: number) => Promise<void>;
   unreadCount: number;
 }
 
@@ -824,20 +824,19 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const holdJob = useCallback((jobId: string) => dispatch({ type: "HOLD_JOB", payload: { jobId } }), []);
   const unholdJob = useCallback((jobId: string) => dispatch({ type: "UNHOLD_JOB", payload: { jobId } }), []);
 
-  const updateOdometer = useCallback((jobId: string, odometer: number) => {
+  const updateOdometer = useCallback((jobId: string, odometer: number): Promise<void> => {
     dispatch({ type: "UPDATE_ODOMETER", payload: { jobId, odometer } });
-    fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/odometer`, {
+    return fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/odometer`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ odometer }),
     })
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`Server error ${r.status}`)))
       .then((data: { id: string; odometer: number }) => {
         if (data.odometer !== odometer) {
           dispatch({ type: "UPDATE_ODOMETER", payload: { jobId: data.id, odometer: data.odometer } });
         }
-      })
-      .catch(() => {});
+      });
   }, []);
 
   const unreadCount = state.notifications.filter((n) => !n.read).length;

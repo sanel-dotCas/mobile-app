@@ -197,10 +197,22 @@ export default function JobDetailScreen() {
   const handleConfirmMileage = () => {
     const parsed = parseInt(mileageInput.replace(/\D/g, ""), 10);
     if (!isNaN(parsed) && parsed >= 0) {
-      updateOdometer(job.id, parsed);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setMileageModalVisible(false);
+      updateOdometer(job.id, parsed)
+        .then(() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        })
+        .catch(() => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert(
+            "Failed to Save Odometer",
+            "The correction could not be saved to the server. Please check your connection and try again.",
+            [{ text: "OK" }]
+          );
+        });
+    } else {
+      setMileageModalVisible(false);
     }
-    setMileageModalVisible(false);
   };
 
   const TABS: Array<{ key: TabKey; label: string; icon: string }> = [
