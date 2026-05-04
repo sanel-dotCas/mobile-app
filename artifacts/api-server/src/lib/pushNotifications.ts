@@ -200,6 +200,42 @@ export async function notifyTechnicianUnassigned(
   ]);
 }
 
+export async function notifySupervisorsFailedInspection(
+  inspectionId: number,
+  vehicleName: string,
+  inspectionType: string,
+  locationName: string | null,
+  failedCount: number,
+  technicianName: string | null,
+): Promise<void> {
+  const supervisors = await db
+    .select({
+      expoPushToken: yardUsersTable.expoPushToken,
+      notificationsEnabled: yardUsersTable.notificationsEnabled,
+    })
+    .from(yardUsersTable)
+    .where(or(
+      eq(yardUsersTable.role, "yard_manager"),
+      eq(yardUsersTable.role, "admin"),
+    ));
+
+  const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
+  const locationPart = locationName ? ` · ${locationName}` : "";
+  const techPart = technicianName ? ` by ${technicianName}` : "";
+  const messages: PushMessage[] = supervisors
+    .filter((u) => u.expoPushToken && u.notificationsEnabled)
+    .map((u) => ({
+      to: u.expoPushToken!,
+      title: `⚠️ Inspection Failed Items (${failedCount})`,
+      body: `${vehicleName}${locationPart} — ${typeLabel}${techPart}. ${failedCount} item${failedCount !== 1 ? "s" : ""} failed. Review required.`,
+      data: { inspectionId, screen: "inspection" },
+      sound: "default" as const,
+      priority: "high" as const,
+    }));
+
+  await sendExpoPushNotification(messages);
+}
+
 const INSPECTION_TYPE_LABELS: Record<string, string> = {
   "pre-inspection": "Pre-Inspection (PDI)",
   "secondary": "Secondary Check",

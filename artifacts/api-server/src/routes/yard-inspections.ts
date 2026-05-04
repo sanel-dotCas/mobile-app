@@ -9,7 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, and, SQL, desc, or, inArray, isNull } from "drizzle-orm";
 import { formatVehicleName } from "../lib/formatVehicleName";
-import { notifyTechnicianAssigned, notifyMultipleTechnicians, notifyTechnicianReassigned, notifyTechnicianUnassigned } from "../lib/pushNotifications";
+import { notifyTechnicianAssigned, notifyMultipleTechnicians, notifyTechnicianReassigned, notifyTechnicianUnassigned, notifySupervisorsFailedInspection } from "../lib/pushNotifications";
 
 const router: IRouter = Router();
 
@@ -561,6 +561,30 @@ router.patch("/yard/inspections/:inspectionId", async (req, res) => {
         .update(yardVehiclesTable)
         .set({ status: "available" })
         .where(eq(yardVehiclesTable.id, vehicle.id));
+    }
+
+    // Count failed items from bodyDamage field
+    const failedCount = (() => {
+      if (!updated.bodyDamage) return 0;
+      const match = updated.bodyDamage.match(/^Failed items:\n([\s\S]+)$/);
+      if (!match) return 0;
+      return match[1].split("\n").filter(Boolean).length;
+    })();
+
+    if (failedCount > 0) {
+      const locationName = await (async () => {
+        if (!updated.locationId) return null;
+        const [loc] = await db.select().from(yardLocationsTable).where(eq(yardLocationsTable.id, updated.locationId)).limit(1);
+        return loc?.name ?? null;
+      })();
+      notifySupervisorsFailedInspection(
+        updated.id,
+        formatVehicleName(vehicle),
+        updated.type,
+        locationName,
+        failedCount,
+        updated.assignedTo ?? null,
+      ).catch(() => {});
     }
   }
 

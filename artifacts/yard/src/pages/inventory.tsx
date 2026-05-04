@@ -54,6 +54,22 @@ type Vehicle = {
   status: string; locationId: number | null; locationName: string | null;
   spotId: number | null; spotCode: string | null; zoneName: string | null;
   price: number | null; arrivedAt: string | null;
+  inspectionUrgency: "overdue" | "due-soon" | "ok" | null;
+  daysUntilInspectionDue: number | null;
+};
+
+type InspectionLogEntry = {
+  id: number;
+  inspectionNumber: string;
+  type: string;
+  completedAt: string | null;
+  assignedTo: string | null;
+  notes: string | null;
+  bodyDamage: string | null;
+  checklist: string | null;
+  attachments: Array<{ url: string; name: string; mimeType: string }>;
+  fuelPercentage: number | null;
+  onTime: boolean | null;
 };
 
 type InspectionHistory = {
@@ -65,6 +81,7 @@ type InspectionHistory = {
   nextDueDate: string;
   daysRemaining: number;
   urgency: "overdue" | "due-soon" | "ok";
+  history: InspectionLogEntry[];
 };
 
 function AddVehicleModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -492,9 +509,20 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
         </td>
         <td className="px-4 py-3 text-xs text-muted-foreground font-mono hidden sm:table-cell">{vehicle.vin}</td>
         <td className="px-4 py-3">
-          <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_STYLES[vehicle.status] ?? "bg-muted text-muted-foreground"}`}>
-            {vehicle.status?.replace(/_/g, " ")}
-          </span>
+          <div className="flex flex-col gap-1">
+            <span className={`text-xs px-2 py-0.5 rounded font-medium w-fit ${STATUS_STYLES[vehicle.status] ?? "bg-muted text-muted-foreground"}`}>
+              {vehicle.status?.replace(/_/g, " ")}
+            </span>
+            {vehicle.status !== "sold" && vehicle.inspectionUrgency && (
+              <span className={`text-xs font-medium ${URGENCY_STYLES[vehicle.inspectionUrgency]}`}>
+                {vehicle.inspectionUrgency === "overdue"
+                  ? `Insp. overdue ${Math.abs(vehicle.daysUntilInspectionDue ?? 0)}d`
+                  : vehicle.inspectionUrgency === "due-soon"
+                  ? `Insp. due in ${vehicle.daysUntilInspectionDue}d`
+                  : null}
+              </span>
+            )}
+          </div>
         </td>
         <td className="px-4 py-3 text-xs text-muted-foreground hidden md:table-cell">
           {vehicle.locationName ?? "—"}
@@ -557,44 +585,117 @@ function VehicleRow({ vehicle, canViewPrice }: { vehicle: Vehicle; canViewPrice:
                   Inspection History
                 </p>
                 {inspHistory ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> Last Inspected
-                      </p>
-                      <p className="text-foreground font-medium">
-                        {inspHistory.lastInspectedAt
-                          ? new Date(inspHistory.lastInspectedAt).toLocaleDateString()
-                          : "Never"}
-                      </p>
+                  <div className="space-y-3">
+                    {/* Next-due summary row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> Last Inspected
+                        </p>
+                        <p className="text-foreground font-medium">
+                          {inspHistory.lastInspectedAt
+                            ? new Date(inspHistory.lastInspectedAt).toLocaleDateString()
+                            : "Never"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" /> Next Due
+                        </p>
+                        <p className={`font-medium ${urgencyClass}`}>
+                          {new Date(inspHistory.nextDueDate).toLocaleDateString()}
+                          {inspHistory.daysRemaining < 0
+                            ? ` (${Math.abs(inspHistory.daysRemaining)}d overdue)`
+                            : inspHistory.daysRemaining <= 7
+                            ? ` (in ${inspHistory.daysRemaining}d)`
+                            : ""}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground mb-0.5">Last Type</p>
+                        <p className="text-foreground">
+                          {inspHistory.lastInspectionType
+                            ? TYPE_LABELS[inspHistory.lastInspectionType] ?? inspHistory.lastInspectionType
+                            : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
+                          <User className="w-3 h-3" /> Technician
+                        </p>
+                        <p className="text-foreground">{inspHistory.lastInspectionTechnician ?? "—"}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
-                        <Calendar className="w-3 h-3" /> Next Due
-                      </p>
-                      <p className={`font-medium ${urgencyClass}`}>
-                        {new Date(inspHistory.nextDueDate).toLocaleDateString()}
-                        {inspHistory.daysRemaining < 0
-                          ? ` (${Math.abs(inspHistory.daysRemaining)}d overdue)`
-                          : inspHistory.daysRemaining <= 7
-                          ? ` (in ${inspHistory.daysRemaining}d)`
-                          : ""}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-0.5">Last Type</p>
-                      <p className="text-foreground">
-                        {inspHistory.lastInspectionType
-                          ? TYPE_LABELS[inspHistory.lastInspectionType] ?? inspHistory.lastInspectionType
-                          : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-0.5 flex items-center gap-1">
-                        <User className="w-3 h-3" /> Technician
-                      </p>
-                      <p className="text-foreground">{inspHistory.lastInspectionTechnician ?? "—"}</p>
-                    </div>
+
+                    {/* Full inspection log */}
+                    {(inspHistory.history ?? []).length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground font-medium">Past Inspections</p>
+                        {(inspHistory.history ?? []).map((entry) => {
+                          const failedItems = (() => {
+                            if (!entry.bodyDamage) return [];
+                            const match = entry.bodyDamage.match(/^Failed items:\n([\s\S]+)$/);
+                            if (!match) return [];
+                            return match[1].split("\n").filter(Boolean);
+                          })();
+                          const passFailMatch = entry.notes?.match(/Checklist: (\d+) passed, (\d+) failed/);
+                          const passCount = passFailMatch ? Number(passFailMatch[1]) : null;
+                          const failCount = passFailMatch ? Number(passFailMatch[2]) : null;
+                          return (
+                            <div key={entry.id} className="border border-border rounded p-2.5 text-xs space-y-1.5 bg-background">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-foreground">
+                                    {TYPE_LABELS[entry.type] ?? entry.type}
+                                  </span>
+                                  <span className="text-muted-foreground font-mono">#{entry.inspectionNumber}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {entry.onTime === true && (
+                                    <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/15 text-emerald-600">On Time</span>
+                                  )}
+                                  {entry.onTime === false && (
+                                    <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-600">Late</span>
+                                  )}
+                                  <span className="text-muted-foreground">
+                                    {entry.completedAt ? new Date(entry.completedAt).toLocaleDateString() : "—"}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 flex-wrap text-muted-foreground">
+                                {entry.assignedTo && (
+                                  <span className="flex items-center gap-1"><User className="w-3 h-3" />{entry.assignedTo}</span>
+                                )}
+                                {entry.fuelPercentage != null && (
+                                  <span>⛽ {entry.fuelPercentage}%</span>
+                                )}
+                                {passCount !== null && (
+                                  <span className="text-emerald-600 font-medium">{passCount} pass</span>
+                                )}
+                                {failCount !== null && failCount > 0 && (
+                                  <span className="text-red-600 font-medium">{failCount} fail</span>
+                                )}
+                                {entry.attachments.length > 0 && (
+                                  <span>{entry.attachments.length} photo{entry.attachments.length !== 1 ? "s" : ""}</span>
+                                )}
+                              </div>
+                              {failedItems.length > 0 && (
+                                <div className="pt-1 border-t border-border">
+                                  <p className="text-red-600 font-medium mb-1">Failed items:</p>
+                                  <ul className="space-y-0.5">
+                                    {failedItems.map((item, i) => (
+                                      <li key={i} className="text-red-700 flex items-start gap-1.5">
+                                        <span className="mt-0.5 shrink-0">·</span>{item}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ) : inspError ? (
                   <p className="text-xs text-muted-foreground italic">Unable to load inspection data</p>

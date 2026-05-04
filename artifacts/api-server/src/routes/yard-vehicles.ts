@@ -8,7 +8,7 @@ import {
   yardInspectionsTable,
   yardMovementsTable,
 } from "@workspace/db";
-import { eq, ilike, and, or, SQL, desc } from "drizzle-orm";
+import { eq, ilike, and, or, SQL, desc, inArray } from "drizzle-orm";
 import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router: IRouter = Router();
@@ -51,6 +51,21 @@ router.get("/yard/vehicles", async (req, res) => {
     .limit(limitNum)
     .offset(offset);
 
+  // Batch-fetch last finished inspection for all vehicles on this page
+  const vehicleIds = vehicles.map((v) => v.id);
+  const lastInspections = vehicleIds.length > 0
+    ? await db.select().from(yardInspectionsTable)
+        .where(and(
+          inArray(yardInspectionsTable.vehicleId, vehicleIds),
+          eq(yardInspectionsTable.status, "finished"),
+        ))
+        .orderBy(desc(yardInspectionsTable.completedAt))
+    : [];
+  const lastInspMap = new Map<number, typeof yardInspectionsTable.$inferSelect>();
+  for (const insp of lastInspections) {
+    if (!lastInspMap.has(insp.vehicleId)) lastInspMap.set(insp.vehicleId, insp);
+  }
+
   const vehiclesWithDetails = await Promise.all(
     vehicles.map(async (v) => {
       let locationName: string | null = null;
@@ -70,6 +85,21 @@ router.get("/yard/vehicles", async (req, res) => {
         }
       }
 
+      // Compute inspection urgency inline
+      const lastInsp = lastInspMap.get(v.id) ?? null;
+      const intervalDays = v.inspectionIntervalDays ?? 30;
+      const arrivedAt = v.arrivedAt ?? v.createdAt;
+      const now = new Date();
+      let nextDueDate: Date;
+      if (lastInsp?.completedAt) {
+        nextDueDate = new Date(lastInsp.completedAt.getTime() + intervalDays * 86400000);
+      } else {
+        nextDueDate = new Date(arrivedAt.getTime() + intervalDays * 86400000);
+      }
+      const daysUntilInspectionDue = Math.floor((nextDueDate.getTime() - now.getTime()) / 86400000);
+      const inspectionUrgency: "overdue" | "due-soon" | "ok" =
+        daysUntilInspectionDue < 0 ? "overdue" : daysUntilInspectionDue <= 7 ? "due-soon" : "ok";
+
       return {
         id: v.id, vin: v.vin, stockNumber: v.stockNumber, make: v.make, model: v.model,
         year: v.year, color: v.color ?? null, mileage: v.mileage ?? null,
@@ -80,6 +110,8 @@ router.get("/yard/vehicles", async (req, res) => {
         imageUrl: v.imageUrl ?? null,
         arrivedAt: v.arrivedAt?.toISOString() ?? null,
         inspectionIntervalDays: v.inspectionIntervalDays ?? 30,
+        inspectionUrgency,
+        daysUntilInspectionDue,
       };
     })
   );
@@ -207,14 +239,31 @@ router.get("/yard/vehicles/:vehicleId/inspection-history", async (req, res) => {
     nextDueDate: nextDueDate.toISOString(),
     daysRemaining,
     urgency,
-    history: inspections.map((i) => ({
-      id: i.id,
-      inspectionNumber: i.inspectionNumber,
-      type: i.type,
-      completedAt: i.completedAt?.toISOString() ?? null,
-      assignedTo: i.assignedTo ?? null,
-      notes: i.notes ?? null,
-    })),
+    history: inspections.map((i, idx) => {
+      // Compute on-time vs. late for each inspection
+      const prevInsp = inspections[idx + 1] ?? null;
+      let dueDateForThisInsp: Date;
+      if (prevInsp?.completedAt) {
+        dueDateForThisInsp = new Date(prevInsp.completedAt.getTime() + intervalDays * 86400000);
+      } else {
+        dueDateForThisInsp = new Date(arrivedAt.getTime() + intervalDays * 86400000);
+      }
+      const onTime = i.completedAt ? i.completedAt <= dueDateForThisInsp : null;
+
+      return {
+        id: i.id,
+        inspectionNumber: i.inspectionNumber,
+        type: i.type,
+        completedAt: i.completedAt?.toISOString() ?? null,
+        assignedTo: i.assignedTo ?? null,
+        notes: i.notes ?? null,
+        bodyDamage: i.bodyDamage ?? null,
+        checklist: i.checklist ?? null,
+        attachments: Array.isArray(i.attachments) ? i.attachments : [],
+        fuelPercentage: i.fuelPercentage ?? null,
+        onTime,
+      };
+    }),
   });
 });
 

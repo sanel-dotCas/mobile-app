@@ -25,7 +25,7 @@ const BASE = Platform.OS === "web"
   : "/api";
 
 type InspectionStatus = "queued" | "in-progress" | "finished";
-type CheckResult = "pass" | "fail" | "na";
+type CheckResult = "pass" | "fail" | "na" | "pending";
 
 interface CheckItem {
   id: string;
@@ -250,7 +250,7 @@ function getChecklistSections(type: string): CheckSection[] {
 
 function buildInitialChecks(sections: CheckSection[]): CheckItem[] {
   return sections.flatMap((s) =>
-    s.items.map((item) => ({ id: item.id, label: item.label, result: "na" as CheckResult, note: "" }))
+    s.items.map((item) => ({ id: item.id, label: item.label, result: "pending" as CheckResult, note: "" }))
   );
 }
 
@@ -353,7 +353,7 @@ export default function InspectionDetailScreen() {
       section: s.section,
       items: s.items.map((item) => {
         const c = checks.find((ch) => ch.id === item.id);
-        return { label: item.label, result: c?.result ?? "na", note: c?.note ?? "" };
+        return { label: item.label, result: c?.result ?? "pending", note: c?.note ?? "" };
       }),
     }));
     const passCount = checks.filter((c) => c.result === "pass").length;
@@ -361,8 +361,9 @@ export default function InspectionDetailScreen() {
     const naCount = checks.filter((c) => c.result === "na").length;
     const failedLabels = checks.filter((c) => c.result === "fail").map((c) => c.label);
     const bodyDamage = failedLabels.length > 0 ? `Failed items:\n${failedLabels.join("\n")}` : null;
+    const reviewed = passCount + failCount + naCount;
     const notes = [
-      `Checklist: ${passCount} passed, ${failCount} failed, ${naCount} N/A out of ${checks.length}`,
+      `Checklist: ${passCount} passed, ${failCount} failed, ${naCount} N/A out of ${reviewed} reviewed (${checks.length} total)`,
       additionalNotes.trim() ? `Notes: ${additionalNotes.trim()}` : null,
     ].filter(Boolean).join("\n");
 
@@ -418,14 +419,28 @@ export default function InspectionDetailScreen() {
   const submitInspection = async () => {
     if (!inspection) return;
     const passCount = checks.filter((c) => c.result === "pass").length;
-    const answeredCount = checks.filter((c) => c.result !== "na").length;
-    if (answeredCount === 0) {
-      Alert.alert("Checklist Required", "Please complete at least some checklist items before submitting.");
+    const failCount = checks.filter((c) => c.result === "fail").length;
+    const naCount = checks.filter((c) => c.result === "na").length;
+    const pendingCount = checks.filter((c) => c.result === "pending").length;
+    const pendingUploads = mediaAttachments.filter((a) => !a.uploaded).length;
+
+    if (pendingCount > 0) {
+      Alert.alert(
+        "Checklist Incomplete",
+        `${pendingCount} item${pendingCount !== 1 ? "s" : ""} still need to be reviewed (Pass / Fail / N/A). Please complete all checklist items before submitting.`
+      );
+      return;
+    }
+    if (pendingUploads > 0) {
+      Alert.alert(
+        "Uploads In Progress",
+        `${pendingUploads} photo/video upload${pendingUploads !== 1 ? "s" : ""} still in progress. Please wait for all uploads to finish before submitting.`
+      );
       return;
     }
     Alert.alert(
       "Submit Inspection",
-      `${passCount} passed, ${checks.filter((c) => c.result === "fail").length} failed, ${checks.filter((c) => c.result === "na").length} N/A.\n\nMark this inspection as finished?`,
+      `${passCount} passed, ${failCount} failed, ${naCount} N/A.\n\nMark this inspection as finished?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -660,26 +675,42 @@ export default function InspectionDetailScreen() {
             )}
 
             {/* Checklist progress summary */}
-            <View style={[styles.progressCard, { backgroundColor: colors.accent, borderColor: colors.primary }]}>
-              <View style={styles.progressRow}>
-                <View style={styles.progressItem}>
-                  <Text style={[styles.progressNum, { color: "#16a34a" }]}>{passCount}</Text>
-                  <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Pass</Text>
+            {(() => {
+              const passCount = checks.filter((c) => c.result === "pass").length;
+              const failCount = checks.filter((c) => c.result === "fail").length;
+              const naCount = checks.filter((c) => c.result === "na").length;
+              const pendingCount = checks.filter((c) => c.result === "pending").length;
+              return (
+                <View style={[styles.progressCard, { backgroundColor: colors.accent, borderColor: pendingCount > 0 ? "#d97706" : colors.primary }]}>
+                  {pendingCount > 0 && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#fde68a" }}>
+                      <Feather name="alert-circle" size={13} color="#d97706" />
+                      <Text style={{ fontSize: 11, color: "#92400e", fontFamily: "Inter_500Medium" }}>
+                        {pendingCount} item{pendingCount !== 1 ? "s" : ""} still need review — required before submitting
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.progressRow}>
+                    <View style={styles.progressItem}>
+                      <Text style={[styles.progressNum, { color: "#16a34a" }]}>{passCount}</Text>
+                      <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Pass</Text>
+                    </View>
+                    <View style={styles.progressItem}>
+                      <Text style={[styles.progressNum, { color: "#ef4444" }]}>{failCount}</Text>
+                      <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Fail</Text>
+                    </View>
+                    <View style={styles.progressItem}>
+                      <Text style={[styles.progressNum, { color: colors.mutedForeground }]}>{naCount}</Text>
+                      <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>N/A</Text>
+                    </View>
+                    <View style={styles.progressItem}>
+                      <Text style={[styles.progressNum, { color: pendingCount > 0 ? "#d97706" : colors.primary }]}>{pendingCount}</Text>
+                      <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Pending</Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.progressItem}>
-                  <Text style={[styles.progressNum, { color: "#ef4444" }]}>{failCount}</Text>
-                  <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Fail</Text>
-                </View>
-                <View style={styles.progressItem}>
-                  <Text style={[styles.progressNum, { color: colors.mutedForeground }]}>{naCount}</Text>
-                  <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>N/A</Text>
-                </View>
-                <View style={styles.progressItem}>
-                  <Text style={[styles.progressNum, { color: colors.primary }]}>{checks.length}</Text>
-                  <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Total</Text>
-                </View>
-              </View>
-            </View>
+              );
+            })()}
 
             {/* Checklist sections */}
             {checklistSections.map((section) => (
@@ -692,12 +723,13 @@ export default function InspectionDetailScreen() {
                 </View>
 
                 {section.items.map((item) => {
-                  const check = checks.find((c) => c.id === item.id) ?? { id: item.id, label: item.label, result: "na" as CheckResult, note: "" };
+                  const check = checks.find((c) => c.id === item.id) ?? { id: item.id, label: item.label, result: "pending" as CheckResult, note: "" };
+                  const isPending = check.result === "pending";
                   return (
-                    <View key={item.id} style={[styles.checkItem, { borderTopColor: colors.border }]}>
-                      <Text style={[styles.checkLabel, { color: colors.foreground }]}>{item.label}</Text>
+                    <View key={item.id} style={[styles.checkItem, { borderTopColor: colors.border, backgroundColor: isPending ? "#fffbeb" : "transparent" }]}>
+                      <Text style={[styles.checkLabel, { color: isPending ? "#92400e" : colors.foreground }]}>{item.label}</Text>
                       <View style={styles.checkBtns}>
-                        {(["pass", "fail", "na"] as CheckResult[]).map((r) => (
+                        {(["pass", "fail", "na"] as Array<"pass" | "fail" | "na">).map((r) => (
                           <Pressable
                             key={r}
                             style={[
@@ -710,7 +742,7 @@ export default function InspectionDetailScreen() {
                                 borderColor:
                                   check.result === r
                                     ? r === "pass" ? "#16a34a" : r === "fail" ? "#ef4444" : colors.mutedForeground
-                                    : colors.border,
+                                    : isPending ? "#d97706" : colors.border,
                               },
                             ]}
                             onPress={() => setCheck(item.id, r)}
@@ -722,7 +754,7 @@ export default function InspectionDetailScreen() {
                                   color:
                                     check.result === r
                                       ? r === "pass" ? "#16a34a" : r === "fail" ? "#ef4444" : colors.mutedForeground
-                                      : colors.mutedForeground,
+                                      : isPending ? "#d97706" : colors.mutedForeground,
                                 },
                               ]}
                             >
