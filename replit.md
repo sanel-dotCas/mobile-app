@@ -181,6 +181,15 @@ Seed data: 8 locations, 12 vehicles, 6 inspections, 10 movement entries, ~55 spo
 - Generated Zod schemas: `lib/api-zod/src/generated/api.ts`
 - Barrel: `lib/api-zod/src/index.ts` — MUST be kept as single line: `export * from "./generated/api";`
 
+## DMS Submission Retention
+
+`estimate_submissions` records are deleted automatically on a 24-hour schedule by a background job that starts when the API server boots (`artifacts/api-server/src/lib/submissionCleanup.ts`).
+
+**Environment variable**: `SUBMISSION_RETENTION_DAYS` (integer, default `90`)
+- Records older than this many days are permanently deleted.
+- This also defines the **idempotency window**: duplicate DMS submissions for the same `estimateId` are detected and return the existing RO number only while the original row is still within the retention window. After `SUBMISSION_RETENTION_DAYS` days have elapsed, a re-submission will generate a new RO number.
+- Set `SUBMISSION_RETENTION_DAYS=180` (for example) to extend both the storage period and the duplicate-protection window.
+
 ## Notes
 
 - Do NOT run `pnpm dev` at workspace root — run workflows individually
