@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
@@ -113,7 +114,11 @@ export default function DashboardScreen() {
               <View style={[styles.statIconBg, { backgroundColor: color + "20" }]}>
                 <Feather name={icon} size={16} color={color} />
               </View>
-              <Text style={[styles.statCount, { color: colors.foreground }]}>{count}</Text>
+              {state.jobsLoaded ? (
+                <Text style={[styles.statCount, { color: colors.foreground }]}>{count}</Text>
+              ) : (
+                <View style={[styles.skeletonCount, { backgroundColor: colors.border }]} />
+              )}
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
             </View>
           ))}
@@ -179,9 +184,16 @@ export default function DashboardScreen() {
         {/* Recent Jobs */}
         <View style={styles.jobsSection}>
           <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 12 }]}>Assigned Jobs</Text>
-          {state.jobs.slice(0, 3).map((job) => (
-            <JobCard key={job.id} job={job} />
-          ))}
+          {!state.jobsLoaded ? (
+            <View style={[styles.loadingJobsContainer, { backgroundColor: colors.card }]}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingJobsText, { color: colors.mutedForeground }]}>Loading jobs…</Text>
+            </View>
+          ) : (
+            state.jobs.slice(0, 3).map((job) => (
+              <JobCard key={job.id} job={job} />
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -382,5 +394,21 @@ const styles = StyleSheet.create({
   },
   jobsSection: {
     gap: 0,
+  },
+  skeletonCount: {
+    width: 36,
+    height: 28,
+    borderRadius: 6,
+  },
+  loadingJobsContainer: {
+    borderRadius: 14,
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loadingJobsText: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
   },
 });
