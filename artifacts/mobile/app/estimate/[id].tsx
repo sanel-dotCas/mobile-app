@@ -805,12 +805,111 @@ function AddLineSheet({
   );
 }
 
+function BulkSetSheet({
+  visible,
+  sectionLabel,
+  onClose,
+  onApply,
+  accountTypes,
+}: {
+  visible: boolean;
+  sectionLabel: string;
+  onClose: () => void;
+  onApply: (operation: string | null, accountType: string | null) => void;
+  accountTypes: { id: number; name: string; code: string }[];
+}) {
+  const colors = useColors();
+  const [selectedOp, setSelectedOp] = useState<string | null>(null);
+  const [selectedAccType, setSelectedAccType] = useState<string | null>(null);
+  const resolvedAccountTypes = accountTypes.length > 0 ? accountTypes : DEFAULT_ACCOUNT_TYPES;
+
+  React.useEffect(() => {
+    if (visible) {
+      setSelectedOp(null);
+      setSelectedAccType(null);
+    }
+  }, [visible]);
+
+  const canApply = selectedOp !== null || selectedAccType !== null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetOverlay} onPress={onClose}>
+        <Pressable style={[styles.bulkSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation?.()}>
+          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+          <View style={styles.sheetHeader}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Set all — {sectionLabel}</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+          <Text style={[styles.bulkSheetHint, { color: colors.mutedForeground }]}>
+            Applies to lines that don't have the value set yet. Individual lines can still be overridden.
+          </Text>
+
+          <View style={styles.bulkFieldGroup}>
+            <Text style={[styles.bulkFieldLabel, { color: colors.mutedForeground }]}>Operation</Text>
+            <View style={styles.bulkChips}>
+              {OPERATION_OPTIONS.map((op) => {
+                const active = op === selectedOp;
+                return (
+                  <Pressable
+                    key={op}
+                    onPress={() => { setSelectedOp(active ? null : op); Haptics.selectionAsync(); }}
+                    style={[styles.bulkChip, { borderColor: active ? "#0891b2" : colors.border, backgroundColor: active ? "#ecfeff" : colors.secondary }]}
+                  >
+                    <Text style={[styles.bulkChipText, { color: active ? "#0891b2" : colors.mutedForeground }]}>{op}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.bulkFieldGroup}>
+            <Text style={[styles.bulkFieldLabel, { color: colors.mutedForeground }]}>Account Type</Text>
+            <View style={styles.bulkChips}>
+              {resolvedAccountTypes.map((at) => {
+                const active = at.name === selectedAccType;
+                return (
+                  <Pressable
+                    key={at.id}
+                    onPress={() => { setSelectedAccType(active ? null : at.name); Haptics.selectionAsync(); }}
+                    style={[styles.bulkChip, { borderColor: active ? "#16a34a" : colors.border, backgroundColor: active ? "#f0fdf4" : colors.secondary }]}
+                  >
+                    <Text style={[styles.bulkChipText, { color: active ? "#16a34a" : colors.mutedForeground }]}>{at.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() => {
+              if (!canApply) return;
+              onApply(selectedOp, selectedAccType);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              onClose();
+            }}
+            style={({ pressed }) => [
+              styles.bulkApplyBtn,
+              { backgroundColor: canApply ? "#1d4ed8" : "#94a3b8", opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Feather name="check" size={15} color="#fff" />
+            <Text style={styles.bulkApplyBtnText}>Apply to unset lines</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function EstimateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { getEstimate, updateStatus, removeLine, setLines, addLine, addPhoto, removePhoto: ctxRemovePhoto } = useEstimates();
+  const { getEstimate, updateStatus, removeLine, setLines, addLine, addPhoto, removePhoto: ctxRemovePhoto, updateLine } = useEstimates();
   const { t } = useLang();
   const bottomPad = Platform.OS === "web" ? 24 : insets.bottom;
 
@@ -820,6 +919,7 @@ export default function EstimateDetailScreen() {
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [bulkSection, setBulkSection] = useState<"labor" | "part" | "material" | null>(null);
 
   const [screenAccountTypes, setScreenAccountTypes] = useState<{ id: number; name: string; code: string }[]>([]);
   React.useEffect(() => {
@@ -1018,6 +1118,20 @@ export default function EstimateDetailScreen() {
     setShowAddModal(false);
     if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
   }, [estimate.id, addLine, estimate.status, updateStatus]);
+
+  const handleBulkApply = useCallback((
+    section: "labor" | "part" | "material",
+    operation: string | null,
+    accountType: string | null,
+  ) => {
+    const sectionLines = estimate.lines.filter((l) => l.type === section);
+    sectionLines.forEach((l) => {
+      const patch: Partial<EstimateLine> = {};
+      if (operation && !l.operation) patch.operation = operation as EstimateLine["operation"];
+      if (accountType && !l.accountType) patch.accountType = accountType;
+      if (Object.keys(patch).length > 0) updateLine(estimate.id, l.id, patch);
+    });
+  }, [estimate.id, estimate.lines, updateLine]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -1242,6 +1356,15 @@ export default function EstimateDetailScreen() {
                 <Feather name="tool" size={11} color="#2563eb" />
                 <Text style={[styles.linesSectionTitle, { color: "#2563eb" }]}>{t.laborLines}</Text>
               </View>
+              {laborLines.some((l) => !l.operation || !l.accountType) && (
+                <Pressable
+                  onPress={() => setBulkSection("labor")}
+                  style={[styles.setAllBtn, { backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }]}
+                >
+                  <Feather name="sliders" size={10} color="#2563eb" />
+                  <Text style={[styles.setAllBtnText, { color: "#2563eb" }]}>Set all</Text>
+                </Pressable>
+              )}
               <Text style={[styles.linesSectionTotal, { color: "#2563eb" }]}>{currency}{laborTotal.toFixed(2)}</Text>
             </View>
             {activeLaborCategories.map((cat) => {
@@ -1272,6 +1395,15 @@ export default function EstimateDetailScreen() {
                 <Feather name="package" size={11} color="#7c3aed" />
                 <Text style={[styles.linesSectionTitle, { color: "#7c3aed" }]}>{t.partsLines}</Text>
               </View>
+              {partLines.some((l) => !l.operation || !l.accountType) && (
+                <Pressable
+                  onPress={() => setBulkSection("part")}
+                  style={[styles.setAllBtn, { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe" }]}
+                >
+                  <Feather name="sliders" size={10} color="#7c3aed" />
+                  <Text style={[styles.setAllBtnText, { color: "#7c3aed" }]}>Set all</Text>
+                </Pressable>
+              )}
               <Text style={[styles.linesSectionTotal, { color: "#7c3aed" }]}>{currency}{partsTotal.toFixed(2)}</Text>
             </View>
             {partLines.map((l) => (
@@ -1288,6 +1420,15 @@ export default function EstimateDetailScreen() {
                 <Feather name="droplet" size={11} color="#d97706" />
                 <Text style={[styles.linesSectionTitle, { color: "#d97706" }]}>{t.materialsLines}</Text>
               </View>
+              {materialLines.some((l) => !l.operation || !l.accountType) && (
+                <Pressable
+                  onPress={() => setBulkSection("material")}
+                  style={[styles.setAllBtn, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}
+                >
+                  <Feather name="sliders" size={10} color="#d97706" />
+                  <Text style={[styles.setAllBtnText, { color: "#d97706" }]}>Set all</Text>
+                </Pressable>
+              )}
               <Text style={[styles.linesSectionTotal, { color: "#d97706" }]}>{currency}{materialsTotal.toFixed(2)}</Text>
             </View>
             {materialLines.map((l) => (
@@ -1351,6 +1492,15 @@ export default function EstimateDetailScreen() {
         onAddPackage={handleAddPackage}
         vehicle={estimate.vehicle}
         currency={currency}
+      />
+      <BulkSetSheet
+        visible={bulkSection !== null}
+        sectionLabel={bulkSection === "labor" ? "Labour" : bulkSection === "part" ? "Parts" : "Materials"}
+        onClose={() => setBulkSection(null)}
+        onApply={(op, accType) => {
+          if (bulkSection) handleBulkApply(bulkSection, op, accType);
+        }}
+        accountTypes={screenAccountTypes}
       />
     </View>
   );
@@ -1514,4 +1664,17 @@ const styles = StyleSheet.create({
   vinResultHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   vinResultTitle:  { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#1d4ed8" },
   vinResultGrid:   { flexDirection: "row", flexWrap: "wrap" },
+
+  setAllBtn:      { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, borderWidth: 1 },
+  setAllBtnText:  { fontSize: 10, fontFamily: "Inter_700Bold" },
+
+  bulkSheet:         { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, gap: 16 },
+  bulkSheetHint:     { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  bulkFieldGroup:    { gap: 8 },
+  bulkFieldLabel:    { fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.5 },
+  bulkChips:         { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  bulkChip:          { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5 },
+  bulkChipText:      { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  bulkApplyBtn:      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12, marginTop: 4 },
+  bulkApplyBtnText:  { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
 });
