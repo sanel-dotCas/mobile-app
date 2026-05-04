@@ -62,6 +62,7 @@ export default function TechniciansScreen() {
           const assignedJobs = state.jobs.filter((j) => j.assignedTechnicianId === tech.id);
           const statusColor = STATUS_COLORS[tech.status];
           const currentJob = tech.currentJobId ? state.jobs.find((j) => j.id === tech.currentJobId) : null;
+          const effColor = tech.efficiency >= 80 ? colors.success : tech.efficiency >= 60 ? colors.warning : colors.destructive;
           return (
             <View key={tech.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: "#000" }]}>
               <View style={styles.cardHeader}>
@@ -99,7 +100,7 @@ export default function TechniciansScreen() {
                 </View>
                 <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: colors.foreground }]}>{tech.efficiency}%</Text>
+                  <Text style={[styles.statValue, { color: effColor }]}>{tech.efficiency}%</Text>
                   <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Efficiency</Text>
                 </View>
               </View>
@@ -109,7 +110,7 @@ export default function TechniciansScreen() {
                 <ProgressBar
                   progress={tech.efficiency}
                   height={6}
-                  color={tech.efficiency > 80 ? colors.success : tech.efficiency > 60 ? colors.warning : colors.destructive}
+                  color={effColor}
                 />
               </View>
 

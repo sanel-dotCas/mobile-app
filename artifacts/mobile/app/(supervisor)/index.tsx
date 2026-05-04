@@ -167,6 +167,7 @@ export default function LiveSupervisionScreen() {
           const currentJob = tech.currentJobId ? state.jobs.find((j) => j.id === tech.currentJobId) : null;
           const loadPct    = (tech.totalHoursToday / 8) * 100;
           const loadColor  = loadPct >= 90 ? "#ef4444" : loadPct >= 75 ? "#d97706" : "#16a34a";
+          const effColor   = tech.efficiency >= 80 ? colors.success : tech.efficiency >= 60 ? colors.warning : colors.destructive;
           return (
             <Pressable
               key={tech.id}
@@ -200,8 +201,8 @@ export default function LiveSupervisionScreen() {
                   <Text style={[styles.techStatText, { color: colors.mutedForeground }]}>{tech.totalHoursToday}h today</Text>
                 </View>
                 <View style={styles.techStat}>
-                  <Feather name="trending-up" size={11} color={colors.success} />
-                  <Text style={[styles.techStatText, { color: colors.mutedForeground }]}>{tech.efficiency}% eff.</Text>
+                  <Feather name="trending-up" size={11} color={effColor} />
+                  <Text style={[styles.techStatText, { color: effColor, fontFamily: "Inter_600SemiBold" }]}>{tech.efficiency}% eff.</Text>
                 </View>
                 {tech.status !== "absent" && (
                   <>
