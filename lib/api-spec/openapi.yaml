@@ -714,9 +714,15 @@ components:
         fuelPercentage:
           type: integer
           nullable: true
+        vehicleMileage:
+          type: integer
+          nullable: true
         createdAt:
           type: string
         completedAt:
+          type: string
+          nullable: true
+        assignedTo:
           type: string
           nullable: true
       required: [id, inspectionNumber, vehicleId, stockVin, vehicleName, type, status, createdAt]

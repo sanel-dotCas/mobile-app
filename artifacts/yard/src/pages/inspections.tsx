@@ -10,7 +10,7 @@ import {
   useListYardLocations,
   getListYardLocationsQueryKey,
 } from "@workspace/api-client-react";
-import { Plus, X, ClipboardCheck, UserCheck } from "lucide-react";
+import { Plus, X, ClipboardCheck, UserCheck, Gauge } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type InspStatus = "all" | "queued" | "in-progress" | "finished";
@@ -38,8 +38,79 @@ type Inspection = {
   id: number; inspectionNumber: string; vehicleId: number; stockVin: string;
   vehicleName: string; type: string; status: string; locationName: string | null;
   notes: string | null; bodyDamage: string | null; fuelPercentage: number | null;
+  vehicleMileage: number | null;
   createdAt: string; completedAt: string | null; assignedTo: string | null;
 };
+
+function UpdateMileageModal({
+  inspectionId,
+  currentMileage,
+  vehicleName,
+  onClose,
+  onConfirm,
+}: {
+  inspectionId: number;
+  currentMileage: number | null;
+  vehicleName: string;
+  onClose: () => void;
+  onConfirm: (inspectionId: number, mileage: number) => void;
+}) {
+  const [value, setValue] = useState(currentMileage != null ? String(currentMileage) : "");
+
+  const handleConfirm = () => {
+    const num = Number(value);
+    if (Number.isInteger(num) && num >= 0) {
+      onConfirm(inspectionId, num);
+    }
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-sm bg-card border border-card-border rounded-lg p-6 m-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-foreground">Update Mileage In</h2>
+          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">{vehicleName}</p>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-muted-foreground mb-1">
+            Corrected Mileage (km)
+          </label>
+          <input
+            type="number"
+            min="0"
+            autoFocus
+            data-testid="input-mileage-correction"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleConfirm(); }}
+            className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:border-[hsl(221,83%,53%)]"
+            placeholder="Enter corrected mileage..."
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2 border border-border rounded text-sm text-foreground hover:border-[hsl(221,83%,53%)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="button-confirm-mileage"
+            onClick={handleConfirm}
+            disabled={!value || !Number.isInteger(Number(value)) || Number(value) < 0}
+            className="flex-1 py-2 bg-[hsl(221,83%,53%)] text-white text-sm font-medium rounded hover:bg-[hsl(221,83%,45%)] transition-colors disabled:opacity-50"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CreatePDIModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { toast } = useToast();
@@ -199,6 +270,8 @@ export default function InspectionsPage() {
   const [statusFilter, setStatusFilter] = useState<InspStatus>("all");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
+  const [mileageModal, setMileageModal] = useState<{ inspectionId: number; currentMileage: number | null; vehicleName: string } | null>(null);
+  const [mileageOverrides, setMileageOverrides] = useState<Record<number, number>>({});
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -235,6 +308,16 @@ export default function InspectionsPage() {
 
   const assignTech = (id: number, name: string) => {
     updateInspection.mutate({ inspectionId: id, data: { assignedTo: name } });
+  };
+
+  const handleMileageConfirm = (inspectionId: number, mileage: number) => {
+    setMileageOverrides((prev) => ({ ...prev, [inspectionId]: mileage }));
+    toast({ title: "Mileage updated" });
+  };
+
+  const getDisplayMileage = (insp: Inspection): number | null => {
+    if (mileageOverrides[insp.id] !== undefined) return mileageOverrides[insp.id];
+    return insp.vehicleMileage;
   };
 
   return (
@@ -346,6 +429,27 @@ export default function InspectionsPage() {
                 {insp.bodyDamage && (
                   <p className="text-xs text-amber-600 mt-1">Damage: {insp.bodyDamage}</p>
                 )}
+                {/* Mileage row */}
+                <div className="flex items-center gap-2 mt-2">
+                  <Gauge className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-foreground">
+                    {getDisplayMileage(insp) != null
+                      ? `${getDisplayMileage(insp)!.toLocaleString()} km`
+                      : <span className="text-muted-foreground italic">No mileage recorded</span>
+                    }
+                    {mileageOverrides[insp.id] !== undefined && (
+                      <span className="ml-1 text-[10px] text-[hsl(221,83%,53%)]">(corrected)</span>
+                    )}
+                  </span>
+                  <button
+                    data-testid={`button-take-action-mileage-${insp.id}`}
+                    onClick={() => setMileageModal({ inspectionId: insp.id, currentMileage: getDisplayMileage(insp), vehicleName: insp.vehicleName })}
+                    className="ml-auto text-[10px] px-2 py-0.5 border border-[hsl(221,83%,53%)] text-[hsl(221,83%,53%)] rounded hover:bg-[hsl(221,83%,53%)] hover:text-white transition-colors shrink-0"
+                  >
+                    Take Action
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                   {insp.fuelPercentage != null && (
                     <span>Fuel: {insp.fuelPercentage}%</span>
@@ -408,6 +512,16 @@ export default function InspectionsPage() {
             setShowCreate(false);
             queryClient.invalidateQueries({ queryKey: getListYardInspectionsQueryKey() });
           }}
+        />
+      )}
+
+      {mileageModal && (
+        <UpdateMileageModal
+          inspectionId={mileageModal.inspectionId}
+          currentMileage={mileageModal.currentMileage}
+          vehicleName={mileageModal.vehicleName}
+          onClose={() => setMileageModal(null)}
+          onConfirm={handleMileageConfirm}
         />
       )}
     </div>

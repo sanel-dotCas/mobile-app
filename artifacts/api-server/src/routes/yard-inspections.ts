@@ -29,6 +29,7 @@ function formatInspection(
     notes: insp.notes ?? null,
     bodyDamage: insp.bodyDamage ?? null,
     fuelPercentage: insp.fuelPercentage ?? null,
+    vehicleMileage: vehicle?.mileage ?? null,
     assignedTo: insp.assignedTo ?? null,
     assignedAt: insp.assignedAt?.toISOString() ?? null,
     createdAt: insp.createdAt.toISOString(),

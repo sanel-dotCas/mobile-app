@@ -288,8 +288,10 @@ export interface YardInspection {
   notes?: string | null;
   bodyDamage?: string | null;
   fuelPercentage?: number | null;
+  vehicleMileage?: number | null;
   createdAt: string;
   completedAt?: string | null;
+  assignedTo?: string | null;
 }
 
 export interface YardInspectionList {
