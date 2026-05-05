@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireMobileRoles } from "../middlewares/requireAuth";
 import { eq } from "drizzle-orm";
 import { db, jobsTable, techniciansTable, updateTechnicianStatusSchema } from "@workspace/db";
 import { seedJobsIfEmpty } from "./jobs";
@@ -80,9 +81,9 @@ router.get("/technicians", async (req, res) => {
   }
 });
 
-router.patch("/technicians/:id", async (req, res) => {
+router.patch("/technicians/:id", requireMobileRoles("technician", "supervisor", "admin"), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const parsed = updateTechnicianStatusSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid status value", details: parsed.error.issues });

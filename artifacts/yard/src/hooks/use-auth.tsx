@@ -1,9 +1,12 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 import type { YardUser } from "@workspace/api-client-react";
+
+const YARD_SESSION_KEY = "yard_session_token";
 
 interface AuthContextType {
   user: YardUser | null;
-  login: (user: YardUser) => void;
+  login: (user: YardUser & { sessionToken?: string }) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -18,7 +21,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const stored = localStorage.getItem("yard_user");
+      const token = localStorage.getItem(YARD_SESSION_KEY);
       if (stored) setUser(JSON.parse(stored));
+      if (token) {
+        setAuthTokenGetter(() => token);
+      }
     } catch {
       // ignore
     } finally {
@@ -26,14 +33,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = (u: YardUser) => {
-    setUser(u);
-    localStorage.setItem("yard_user", JSON.stringify(u));
+  const login = (u: YardUser & { sessionToken?: string }) => {
+    const { sessionToken, ...userWithoutToken } = u;
+    setUser(userWithoutToken);
+    localStorage.setItem("yard_user", JSON.stringify(userWithoutToken));
+    if (sessionToken) {
+      localStorage.setItem(YARD_SESSION_KEY, sessionToken);
+      setAuthTokenGetter(() => sessionToken);
+    }
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem("yard_user");
+    localStorage.removeItem(YARD_SESSION_KEY);
+    setAuthTokenGetter(null);
   };
 
   return (

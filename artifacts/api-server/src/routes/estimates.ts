@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireMobileRoles } from "../middlewares/requireAuth";
 import OpenAI from "openai";
 import { db, dmsAccountTypesTable, estimateSubmissionsTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
@@ -65,7 +66,7 @@ router.get("/estimates/account-types", async (req, res) => {
   }
 });
 
-router.post("/estimates/analyze", async (req, res) => {
+router.post("/estimates/analyze", requireMobileRoles("estimator", "supervisor", "admin"), async (req, res) => {
   const { vehicleInfo, damageNotes, imagesBase64 } = req.body as AnalyzeRequestBody;
 
   if (!vehicleInfo || !damageNotes) {
@@ -133,7 +134,7 @@ Always respond with ONLY a valid JSON array of estimate lines. No preamble, no e
   }
 });
 
-router.post("/estimates/submit", async (req, res) => {
+router.post("/estimates/submit", requireMobileRoles("estimator", "supervisor", "admin"), async (req, res) => {
   const { estimateId, estimateNo, vehicle, customer, serviceAdvisor, odometer, lines } = req.body as {
     estimateId: string;
     estimateNo: string;

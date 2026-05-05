@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireMobileRoles, requireYardPrincipal } from "../middlewares/requireAuth";
 import { db } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes } from "crypto";
@@ -356,7 +357,7 @@ router.get("/parts/items/:id", async (req, res) => {
   }
 });
 
-router.post("/parts/items", async (req, res) => {
+router.post("/parts/items", requireMobileRoles("parts", "supervisor", "admin"), async (req, res) => {
   await ensureSeeded();
   try {
     const { partNumber, name, category, description, binCode, imageUrl, qtyOnHand, minStock, maxStock, unitCost, unitSalePrice, vatRate, supplierCode } = req.body;
@@ -382,7 +383,7 @@ router.post("/parts/items", async (req, res) => {
   }
 });
 
-router.patch("/parts/items/:id", async (req, res) => {
+router.patch("/parts/items/:id", requireMobileRoles("parts", "supervisor", "admin"), async (req, res) => {
   await ensureSeeded();
   try {
     const { binCode, imageUrl, qtyOnHand, minStock, maxStock, unitCost, unitSalePrice, vatRate, supplierCode, description } = req.body;
@@ -401,7 +402,7 @@ router.patch("/parts/items/:id", async (req, res) => {
     const [item] = await db
       .update(partsItemsTable)
       .set(updates)
-      .where(eq(partsItemsTable.id, parseInt(req.params.id)))
+      .where(eq(partsItemsTable.id, parseInt(req.params.id as string)))
       .returning();
     if (!item) { res.status(404).json({ error: "Part not found" }); return; }
     res.json(item);

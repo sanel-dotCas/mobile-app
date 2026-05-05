@@ -78,6 +78,14 @@ export const yardUsersTable = pgTable("yard_users", {
   password: text("password").notNull(),
   name: text("name").notNull(),
   role: yardUserRoleEnum("role").notNull().default("yard_operator"),
+  /** DMS/mobile role for mobile app users. Null means yard-web-only account. */
+  mobileRole: text("mobile_role"),
+  /**
+   * Stable login code for mobile users (e.g. "MR", "SV").
+   * Separate from `username` so the PIN can be rotated without changing
+   * the user's display identity. Null for yard-web-only accounts.
+   */
+  userCode: text("user_code"),
   locationId: integer("location_id"),
   expoPushToken: text("expo_push_token"),
   notificationsEnabled: boolean("notifications_enabled").notNull().default(true),

@@ -13,6 +13,7 @@ import {
 import { techniciansTable } from "@workspace/db";
 import { jobsTable } from "@workspace/db";
 import { eq, count, desc, sql, and, or } from "drizzle-orm";
+import { hashPassword } from "../lib/passwordHash";
 
 const router: IRouter = Router();
 
@@ -145,7 +146,7 @@ router.post("/admin/users", async (req, res) => {
       .insert(yardUsersTable)
       .values({
         username,
-        password,
+        password: hashPassword(password),
         name,
         role: role as "admin" | "yard_manager" | "yard_operator",
         locationId: locationId ?? null,
@@ -186,7 +187,7 @@ router.patch("/admin/users/:id", async (req, res) => {
     if (role !== undefined) updates.role = role;
     if (locationId !== undefined) updates.locationId = locationId;
     if (notificationsEnabled !== undefined) updates.notificationsEnabled = notificationsEnabled;
-    if (password !== undefined) updates.password = password;
+    if (password !== undefined) updates.password = hashPassword(password);
 
     const [user] = await db
       .update(yardUsersTable)
@@ -550,17 +551,6 @@ router.get("/admin/settings", async (_req, res) => {
       technicians: Number((techCount as {cnt: unknown}[])[0]?.cnt ?? 0),
       vehicles: Number((vehicleCount as {cnt: unknown}[])[0]?.cnt ?? 0),
     },
-    mobileCredentials: [
-      { code: "MR1234", name: "Mike Rodriguez", role: "technician" },
-      { code: "JW1234", name: "James Wilson", role: "technician" },
-      { code: "CM1234", name: "Carlos Mendez", role: "technician" },
-      { code: "AH1234", name: "Ahmed Hassan", role: "technician" },
-      { code: "DP1234", name: "David Park", role: "technician" },
-      { code: "SV5678", name: "Sarah Mitchell", role: "supervisor" },
-      { code: "AD0000", name: "Adam Davis", role: "supervisor" },
-      { code: "AM0000", name: "Admin User", role: "admin" },
-      { code: "AM0001", name: "Admin User 2", role: "admin" },
-    ],
     inspectionTypes: [
       { key: "pre-inspection", label: "Pre-Inspection" },
       { key: "secondary", label: "Secondary" },

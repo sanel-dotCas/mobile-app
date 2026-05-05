@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, jobOdometerCorrectionsTable, jobsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireYardPrincipal, requireMobileRoles } from "../middlewares/requireAuth";
 import { formatVehicleName } from "../lib/formatVehicleName";
 
 const router = Router();
@@ -504,7 +505,7 @@ router.put("/jobs/:id", async (req, res) => {
   }
 });
 
-router.post("/jobs", async (req, res) => {
+router.post("/jobs", requireYardPrincipal, async (req, res) => {
   const body = req.body as Record<string, unknown>;
 
   if (!body || typeof body !== "object") {
@@ -557,8 +558,8 @@ router.post("/jobs", async (req, res) => {
   }
 });
 
-router.delete("/jobs/:id", async (req, res) => {
-  const { id } = req.params;
+router.delete("/jobs/:id", requireYardPrincipal, async (req, res) => {
+  const id = req.params.id as string;
   try {
     const deleted = await db.delete(jobsTable).where(eq(jobsTable.id, id)).returning({ id: jobsTable.id });
     if (deleted.length === 0) {

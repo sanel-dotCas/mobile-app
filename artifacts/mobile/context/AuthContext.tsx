@@ -7,25 +7,9 @@ import React, {
   useState,
 } from "react";
 import { Platform } from "react-native";
+import { updateMobileSessionToken } from "@/lib/authFetch";
 
 export type UserRole = "technician" | "supervisor" | "estimator" | "parts" | "admin";
-
-// Format: 2 letters + 4 digits  e.g. "MR1234" or "SV5678"
-const CREDENTIALS: Record<string, UserRole> = {
-  "MR1234": "technician",
-  "JW1234": "technician",
-  "CM1234": "technician",
-  "AH1234": "technician",
-  "DP1234": "technician",
-  "SV5678": "supervisor",
-  "AD0000": "supervisor",
-  "ET1234": "estimator",
-  "ET5678": "estimator",
-  "PT1234": "parts",
-  "PD1234": "parts",
-  "AM0000": "admin",
-  "AM0001": "admin",
-};
 
 const AUTH_KEY = "igmma_authed";
 const ROLE_KEY = "igmma_role";
@@ -69,57 +53,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(auth === "true");
       setRole((savedRole as UserRole) ?? "technician");
       setUserCode(savedCode ?? "MR");
-      if (savedSession) setMobileSessionToken(savedSession);
+      if (savedSession) {
+        setMobileSessionToken(savedSession);
+        updateMobileSessionToken(savedSession);
+      }
       setIsLoading(false);
     });
   }, []);
 
   /**
-   * Calls the API to obtain (or refresh) a mobile session token, then stores it
-   * in both AsyncStorage and React state so dependent effects (NotificationSetup)
-   * re-run immediately when the token arrives.
+   * Validates credentials against the server and obtains a signed mobile
+   * session token. The role is returned by the server — no hardcoded
+   * credential map exists in the client.
    */
-  const acquireMobileSession = useCallback(
-    async (code: string, pin: string): Promise<void> => {
-      if (Platform.OS === "web") return;
+  const attemptLogin = useCallback(
+    async (letters: string, pin: string): Promise<UserRole | false> => {
       try {
         const res = await fetch(`${BASE}/yard/auth/mobile-session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, pin }),
+          body: JSON.stringify({ code: letters, pin }),
         });
-        if (!res.ok) return;
-        const data = (await res.json()) as { sessionToken?: string };
-        if (data.sessionToken) {
-          await AsyncStorage.setItem(MOBILE_SESSION_KEY, data.sessionToken);
-          setMobileSessionToken(data.sessionToken);
-        }
-      } catch {
-        // Non-critical — push registration will silently skip without a session
-      }
-    },
-    []
-  );
+        if (!res.ok) return false;
 
-  const attemptLogin = useCallback(
-    async (letters: string, pin: string): Promise<UserRole | false> => {
-      const key = (letters + pin).toUpperCase();
-      const matchedRole = CREDENTIALS[key];
-      if (matchedRole) {
-        const code = letters.toUpperCase();
+        const data = (await res.json()) as {
+          sessionToken?: string;
+          technicianName?: string;
+          userCode?: string;
+          role?: string;
+        };
+
+        if (!data.sessionToken || !data.role) return false;
+
+        const matchedRole = data.role as UserRole;
+        const code = (data.userCode ?? letters).toUpperCase();
+
         await AsyncStorage.setItem(AUTH_KEY, "true");
         await AsyncStorage.setItem(ROLE_KEY, matchedRole);
         await AsyncStorage.setItem(CODE_KEY, code);
+        await AsyncStorage.setItem(MOBILE_SESSION_KEY, data.sessionToken);
+
         setRole(matchedRole);
         setUserCode(code);
         setIsAuthenticated(true);
-        // Obtain a session token; updates state which triggers NotificationSetup re-run
-        void acquireMobileSession(code, pin);
+        setMobileSessionToken(data.sessionToken);
+        updateMobileSessionToken(data.sessionToken);
+
         return matchedRole;
+      } catch {
+        return false;
       }
-      return false;
     },
-    [acquireMobileSession]
+    []
   );
 
   const logout = useCallback(async () => {
@@ -128,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRole("technician");
     setUserCode("MR");
     setMobileSessionToken(null);
+    updateMobileSessionToken(null);
   }, []);
 
   return (

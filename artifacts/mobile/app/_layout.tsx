@@ -23,6 +23,11 @@ import { EstimatesProvider } from "@/context/EstimatesContext";
 import { useJobs, JobsProvider } from "@/context/JobsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { useStages, StagesProvider } from "@/context/StagesContext";
+import { installAuthInterceptor } from "@/lib/authFetch";
+
+// Install global fetch interceptor so all API calls include the session token.
+// This must run before any fetch call is made.
+installAuthInterceptor();
 
 SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
