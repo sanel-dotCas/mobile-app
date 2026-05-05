@@ -108,10 +108,16 @@ export default function PartsJobsScreen() {
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
+      const matchesPart = parts.some(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.partNumber.toLowerCase().includes(q)
+      );
       return (
         job.estimateNumber.toLowerCase().includes(q) ||
         job.licensePlate.toLowerCase().includes(q) ||
-        job.vehicle.toLowerCase().includes(q)
+        job.vehicle.toLowerCase().includes(q) ||
+        matchesPart
       );
     }
 
@@ -140,7 +146,7 @@ export default function PartsJobsScreen() {
           <Feather name="search" size={15} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Search plate, estimate or vehicle…"
+            placeholder="Search plate, estimate, vehicle or part…"
             placeholderTextColor={colors.mutedForeground}
             value={searchQuery}
             onChangeText={setSearchQuery}
