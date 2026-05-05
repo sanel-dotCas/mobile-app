@@ -51,6 +51,8 @@ router.get("/yard/locations", async (_req, res) => {
         address: loc.address ?? null,
         totalCapacity: loc.totalCapacity,
         autoChecks: loc.autoChecks,
+        digestEnabled: loc.digestEnabled,
+        digestHourUtc: loc.digestHourUtc ?? null,
         ...stats,
       };
     })
@@ -179,9 +181,58 @@ router.get("/yard/locations/:locationId", async (req, res) => {
     address: loc.address ?? null,
     totalCapacity: loc.totalCapacity,
     autoChecks: loc.autoChecks,
+    digestEnabled: loc.digestEnabled,
+    digestHourUtc: loc.digestHourUtc ?? null,
     ...stats,
     zones: zonesWithSpots,
   });
+});
+
+// Update digest settings for a location
+router.patch("/yard/locations/:locationId/digest", async (req, res) => {
+  const locationId = Number(req.params.locationId);
+
+  const { digestEnabled, digestHourUtc } = req.body as {
+    digestEnabled?: boolean;
+    digestHourUtc?: number | null;
+  };
+
+  if (
+    digestEnabled === undefined &&
+    digestHourUtc === undefined
+  ) {
+    res.status(400).json({ error: "Provide digestEnabled and/or digestHourUtc" });
+    return;
+  }
+
+  if (digestHourUtc !== undefined && digestHourUtc !== null) {
+    const h = Number(digestHourUtc);
+    if (!Number.isInteger(h) || h < 0 || h > 23) {
+      res.status(400).json({ error: "digestHourUtc must be an integer 0–23 or null" });
+      return;
+    }
+  }
+
+  const updates: Partial<{ digestEnabled: boolean; digestHourUtc: number | null }> = {};
+  if (digestEnabled !== undefined) updates.digestEnabled = digestEnabled;
+  if (digestHourUtc !== undefined) updates.digestHourUtc = digestHourUtc;
+
+  const [updated] = await db
+    .update(yardLocationsTable)
+    .set(updates)
+    .where(eq(yardLocationsTable.id, locationId))
+    .returning({
+      id: yardLocationsTable.id,
+      digestEnabled: yardLocationsTable.digestEnabled,
+      digestHourUtc: yardLocationsTable.digestHourUtc,
+    });
+
+  if (!updated) {
+    res.status(404).json({ error: "Location not found" });
+    return;
+  }
+
+  res.json(updated);
 });
 
 // Movement feed for a location

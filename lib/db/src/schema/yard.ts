@@ -100,6 +100,16 @@ export const yardLocationsTable = pgTable("yard_locations", {
   address: text("address"),
   totalCapacity: integer("total_capacity").notNull().default(0),
   autoChecks: boolean("auto_checks").notNull().default(false),
+  /**
+   * Controls whether the morning inspection digest is sent for this yard.
+   * Defaults to true; yard managers can disable it per-location.
+   */
+  digestEnabled: boolean("digest_enabled").notNull().default(true),
+  /**
+   * UTC hour (0–23) at which the digest fires for this yard.
+   * Null means inherit the server-wide DIGEST_HOUR_UTC default.
+   */
+  digestHourUtc: integer("digest_hour_utc"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

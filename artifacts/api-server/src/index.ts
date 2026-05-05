@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startSubmissionCleanup } from "./lib/submissionCleanup";
 import { startNotificationCleanup } from "./lib/notificationCleanup";
+import { startDailyDigest } from "./lib/dailyDigest";
 import { seedDatabase } from "./lib/seedDatabase";
 import { seedServicePackages } from "./routes/service-packages";
 
@@ -58,6 +59,7 @@ seedDatabase()
       logger.info({ port }, "Server listening");
       startSubmissionCleanup();
       startNotificationCleanup();
+      startDailyDigest();
       seedServicePackages().catch((e) => logger.error({ err: e }, "Service package seeding failed"));
     });
   })
