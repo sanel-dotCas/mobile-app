@@ -138,7 +138,7 @@ export default function JobsScreen() {
     } finally {
       setInspLoading(false);
     }
-  }, [techName]);
+  }, [technicianName]);
 
   useEffect(() => { loadInspections(); }, [loadInspections]);
 

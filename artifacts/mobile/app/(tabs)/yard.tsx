@@ -137,14 +137,6 @@ function InspectionBadge({ rec }: { rec: InspectionRec }) {
   );
 }
 
-// Maps 2-letter technician code → full name (must stay in sync with jobs.tsx)
-const CODE_TO_NAME: Record<string, string> = {
-  MR: "Mike Rodriguez",
-  JW: "James Wilson",
-  CM: "Carlos Mendez",
-  AH: "Ahmed Hassan",
-  DP: "David Park",
-};
 
 const TYPE_LABELS: Record<string, string> = {
   "pre-inspection": "Pre-Inspection",
@@ -162,10 +154,8 @@ function TechInspectionsView() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { userCode } = useAuth();
+  const { technicianName } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-
-  const techName = CODE_TO_NAME[userCode] ?? null;
 
   const [inspections, setInspections] = useState<YardInspection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,8 +165,8 @@ function TechInspectionsView() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      if (!techName) { setInspections([]); return; }
-      const params = new URLSearchParams({ assignedTo: techName, limit: "50" });
+      if (!technicianName) { setInspections([]); return; }
+      const params = new URLSearchParams({ assignedTo: technicianName, limit: "50" });
       const data = await fetchJson(`/yard/inspections?${params}`);
       // Only show active tasks — filter out finished inspections
       const active = (data.inspections ?? []).filter(
@@ -189,7 +179,7 @@ function TechInspectionsView() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [techName]);
+  }, [technicianName]);
 
   useEffect(() => { load(); }, [load]);
 

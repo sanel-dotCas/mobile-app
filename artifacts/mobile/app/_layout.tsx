@@ -152,7 +152,7 @@ function YardPDIChecker() {
     check();
     const interval = setInterval(check, 60000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, role, userCode]);
+  }, [isAuthenticated, role, technicianName]);
 
   return null;
 }
