@@ -35,24 +35,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Icons**: Uses Feather icon font from `assets/fonts/Feather.ttf` (family name: lowercase "feather")
 - **Stack**: Expo Router, @expo/vector-icons v15, DMS Blue #1d4ed8
 
-### 2. Yard Manager Web App (`artifacts/yard`)
-- **Type**: React + Vite web app
-- **Preview path**: `/yard/`
-- **Port**: 21273
-- **Purpose**: Vehicle Yard & Parking Management for IGMMA DMS
-- **Login**: username `yard.manager` / password `yard123` OR `operator` / `op123`
-- **Login**: `admin` / `admin` (admin/yard_manager roles); `operator` / `op123` (operator)
-- **Pages**:
-  - `/yard/login` — Login screen
-  - `/yard/` — Operations Dashboard (stats, movement feed, **multi-branch vehicle search bar**)
-  - `/yard/locations` — **Split-panel multi-yard view**: left panel = checkable location cards with capacity bars + ARRIVED/IN YARD/READY PDI/READY SALE stats; right panel = OVERVIEW tab (KPI cards + movement feed) + INSPECTIONS & CHECKS tab (PDI table + tech assignment)
-  - `/yard/locations/:id` — Location detail with zone tabs + visual spot grid + spot detail panel
-  - `/yard/inventory` — Vehicle inventory table with search, status filters, pagination, Add Vehicle modal, **Assign to Yard/Spot modal**
-  - `/yard/inspections` — PDI inspections list with Create PDI modal (**technician assignment dropdown**)
-  - `/yard/transfers` — **Transfer Requests** (yard → showroom): list, create modal, approve/transit/complete/cancel workflow
-- **Auth**: Stored in localStorage key `yard_user`
-
-### 3. API Server (`artifacts/api-server`)
+### 2. API Server (`artifacts/api-server`)
 - **Type**: Express 5 API
 - **Preview path**: `/api`
 - **Port**: 8080
@@ -64,7 +47,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 Role-based access control is derived from user role (no separate DB table).
 
-**Web Yard App roles:**
+**Yard user roles:**
 - `admin`: view_pricing, move_vehicles, create_inspections, manage_users, view_reports, configure_settings
 - `yard_manager`: view_pricing, move_vehicles, create_inspections, view_reports
 - `yard_operator`: move_vehicles, create_inspections only (NO pricing)
@@ -75,7 +58,6 @@ Role-based access control is derived from user role (no separate DB table).
 - `estimator`: view_yard only
 - `parts`: parts inventory, orders, counts, suggestions (separate tab group)
 
-Permissions utility: `useYardPermissions()` hook in `artifacts/yard/src/hooks/use-auth.tsx`
 API endpoint: `GET /api/yard/permissions?role=yard_manager` or `?dmsRole=technician`
 
 ## Inspection Recommendation Engine
@@ -214,5 +196,4 @@ Seed data: 8 locations, 12 vehicles, 6 inspections, 10 movement entries, ~55 spo
 
 - Do NOT run `pnpm dev` at workspace root — run workflows individually
 - After codegen, always fix `lib/api-zod/src/index.ts` to single export
-- Yard app Vite config has no proxy — relies on shared Replit proxy routing `/api` → API server
-- The mobile app uses expo-domain router; the yard app uses path-based routing at `/yard/`
+- The mobile app uses expo-domain router; Admin uses path-based routing at `/admin/`

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project is a pnpm monorepo with an Express 5 API (`artifacts/api-server`), a React/Vite yard-management web app (`artifacts/yard`), and an Expo mobile app (`artifacts/mobile`) for technicians, supervisors, parts staff, and admins. PostgreSQL stores yard, inspection, job, parts, and service-package data. Replit object storage is used for uploaded files.
+This project is a pnpm monorepo with an Express 5 API (`artifacts/api-server`), a React/Vite admin panel (`artifacts/admin`), and an Expo mobile app (`artifacts/mobile`) for technicians, supervisors, parts staff, and admins. PostgreSQL stores yard, inspection, job, parts, and service-package data. Replit object storage is used for uploaded files.
 
 Production security posture depends primarily on the API server because both clients are untrusted and can be modified by an attacker.
 
@@ -27,7 +27,7 @@ Production security posture depends primarily on the API server because both cli
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/index.ts`
 - **Highest-risk code areas:** `artifacts/api-server/src/routes/admin.ts`, `artifacts/api-server/src/routes/yard-*.ts`, `artifacts/api-server/src/routes/parts.ts`, `artifacts/api-server/src/routes/jobs.ts`, `artifacts/api-server/src/routes/storage.ts`
-- **Current auth code:** `artifacts/api-server/src/routes/yard-auth.ts`, `artifacts/yard/src/hooks/use-auth.tsx`, `artifacts/mobile/context/AuthContext.tsx`
+- **Current auth code:** `artifacts/api-server/src/routes/yard-auth.ts`, `artifacts/admin/src/hooks/use-auth.tsx`, `artifacts/mobile/context/AuthContext.tsx`
 - **Dev-only to usually ignore:** `artifacts/mockup-sandbox/**`
 
 ## Threat Categories
