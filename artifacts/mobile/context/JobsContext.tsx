@@ -11,6 +11,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 const API_BASE = Platform.OS === "web"
   ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
@@ -620,6 +621,8 @@ function syncJobToServer(job: Job) {
 }
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+
   const [state, dispatch] = useReducer(reducer, {
     jobs: [], stats: INITIAL_STATS, statsRefreshedAt: Date.now(), activeClockIn: null,
     isOffline: false, notifications: INITIAL_NOTIFICATIONS,
@@ -718,6 +721,11 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Wait until AuthContext has finished restoring the session token.
+    // Without this guard, the fetch fires before updateMobileSessionToken()
+    // is called, causing a 401 race on every cold start / app reopen.
+    if (isAuthLoading || !isAuthenticated) return;
+
     AsyncStorage.getItem("jobs_v2").then((cached) => {
       if (cached) {
         try {
@@ -772,11 +780,11 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
     });
-  }, [fetchAndMergeJobs]);
+  }, [fetchAndMergeJobs, isAuthenticated, isAuthLoading]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      if (initialLoadDone.current) {
+      if (initialLoadDone.current && isAuthenticatedRef.current) {
         fetchAndMergeJobs(false);
         fetchLiveKpis();
       }
@@ -784,9 +792,12 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, [fetchAndMergeJobs, fetchLiveKpis]);
 
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  isAuthenticatedRef.current = isAuthenticated;
+
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === "active" && initialLoadDone.current) {
+      if (nextState === "active" && initialLoadDone.current && isAuthenticatedRef.current) {
         fetchAndMergeJobs(false);
         fetchLiveKpis();
       }
