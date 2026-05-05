@@ -3,6 +3,7 @@ import { db, jobOdometerCorrectionsTable, jobsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireYardPrincipal, requireMobileRoles } from "../middlewares/requireAuth";
 import { formatVehicleName } from "../lib/formatVehicleName";
+import { notifyJobAssigned } from "../lib/pushNotifications";
 
 const router = Router();
 
@@ -381,6 +382,7 @@ router.patch("/jobs/:id", async (req, res) => {
     currentStageId?: string;
     stageHistory?: unknown[];
     inspections?: unknown[];
+    assignedTechnicianId?: string | null;
   };
 
   const updateData: Partial<typeof jobsTable.$inferInsert> & { updatedAt: Date } = {
@@ -407,8 +409,14 @@ router.patch("/jobs/:id", async (req, res) => {
   if (body.currentStageId !== undefined) updateData.currentStageId = body.currentStageId;
   if (body.stageHistory !== undefined) updateData.stageHistory = body.stageHistory;
   if (body.inspections !== undefined) updateData.inspections = body.inspections;
+  if (body.assignedTechnicianId !== undefined) {
+    updateData.assignedTechnicianId = body.assignedTechnicianId ?? null;
+  }
 
   try {
+    // Fetch existing to detect technician assignment change
+    const [existing] = await db.select({ assignedTechnicianId: jobsTable.assignedTechnicianId }).from(jobsTable).where(eq(jobsTable.id, id));
+
     const rows = await db
       .update(jobsTable)
       .set(updateData)
@@ -420,7 +428,15 @@ router.patch("/jobs/:id", async (req, res) => {
       return;
     }
 
-    res.json(rowToJob(rows[0]));
+    const job = rowToJob(rows[0]);
+
+    // Send notification if a new technician was assigned
+    const newTechId = body.assignedTechnicianId;
+    if (newTechId && existing && newTechId !== existing.assignedTechnicianId) {
+      void notifyJobAssigned(newTechId, id, job.vehicle);
+    }
+
+    res.json(job);
   } catch (err) {
     req.log.error(err, "Failed to update job");
     res.status(500).json({ error: "Failed to update job" });
@@ -440,6 +456,12 @@ router.put("/jobs/:id", async (req, res) => {
   const { year: vehicleYear, make: vehicleMake, model: vehicleModel } = parseVehicleString(vehicleStr);
 
   try {
+    // Fetch the existing row to detect technician assignment changes
+    const [existing] = await db
+      .select({ assignedTechnicianId: jobsTable.assignedTechnicianId })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, id));
+
     const values = {
       id,
       estimateNumber: String(body.estimateNumber ?? ""),
@@ -498,7 +520,16 @@ router.put("/jobs/:id", async (req, res) => {
       })
       .returning();
 
-    res.json({ job: rowToJob(row) });
+    const job = rowToJob(row);
+
+    // Send notification if the technician assignment is new or changed
+    const newTechId = values.assignedTechnicianId;
+    const prevTechId = existing?.assignedTechnicianId ?? null;
+    if (newTechId && newTechId !== prevTechId) {
+      void notifyJobAssigned(newTechId, id, job.vehicle);
+    }
+
+    res.json({ job });
   } catch (err) {
     req.log.error(err, "Failed to save job");
     res.status(500).json({ error: "Failed to save job" });

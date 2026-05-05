@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { yardUsersTable } from "@workspace/db";
+import { yardUsersTable, techniciansTable } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 
 interface PushMessage {
@@ -234,6 +234,50 @@ export async function notifySupervisorsFailedInspection(
     }));
 
   await sendExpoPushNotification(messages);
+}
+
+/**
+ * Sends a push notification to a technician when a job is assigned to them.
+ * Resolves the push token via: assignedTechnicianId → techniciansTable.userCode → yardUsersTable.userCode
+ */
+export async function notifyJobAssigned(
+  technicianId: string,
+  jobId: string,
+  vehicleName: string
+): Promise<void> {
+  try {
+    const [tech] = await db
+      .select({ userCode: techniciansTable.userCode })
+      .from(techniciansTable)
+      .where(eq(techniciansTable.id, technicianId))
+      .limit(1);
+
+    if (!tech?.userCode) return;
+
+    const [user] = await db
+      .select({
+        expoPushToken: yardUsersTable.expoPushToken,
+        notificationsEnabled: yardUsersTable.notificationsEnabled,
+      })
+      .from(yardUsersTable)
+      .where(eq(yardUsersTable.userCode, tech.userCode))
+      .limit(1);
+
+    if (!user || !user.expoPushToken || !user.notificationsEnabled) return;
+
+    await sendExpoPushNotification([
+      {
+        to: user.expoPushToken,
+        title: "New Job Assigned",
+        body: `New job assigned: ${vehicleName}`,
+        data: { jobId, screen: "job" },
+        sound: "default",
+        priority: "high",
+      },
+    ]);
+  } catch {
+    // Non-critical — don't let notification failures break job routes
+  }
 }
 
 const INSPECTION_TYPE_LABELS: Record<string, string> = {
