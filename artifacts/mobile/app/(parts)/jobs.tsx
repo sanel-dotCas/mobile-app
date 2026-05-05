@@ -97,10 +97,11 @@ export default function PartsJobsScreen() {
 
   const filteredJobs = jobs.filter((job) => {
     const parts = getParts(job);
+    const activeFilter = searchQuery.trim() ? "all" : filter;
     const passesFilter =
-      filter === "pending"
+      activeFilter === "pending"
         ? parts.some((p) => p.status === "pending")
-        : filter === "ordered"
+        : activeFilter === "ordered"
         ? parts.some((p) => p.status === "ordered")
         : parts.length > 0;
 
