@@ -146,6 +146,13 @@ export default function VehicleDetailScreen() {
     router.push({ pathname: "/yard/new-inspection", params: { vehicleId: id } });
   };
 
+  const viewHistory = () => {
+    const name = vehicle
+      ? encodeURIComponent(`${vehicle.year} ${vehicle.make} ${vehicle.model}`)
+      : "";
+    router.push({ pathname: "/yard/inspection-history", params: { id, vehicleName: name } });
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -268,30 +275,37 @@ export default function VehicleDetailScreen() {
         </View>
 
         {/* Actions */}
-        {vehicle.status !== "sold" && (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Actions</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Actions</Text>
 
-            {(vehicle.status === "available" || vehicle.status === "in_transit") && (
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-                onPress={startPDI}
-              >
-                <Feather name="clipboard" size={16} color="#fff" />
-                <Text style={styles.actionBtnText}>Start PDI Inspection</Text>
-              </Pressable>
-            )}
+          {/* Inspection history — always available */}
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: "#7c3aed" }]}
+            onPress={viewHistory}
+          >
+            <Feather name="clock" size={16} color="#fff" />
+            <Text style={styles.actionBtnText}>Inspection History</Text>
+          </Pressable>
 
-            {vehicle.status === "pdi_pending" && (
-              <View style={[styles.infoBanner, { backgroundColor: colors.accent }]}>
-                <Feather name="info" size={14} color={colors.primary} />
-                <Text style={[styles.infoBannerText, { color: colors.primary }]}>
-                  PDI inspection in progress for this vehicle
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
+          {vehicle.status !== "sold" && (vehicle.status === "available" || vehicle.status === "in_transit") && (
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+              onPress={startPDI}
+            >
+              <Feather name="clipboard" size={16} color="#fff" />
+              <Text style={styles.actionBtnText}>Start PDI Inspection</Text>
+            </Pressable>
+          )}
+
+          {vehicle.status === "pdi_pending" && (
+            <View style={[styles.infoBanner, { backgroundColor: colors.accent }]}>
+              <Feather name="info" size={14} color={colors.primary} />
+              <Text style={[styles.infoBannerText, { color: colors.primary }]}>
+                PDI inspection in progress for this vehicle
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </View>
   );

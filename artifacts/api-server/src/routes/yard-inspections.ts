@@ -113,6 +113,7 @@ router.get("/yard/inspections/available-techs", async (_req, res) => {
 router.get("/yard/inspections", async (req, res) => {
   const {
     locationId,
+    vehicleId,
     status,
     assignedTo,
     page = "1",
@@ -125,6 +126,8 @@ router.get("/yard/inspections", async (req, res) => {
   const conditions: SQL[] = [];
   if (locationId)
     conditions.push(eq(yardInspectionsTable.locationId, Number(locationId)));
+  if (vehicleId)
+    conditions.push(eq(yardInspectionsTable.vehicleId, Number(vehicleId)));
 
   if (status && status !== "all") {
     // Support comma-separated statuses e.g. "queued,in-progress"
