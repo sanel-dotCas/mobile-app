@@ -236,6 +236,28 @@ export async function notifySupervisorsFailedInspection(
   await sendExpoPushNotification(messages);
 }
 
+async function findTokenByTechnicianId(technicianId: string): Promise<string | null> {
+  const [tech] = await db
+    .select({ userCode: techniciansTable.userCode })
+    .from(techniciansTable)
+    .where(eq(techniciansTable.id, technicianId))
+    .limit(1);
+
+  if (!tech?.userCode) return null;
+
+  const [user] = await db
+    .select({
+      expoPushToken: yardUsersTable.expoPushToken,
+      notificationsEnabled: yardUsersTable.notificationsEnabled,
+    })
+    .from(yardUsersTable)
+    .where(eq(yardUsersTable.userCode, tech.userCode))
+    .limit(1);
+
+  if (!user || !user.expoPushToken || !user.notificationsEnabled) return null;
+  return user.expoPushToken;
+}
+
 /**
  * Sends a push notification to a technician when a job is assigned to them.
  * Resolves the push token via: assignedTechnicianId → techniciansTable.userCode → yardUsersTable.userCode
@@ -246,30 +268,68 @@ export async function notifyJobAssigned(
   vehicleName: string
 ): Promise<void> {
   try {
-    const [tech] = await db
-      .select({ userCode: techniciansTable.userCode })
-      .from(techniciansTable)
-      .where(eq(techniciansTable.id, technicianId))
-      .limit(1);
-
-    if (!tech?.userCode) return;
-
-    const [user] = await db
-      .select({
-        expoPushToken: yardUsersTable.expoPushToken,
-        notificationsEnabled: yardUsersTable.notificationsEnabled,
-      })
-      .from(yardUsersTable)
-      .where(eq(yardUsersTable.userCode, tech.userCode))
-      .limit(1);
-
-    if (!user || !user.expoPushToken || !user.notificationsEnabled) return;
+    const token = await findTokenByTechnicianId(technicianId);
+    if (!token) return;
 
     await sendExpoPushNotification([
       {
-        to: user.expoPushToken,
+        to: token,
         title: "New Job Assigned",
         body: `New job assigned: ${vehicleName}`,
+        data: { jobId, screen: "job" },
+        sound: "default",
+        priority: "high",
+      },
+    ]);
+  } catch {
+    // Non-critical — don't let notification failures break job routes
+  }
+}
+
+/**
+ * Sends a "Job Reassigned" notification to the technician who previously held the job.
+ */
+export async function notifyJobReassigned(
+  previousTechnicianId: string,
+  jobId: string,
+  vehicleName: string
+): Promise<void> {
+  try {
+    const token = await findTokenByTechnicianId(previousTechnicianId);
+    if (!token) return;
+
+    await sendExpoPushNotification([
+      {
+        to: token,
+        title: "Job Reassigned",
+        body: `${vehicleName} has been reassigned to another technician`,
+        data: { jobId, screen: "job" },
+        sound: "default",
+        priority: "high",
+      },
+    ]);
+  } catch {
+    // Non-critical — don't let notification failures break job routes
+  }
+}
+
+/**
+ * Sends a "Job Removed" notification to the technician whose assignment was cleared.
+ */
+export async function notifyJobUnassigned(
+  previousTechnicianId: string,
+  jobId: string,
+  vehicleName: string
+): Promise<void> {
+  try {
+    const token = await findTokenByTechnicianId(previousTechnicianId);
+    if (!token) return;
+
+    await sendExpoPushNotification([
+      {
+        to: token,
+        title: "Job Removed",
+        body: `${vehicleName} has been removed from your queue`,
         data: { jobId, screen: "job" },
         sound: "default",
         priority: "high",

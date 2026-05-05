@@ -3,7 +3,7 @@ import { db, jobOdometerCorrectionsTable, jobsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireYardPrincipal, requireMobileRoles } from "../middlewares/requireAuth";
 import { formatVehicleName } from "../lib/formatVehicleName";
-import { notifyJobAssigned } from "../lib/pushNotifications";
+import { notifyJobAssigned, notifyJobReassigned, notifyJobUnassigned } from "../lib/pushNotifications";
 
 const router = Router();
 
@@ -430,10 +430,23 @@ router.patch("/jobs/:id", async (req, res) => {
 
     const job = rowToJob(rows[0]);
 
-    // Send notification if a new technician was assigned
-    const newTechId = body.assignedTechnicianId;
-    if (newTechId && existing && newTechId !== existing.assignedTechnicianId) {
-      void notifyJobAssigned(newTechId, id, job.vehicle);
+    // Notify technicians on assignment changes
+    if (body.assignedTechnicianId !== undefined) {
+      const newTechId = body.assignedTechnicianId ?? null;
+      const prevTechId = existing?.assignedTechnicianId ?? null;
+
+      if (newTechId !== prevTechId) {
+        if (newTechId) {
+          void notifyJobAssigned(newTechId, id, job.vehicle);
+        }
+        if (prevTechId) {
+          if (newTechId) {
+            void notifyJobReassigned(prevTechId, id, job.vehicle);
+          } else {
+            void notifyJobUnassigned(prevTechId, id, job.vehicle);
+          }
+        }
+      }
     }
 
     res.json(job);
@@ -522,11 +535,21 @@ router.put("/jobs/:id", async (req, res) => {
 
     const job = rowToJob(row);
 
-    // Send notification if the technician assignment is new or changed
-    const newTechId = values.assignedTechnicianId;
+    // Notify technicians on assignment changes
+    const newTechId = values.assignedTechnicianId ?? null;
     const prevTechId = existing?.assignedTechnicianId ?? null;
-    if (newTechId && newTechId !== prevTechId) {
-      void notifyJobAssigned(newTechId, id, job.vehicle);
+
+    if (newTechId !== prevTechId) {
+      if (newTechId) {
+        void notifyJobAssigned(newTechId, id, job.vehicle);
+      }
+      if (prevTechId) {
+        if (newTechId) {
+          void notifyJobReassigned(prevTechId, id, job.vehicle);
+        } else {
+          void notifyJobUnassigned(prevTechId, id, job.vehicle);
+        }
+      }
     }
 
     res.json({ job });
