@@ -24,6 +24,7 @@ import {
   partsRfqItemsTable,
   partsRfqSuppliersTable,
   partsRfqResponseItemsTable,
+  jobsTable,
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 
@@ -248,12 +249,15 @@ function nextNumber(prefix: string, existing: string[]): string {
 router.get("/parts/dashboard", async (req, res) => {
   await ensureSeeded();
   try {
-    const items = await db.select().from(partsItemsTable);
-    const orders = await db.select().from(partsOrdersTable);
-    const counts = await db.select().from(partsCountSessionsTable);
-    const sales = await db.select().from(partsSalesTable);
-    const roRequests = await db.select().from(partsRoRequestsTable);
-    const transfers = await db.select().from(partsTransfersTable);
+    const [items, orders, counts, sales, roRequests, transfers, jobs] = await Promise.all([
+      db.select().from(partsItemsTable),
+      db.select().from(partsOrdersTable),
+      db.select().from(partsCountSessionsTable),
+      db.select().from(partsSalesTable),
+      db.select().from(partsRoRequestsTable),
+      db.select().from(partsTransfersTable),
+      db.select({ tasks: jobsTable.tasks }).from(jobsTable),
+    ]);
 
     const totalParts = items.length;
     const lowStockCount = items.filter((i) => i.qtyOnHand > 0 && i.qtyOnHand < i.minStock).length;
@@ -262,6 +266,15 @@ router.get("/parts/dashboard", async (req, res) => {
     const inProgressCounts = counts.filter((c) => c.status === "in_progress").length;
     const pendingRoRequests = roRequests.filter((r) => r.status === "pending" || r.status === "picking").length;
     const pendingTransfers = transfers.filter((t) => t.status === "requested" || t.status === "approved" || t.status === "shipped").length;
+
+    type TaskPart = { status?: string };
+    type JobTask = { parts?: TaskPart[] };
+    const pendingJobsCount = jobs.filter((j) => {
+      const tasks = (j.tasks ?? []) as JobTask[];
+      return tasks.some((t) =>
+        (t.parts ?? []).some((p) => p.status === "pending" || p.status === "ordered")
+      );
+    }).length;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -284,6 +297,7 @@ router.get("/parts/dashboard", async (req, res) => {
       inProgressCounts,
       pendingRoRequests,
       pendingTransfers,
+      pendingJobsCount,
       todaySalesCount: todaySales.length,
       lastCountDate: lastCount?.completedAt ?? null,
       criticalItems,

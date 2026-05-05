@@ -30,6 +30,7 @@ interface DashboardStats {
   inProgressCounts: number;
   pendingRoRequests: number;
   pendingTransfers: number;
+  pendingJobsCount: number;
   todaySalesCount: number;
   lastCountDate: string | null;
   criticalItems: Array<{ id: number; partNumber: string; name: string; binCode: string | null }>;
@@ -183,6 +184,14 @@ export default function PartsDashboard() {
                 <Feather name="shuffle" size={20} color="#7c3aed" />
                 <Text style={[styles.kpiValue, { color: colors.foreground }]}>{stats?.pendingTransfers ?? 0}</Text>
                 <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Transfers</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.kpiCard, { backgroundColor: stats?.pendingJobsCount ? "#fef3c7" : colors.card, borderColor: stats?.pendingJobsCount ? "#fde68a" : colors.border }]}
+                onPress={() => router.push("/(parts)/jobs?filter=pending")}
+              >
+                <Feather name="briefcase" size={20} color={stats?.pendingJobsCount ? "#d97706" : colors.mutedForeground} />
+                <Text style={[styles.kpiValue, { color: stats?.pendingJobsCount ? "#d97706" : colors.foreground }]}>{stats?.pendingJobsCount ?? 0}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.mutedForeground }]}>Jobs Pending</Text>
               </Pressable>
             </View>
 

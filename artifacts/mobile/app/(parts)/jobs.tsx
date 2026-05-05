@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import type { DimensionValue } from "react-native";
 import {
@@ -58,12 +58,15 @@ export default function PartsJobsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const validFilter = (filterParam === "pending" || filterParam === "ordered" || filterParam === "all") ? filterParam : "pending";
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<FilterKey>("pending");
+  const [filter, setFilter] = useState<FilterKey>(validFilter);
   const [searchQuery, setSearchQuery] = useState("");
 
   const load = useCallback(async () => {
