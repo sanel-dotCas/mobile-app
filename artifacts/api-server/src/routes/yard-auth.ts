@@ -150,12 +150,30 @@ publicRouter.post("/yard/auth/logout", (_req, res) => {
 // ── Protected auth router (requires auth middleware) ──────────────────────────
 const protectedRouter: IRouter = Router();
 
+/**
+ * GET /yard/auth/me
+ * Returns the current principal's identity for both yard-web and mobile sessions.
+ * The mobile app uses this to restore technicianName after an app restart without
+ * forcing a re-login.
+ */
 protectedRouter.get("/yard/auth/me", async (req, res) => {
   const principal = res.locals.principal;
-  if (!principal || principal.type !== "yard") {
-    res.status(403).json({ error: "Yard session required" });
+  if (!principal) {
+    res.status(401).json({ error: "Not authenticated" });
     return;
   }
+
+  if (principal.type === "mobile") {
+    res.json({
+      type: "mobile",
+      userCode: principal.userCode,
+      technicianName: principal.technicianName,
+      role: principal.role,
+    });
+    return;
+  }
+
+  // Yard principal — fetch live user record for full details.
   const [user] = await db
     .select()
     .from(yardUsersTable)
@@ -166,6 +184,7 @@ protectedRouter.get("/yard/auth/me", async (req, res) => {
     return;
   }
   res.json({
+    type: "yard",
     id: user.id,
     username: user.username,
     name: user.name,

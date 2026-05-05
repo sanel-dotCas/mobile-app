@@ -33,12 +33,8 @@ router.use(requireAuth);
 router.use(yardAuthProtectedRouter);
 
 // ── Mobile-accessible DMS routes with per-path RBAC ───────────────────────────
-// Path-prefixed guards run only for the matching path tree.
-// Using router.use('/path', middleware) ensures the guard does NOT bleed into
-// other routers (unlike subrouter-internal router.use() which runs for all traffic).
 
 // Job mutations: technician / supervisor / admin mobile role (or any yard principal).
-// POST /jobs and DELETE /jobs/:id additionally enforce requireYardPrincipal per-route.
 const requireJobWrite = requireMobileRoles("technician", "supervisor", "admin");
 router.use("/jobs", (req: Request, res: Response, next: NextFunction) => {
   if (req.method === "GET" || req.method === "HEAD") { next(); return; }
@@ -61,29 +57,38 @@ router.use(estimatesRouter);
 // ── Admin-only routes (admin role — yard OR mobile admin) ─────────────────────
 // Path-scoped guards: requireAdminRole only fires for /admin/* and
 // /service-packages/* paths, so it does NOT bleed into yard routes below.
-// Mobile admins (role="admin") pass through these guards too.
 router.use("/admin", requireAdminRole);
 router.use("/service-packages", requireAdminRole);
 router.use(adminRouter);
 router.use(servicePackagesRouter);
 
-// ── Supervisor/Admin mobile access to yard inventory & inspections ─────────────
-// Supervisors need to view vehicle inventory, manage inspections, and see
-// inspection recommendations — all without a full yard-web session.
+// ── Yard inventory & inspection routes — accessible by all mobile roles ────────
 //
-// Access rules per resource:
-//   yard/vehicles        → GET: supervisor|admin mobile; POST/PATCH/DELETE: yard only
-//   yard/inspections     → GET/POST/PATCH: supervisor|admin mobile; DELETE: yard only
-//   yard/inspection-*    → GET: supervisor|admin mobile
+// All authenticated mobile roles (technician, supervisor, admin, parts, estimator)
+// can read yard vehicles and inspections. Write permissions are role-scoped:
 //
-// Yard principals always pass through (handled by the yard-only block below).
+//   yard/vehicles   GET:          all mobile roles
+//                   PATCH:        supervisor | admin  (status updates from monitor)
+//                   POST/DELETE:  yard-web only
+//
+//   yard/inspections GET:         all mobile roles  (techs read their assigned queue)
+//                    PATCH:       technician | supervisor | admin  (checklist results + assignment)
+//                    POST:        supervisor | admin  (create / generate inspections)
+//                    DELETE:      yard-web only
+//
+//   yard/inspection-recommendations  GET: all mobile roles
+//
+// Yard principals always bypass these guards and go straight through to the routers.
+const requireAnyMobile = requireMobileRoles("technician", "supervisor", "admin", "parts", "estimator");
 const requireSupervisorOrAdmin = requireMobileRoles("supervisor", "admin");
+const requireTechOrAbove = requireMobileRoles("technician", "supervisor", "admin");
 
 router.use("/yard/vehicles", (req: Request, res: Response, next: NextFunction) => {
   const p = res.locals.principal;
   if (p?.type !== "mobile") { next(); return; }
-  // Mobile: reads allowed for supervisor/admin; writes blocked (yard only)
   if (req.method === "GET" || req.method === "HEAD") {
+    requireAnyMobile(req, res, next);
+  } else if (req.method === "PATCH") {
     requireSupervisorOrAdmin(req, res, next);
   } else {
     res.status(403).json({ error: "Yard web session required for vehicle mutations" });
@@ -93,28 +98,29 @@ router.use("/yard/vehicles", (req: Request, res: Response, next: NextFunction) =
 router.use("/yard/inspections", (req: Request, res: Response, next: NextFunction) => {
   const p = res.locals.principal;
   if (p?.type !== "mobile") { next(); return; }
-  // Mobile supervisors/admins: full read + create + update; delete blocked
-  if (req.method === "DELETE") {
+  if (req.method === "GET" || req.method === "HEAD") {
+    requireAnyMobile(req, res, next);
+  } else if (req.method === "PATCH") {
+    requireTechOrAbove(req, res, next);
+  } else if (req.method === "POST") {
+    requireSupervisorOrAdmin(req, res, next);
+  } else {
     res.status(403).json({ error: "Yard web session required to delete inspections" });
-    return;
   }
-  requireSupervisorOrAdmin(req, res, next);
 });
 
 router.use("/yard/inspection-recommendations", (req: Request, res: Response, next: NextFunction) => {
   const p = res.locals.principal;
   if (p?.type !== "mobile") { next(); return; }
-  requireSupervisorOrAdmin(req, res, next);
+  requireAnyMobile(req, res, next);
 });
 
-// Mount the yard routers — these serve both mobile (guarded above) and yard principals.
+// Mount yard routers — serve both mobile (guarded above) and yard-web principals.
 router.use(yardVehiclesRouter);
 router.use(yardInspectionsRouter);
 router.use(yardRecommendationsRouter);
 
 // ── Yard-web-only routes (mobile principals rejected with 403) ────────────────
-// Yard management data and file storage are not consumed by the mobile app and
-// must not be reachable via mobile session tokens.
 router.use(requireYardPrincipal);
 router.use(storageRouter);
 router.use(yardLocationsRouter);

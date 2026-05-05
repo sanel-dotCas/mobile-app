@@ -25,13 +25,6 @@ const BASE = Platform.OS === "web"
   ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
   : "/api";
 
-// Maps 2-letter technician code → full name used in yard assignment records
-const CODE_TO_NAME: Record<string, string> = {
-  MR: "Mike Rodriguez",
-  JW: "James Wilson",
-  CM: "Carlos Mendez",
-  AH: "Ahmed Hassan",
-};
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS = ["S","M","T","W","T","F","S"];
@@ -49,7 +42,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { state } = useJobs();
   const { t } = useLang();
-  const { logout, userCode } = useAuth();
+  const { logout, technicianName } = useAuth();
   const router = useRouter();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -60,16 +53,14 @@ export default function DashboardScreen() {
 
   const [myInspectionsCount, setMyInspectionsCount] = useState<number | null>(null);
 
-  const techName = CODE_TO_NAME[userCode] ?? null;
-
   const loadInspectionCount = useCallback(async () => {
-    if (!techName) {
+    if (!technicianName) {
       setMyInspectionsCount(0);
       return;
     }
     try {
       const params = new URLSearchParams({
-        assignedTo: techName,
+        assignedTo: technicianName,
         status: "queued,in-progress",
         limit: "50",
       });
@@ -80,7 +71,7 @@ export default function DashboardScreen() {
     } catch {
       setMyInspectionsCount(null);
     }
-  }, [techName]);
+  }, [technicianName]);
 
   useEffect(() => { loadInspectionCount(); }, [loadInspectionCount]);
 

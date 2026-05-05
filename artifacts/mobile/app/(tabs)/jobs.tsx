@@ -27,14 +27,6 @@ const BASE = Platform.OS === "web"
   ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
   : "/api";
 
-// Maps 2-letter technician code → full name used in yard assignment records
-const CODE_TO_NAME: Record<string, string> = {
-  MR: "Mike Rodriguez",
-  JW: "James Wilson",
-  CM: "Carlos Mendez",
-  AH: "Ahmed Hassan",
-  DP: "David Park",
-};
 
 type InspectionStatus = "queued" | "in-progress" | "finished";
 type Urgency = "overdue" | "due-soon" | "ok";
@@ -116,11 +108,9 @@ export default function JobsScreen() {
   const insets = useSafeAreaInsets();
   const { state, refreshJobs, isRefreshing } = useJobs();
   const { t } = useLang();
-  const { userCode } = useAuth();
+  const { technicianName } = useAuth();
   const router = useRouter();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-
-  const techName = CODE_TO_NAME[userCode] ?? null;
 
   const [myInspections, setMyInspections] = useState<AssignedInspection[]>([]);
   const [inspLoading, setInspLoading] = useState(true);
@@ -128,14 +118,14 @@ export default function JobsScreen() {
   const [markingDoneId, setMarkingDoneId] = useState<number | null>(null);
 
   const loadInspections = useCallback(async () => {
-    if (!techName) {
+    if (!technicianName) {
       setMyInspections([]);
       setInspLoading(false);
       return;
     }
     try {
       const params = new URLSearchParams({
-        assignedTo: techName,
+        assignedTo: technicianName,
         status: "queued,in-progress",
         limit: "50",
       });

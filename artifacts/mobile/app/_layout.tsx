@@ -115,17 +115,17 @@ function StageAutoAdvancer() {
 }
 
 function YardPDIChecker() {
-  const { role, userCode, isAuthenticated } = useAuth();
+  const { role, technicianName, isAuthenticated } = useAuth();
   const { addYardNotification } = useJobs();
   const addYardRef = useRef(addYardNotification);
   addYardRef.current = addYardNotification;
 
   useEffect(() => {
-    if (!isAuthenticated || role !== "technician") return;
+    if (!isAuthenticated || role !== "technician" || !technicianName) return;
 
     const check = async () => {
       try {
-        const res = await fetch(`${BASE}/yard/inspections?assignedTo=${userCode}&status=queued&limit=20`);
+        const res = await fetch(`${BASE}/yard/inspections?assignedTo=${encodeURIComponent(technicianName)}&status=queued&limit=20`);
         if (!res.ok) return;
         const data = await res.json();
         const inspections: Array<{ id: number; inspectionNumber: string; vehicleName: string }> =
