@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "seed-jobs": "tsx ./src/seed-jobs.ts",
     "seed-account-types": "tsx ./src/seed-account-types.ts",
+    "e2e-mobile-roles": "tsx ./src/e2e-mobile-roles.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

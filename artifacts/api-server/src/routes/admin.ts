@@ -537,15 +537,23 @@ router.get("/admin/monitor/jobs", async (req, res) => {
 
 // ── System settings (static/info) ─────────────────────────────────────────────
 router.get("/admin/settings", async (_req, res) => {
-  const [userCount, techCount, vehicleCount] = await Promise.all([
+  const [userCount, techCount, vehicleCount, mobileUsers] = await Promise.all([
     db.select({ cnt: count() }).from(yardUsersTable),
     db.select({ cnt: count() }).from(techniciansTable),
     db.select({ cnt: count() }).from(yardVehiclesTable),
-  ]).catch(() => [[{ cnt: 0 }], [{ cnt: 0 }], [{ cnt: 0 }]]);
+    db
+      .select({ code: yardUsersTable.userCode, role: yardUsersTable.mobileRole })
+      .from(yardUsersTable)
+      .where(sql`${yardUsersTable.userCode} is not null and ${yardUsersTable.mobileRole} is not null`)
+      .orderBy(yardUsersTable.mobileRole, yardUsersTable.userCode),
+  ]).catch(() => [[{ cnt: 0 }], [{ cnt: 0 }], [{ cnt: 0 }], []]);
 
   res.json({
     yardRoles: ["admin", "yard_manager", "yard_operator"],
     dmsRoles: ["technician", "supervisor", "estimator", "parts", "admin"],
+    mobileCredentials: (mobileUsers as { code: string | null; role: string | null }[])
+      .filter(u => u.code && u.role)
+      .map(u => ({ code: u.code!, role: u.role! })),
     dbInfo: {
       users: Number((userCount as {cnt: unknown}[])[0]?.cnt ?? 0),
       technicians: Number((techCount as {cnt: unknown}[])[0]?.cnt ?? 0),

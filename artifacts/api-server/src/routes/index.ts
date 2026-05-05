@@ -58,12 +58,25 @@ router.use(partsRouter);
 
 router.use(estimatesRouter);
 
+// Service packages RBAC:
+//   Reads  (GET/HEAD): parts / supervisor / admin mobile roles; any yard principal.
+//   Writes (POST/…):   admin role only — both yard admin and mobile admin.
+//                      Non-admin yard users are blocked at requireAdminRole.
+const requireServicePackagesRead = requireMobileRoles("parts", "supervisor", "admin");
+router.use("/service-packages", (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "GET" || req.method === "HEAD") {
+    requireServicePackagesRead(req, res, next);
+    return;
+  }
+  requireAdminRole(req, res, next);
+});
+router.use(servicePackagesRouter);
+
 // ── Admin-only routes (admin role — yard OR mobile admin) ─────────────────────
 // Scoped to a sub-router so requireAdminRole does NOT bleed into the yard-web
 // routes below. Mobile admins (role="admin") can reach these endpoints.
 const adminScopedRouter = Router();
 adminScopedRouter.use(requireAdminRole);
-adminScopedRouter.use(servicePackagesRouter);
 adminScopedRouter.use(adminRouter);
 router.use(adminScopedRouter);
 
