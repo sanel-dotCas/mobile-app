@@ -351,19 +351,57 @@ export async function notifyJobReassigned(
   vehicleName: string
 ): Promise<void> {
   try {
-    const token = await findTokenByTechnicianId(previousTechnicianId);
-    if (!token) return;
+    const found = await findUserByTechnicianId(previousTechnicianId);
+    if (!found) return;
+
+    const title = "Job Reassigned";
+    const body = `${vehicleName} has been reassigned to another technician`;
 
     await sendExpoPushNotification([
       {
-        to: token,
-        title: "Job Reassigned",
-        body: `${vehicleName} has been reassigned to another technician`,
+        to: found.token,
+        title,
+        body,
         data: { jobId, screen: "job" },
         sound: "default",
         priority: "high",
       },
     ]);
+
+    await persistNotification(found.id, title, body, { jobId });
+  } catch {
+    // Non-critical — don't let notification failures break job routes
+  }
+}
+
+/**
+ * Sends a "Job Reassigned to You" notification to the technician who is taking over the job.
+ * Used instead of notifyJobAssigned when the job was previously held by someone else.
+ */
+export async function notifyJobReassignedToNew(
+  technicianId: string,
+  jobId: string,
+  vehicleName: string
+): Promise<void> {
+  try {
+    const found = await findUserByTechnicianId(technicianId);
+    if (!found) return;
+
+    const title = "Job Reassigned to You";
+    const body = `Job reassigned to you: ${vehicleName}`;
+
+    await sendExpoPushNotification([
+      {
+        to: found.token,
+        title,
+        body,
+        data: { jobId, screen: "job" },
+        sound: "default",
+        priority: "high",
+      },
+    ]);
+
+    await persistNotification(found.id, title, body, { jobId });
   } catch {
     // Non-critical — don't let notification failures break job routes
   }

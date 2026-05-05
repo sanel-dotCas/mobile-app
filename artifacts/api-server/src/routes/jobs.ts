@@ -3,7 +3,7 @@ import { db, jobOdometerCorrectionsTable, jobsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireYardPrincipal, requireMobileRoles } from "../middlewares/requireAuth";
 import { formatVehicleName } from "../lib/formatVehicleName";
-import { notifyJobAssigned, notifyJobReassigned, notifyJobUnassigned } from "../lib/pushNotifications";
+import { notifyJobAssigned, notifyJobReassigned, notifyJobReassignedToNew, notifyJobUnassigned } from "../lib/pushNotifications";
 
 const router = Router();
 
@@ -448,7 +448,11 @@ router.patch("/jobs/:id", async (req, res) => {
 
       if (newTechId !== prevTechId) {
         if (newTechId) {
-          void notifyJobAssigned(newTechId, id, job.vehicle);
+          if (prevTechId) {
+            void notifyJobReassignedToNew(newTechId, id, job.vehicle);
+          } else {
+            void notifyJobAssigned(newTechId, id, job.vehicle);
+          }
         }
         if (prevTechId) {
           if (newTechId) {
@@ -552,7 +556,11 @@ router.put("/jobs/:id", async (req, res) => {
 
     if (newTechId !== prevTechId) {
       if (newTechId) {
-        void notifyJobAssigned(newTechId, id, job.vehicle);
+        if (prevTechId) {
+          void notifyJobReassignedToNew(newTechId, id, job.vehicle);
+        } else {
+          void notifyJobAssigned(newTechId, id, job.vehicle);
+        }
       }
       if (prevTechId) {
         if (newTechId) {
