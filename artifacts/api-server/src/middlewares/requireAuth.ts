@@ -84,12 +84,18 @@ export function requireYardPrincipal(req: Request, res: Response, next: NextFunc
 }
 
 /**
- * Requires a yard-web session with admin role.
+ * Requires an admin role from either a yard-web session OR a mobile session.
+ * Yard principals must have role "admin".
+ * Mobile principals must have role "admin".
  * Apply to routes that perform privileged mutations (user management, etc.).
  */
 export function requireAdminRole(req: Request, res: Response, next: NextFunction): void {
   const principal = res.locals.principal;
-  if (!principal || principal.type !== "yard" || principal.role !== "admin") {
+  if (!principal) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  if (principal.role !== "admin") {
     res.status(403).json({ error: "Admin role required" });
     return;
   }

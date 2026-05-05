@@ -58,6 +58,15 @@ router.use(partsRouter);
 
 router.use(estimatesRouter);
 
+// ── Admin-only routes (admin role — yard OR mobile admin) ─────────────────────
+// Scoped to a sub-router so requireAdminRole does NOT bleed into the yard-web
+// routes below. Mobile admins (role="admin") can reach these endpoints.
+const adminScopedRouter = Router();
+adminScopedRouter.use(requireAdminRole);
+adminScopedRouter.use(servicePackagesRouter);
+adminScopedRouter.use(adminRouter);
+router.use(adminScopedRouter);
+
 // ── Yard-web-only routes (mobile principals rejected with 403) ────────────────
 // Yard management data and file storage are not consumed by the mobile app and
 // must not be reachable via mobile session tokens.
@@ -71,11 +80,5 @@ router.use(yardDashboardRouter);
 router.use(yardRecommendationsRouter);
 router.use(yardUsersRouter);
 router.use(yardTransfersRouter);
-
-// ── Admin-only routes (admin yard role required) ──────────────────────────────
-// requireAdminRole is a superset of requireYardPrincipal.
-router.use(requireAdminRole);
-router.use(servicePackagesRouter);
-router.use(adminRouter);
 
 export default router;
