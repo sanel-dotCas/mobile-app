@@ -21,3 +21,4 @@ export * from "./yard";
 export * from "./parts";
 export * from "./jobs";
 export * from "./technicians";
+export * from "./settings";

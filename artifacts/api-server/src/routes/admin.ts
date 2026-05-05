@@ -9,11 +9,13 @@ import {
   servicePackagesTable,
   servicePackageLinesTable,
   dmsAccountTypesTable,
+  systemSettingsTable,
 } from "@workspace/db";
 import { techniciansTable } from "@workspace/db";
 import { jobsTable } from "@workspace/db";
 import { eq, count, desc, sql, and, or } from "drizzle-orm";
 import { hashPassword } from "../lib/passwordHash";
+import { getNotificationRetentionDays } from "../lib/notificationCleanup";
 
 const router: IRouter = Router();
 
@@ -532,6 +534,37 @@ router.get("/admin/monitor/jobs", async (req, res) => {
     res.json({ jobs, total: Number(total[0]?.cnt ?? 0) });
   } catch {
     res.status(500).json({ error: "Failed to fetch jobs" });
+  }
+});
+
+// ── Notification retention setting ────────────────────────────────────────────
+router.get("/admin/settings/notification-retention", async (_req, res) => {
+  try {
+    const days = await getNotificationRetentionDays();
+    res.json({ notificationRetentionDays: days });
+  } catch {
+    res.status(500).json({ error: "Failed to read notification retention setting" });
+  }
+});
+
+router.put("/admin/settings/notification-retention", async (req, res) => {
+  const { days } = req.body as { days?: unknown };
+  const parsed = typeof days === "number" ? days : parseInt(String(days), 10);
+  if (Number.isNaN(parsed) || !Number.isInteger(parsed) || parsed < 1 || parsed > 3650) {
+    res.status(400).json({ error: "days must be a whole number between 1 and 3650" });
+    return;
+  }
+  try {
+    await db
+      .insert(systemSettingsTable)
+      .values({ key: "notification_retention_days", value: String(parsed) })
+      .onConflictDoUpdate({
+        target: systemSettingsTable.key,
+        set: { value: String(parsed), updatedAt: new Date() },
+      });
+    res.json({ notificationRetentionDays: parsed });
+  } catch {
+    res.status(500).json({ error: "Failed to update notification retention setting" });
   }
 });
 

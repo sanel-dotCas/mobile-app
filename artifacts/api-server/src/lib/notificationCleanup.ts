@@ -1,25 +1,41 @@
-import { db, jobNotificationsTable } from "@workspace/db";
-import { lt, sql } from "drizzle-orm";
+import { db, jobNotificationsTable, systemSettingsTable } from "@workspace/db";
+import { lt, sql, eq } from "drizzle-orm";
 import { logger } from "./logger";
 
 const DEFAULT_RETENTION_DAYS = 30;
+const SETTING_KEY = "notification_retention_days";
 
 /**
  * Returns the configured retention period in days for job notifications.
- * Reads NOTIFICATION_RETENTION_DAYS from the environment; falls back to 30.
+ * Priority: DB setting → NOTIFICATION_RETENTION_DAYS env var → default 30.
  */
-export function getNotificationRetentionDays(): number {
+export async function getNotificationRetentionDays(): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ value: systemSettingsTable.value })
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, SETTING_KEY))
+      .limit(1);
+
+    if (row) {
+      const parsed = parseInt(row.value, 10);
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not read notification retention setting from DB — falling back to env/default");
+  }
+
   const raw = process.env["NOTIFICATION_RETENTION_DAYS"];
-  if (!raw) return DEFAULT_RETENTION_DAYS;
-  const parsed = parseInt(raw, 10);
-  if (Number.isNaN(parsed) || parsed <= 0) {
+  if (raw) {
+    const parsed = parseInt(raw, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
     logger.warn(
       { NOTIFICATION_RETENTION_DAYS: raw },
       "Invalid NOTIFICATION_RETENTION_DAYS value — using default of 30 days"
     );
-    return DEFAULT_RETENTION_DAYS;
   }
-  return parsed;
+
+  return DEFAULT_RETENTION_DAYS;
 }
 
 /**
@@ -27,7 +43,7 @@ export function getNotificationRetentionDays(): number {
  * retention window. Returns the number of rows removed.
  */
 export async function cleanupOldNotifications(): Promise<number> {
-  const retentionDays = getNotificationRetentionDays();
+  const retentionDays = await getNotificationRetentionDays();
 
   const cutoff = sql`now() - (${retentionDays} * interval '1 day')`;
 
@@ -60,6 +76,15 @@ const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
  * can clear it during graceful shutdown if needed.
  */
 export function startNotificationCleanup(): ReturnType<typeof setInterval> {
+  getNotificationRetentionDays()
+    .then((retentionDays) => {
+      logger.info(
+        { retentionDays, intervalHours: 24 },
+        "Job notification cleanup job started"
+      );
+    })
+    .catch(() => {});
+
   cleanupOldNotifications().catch((err) => {
     logger.error({ err }, "Initial job notification cleanup failed");
   });
@@ -71,11 +96,6 @@ export function startNotificationCleanup(): ReturnType<typeof setInterval> {
   }, CLEANUP_INTERVAL_MS);
 
   handle.unref();
-
-  logger.info(
-    { retentionDays: getNotificationRetentionDays(), intervalHours: 24 },
-    "Job notification cleanup job started"
-  );
 
   return handle;
 }
