@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, jsonb, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, jsonb, numeric, serial, boolean } from "drizzle-orm/pg-core";
 
 export const jobOdometerCorrectionsTable = pgTable("job_odometer_corrections", {
   jobId: text("job_id").primaryKey(),
@@ -38,3 +38,16 @@ export const estimateSubmissionsTable = pgTable("estimate_submissions", {
   dmsRoNumber: text("dms_ro_number").notNull(),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
 });
+
+export const jobNotificationsTable = pgTable("job_notifications", {
+  id: serial("id").primaryKey(),
+  yardUserId: text("yard_user_id").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  jobId: text("job_id"),
+  inspectionId: integer("inspection_id"),
+  read: boolean("read").notNull().default(false),
+  sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type JobNotification = typeof jobNotificationsTable.$inferSelect;

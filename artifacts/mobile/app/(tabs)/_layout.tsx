@@ -2,11 +2,13 @@ import { BlurView } from "expo-blur";
 import { Feather } from "@expo/vector-icons";
 import { Redirect, Tabs, useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   StyleSheet,
+  Text,
   View,
   useColorScheme,
 } from "react-native";
@@ -14,6 +16,43 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
+
+const BASE =
+  Platform.OS === "web"
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+    : "/api";
+
+function useNotificationUnreadCount() {
+  const [unreadCount, setUnreadCount] = useState(0);
+  const { isAuthenticated, role } = useAuth();
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchCount = useCallback(async () => {
+    if (!isAuthenticated || (role !== "technician")) return;
+    try {
+      const res = await fetch(`${BASE}/jobs/notifications`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setUnreadCount(data.unreadCount ?? 0);
+    } catch {
+      // silent — non-critical
+    }
+  }, [isAuthenticated, role]);
+
+  useEffect(() => {
+    fetchCount();
+    timerRef.current = setInterval(fetchCount, 60000);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") fetchCount();
+    });
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      sub.remove();
+    };
+  }, [fetchCount]);
+
+  return { unreadCount, refresh: fetchCount };
+}
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading, role } = useAuth();
@@ -24,6 +63,7 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const router = useRouter();
+  const { unreadCount } = useNotificationUnreadCount();
 
   useEffect(() => {
     if (!isLoading && isAuthenticated && role === "supervisor") {
@@ -104,6 +144,29 @@ export default function TabLayout() {
           title: "Yard",
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="car.2" tintColor={color} size={24} /> : <Feather name="map" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: "Alerts",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="bell" tintColor={color} size={24} />
+            ) : (
+              <Feather name="bell" size={22} color={color} />
+            ),
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? "99+" : unreadCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: "#dc2626",
+            color: "#fff",
+            fontSize: 10,
+            fontFamily: "Inter_700Bold",
+            minWidth: 16,
+            height: 16,
+            lineHeight: 16,
+            paddingHorizontal: 3,
+          },
         }}
       />
       <Tabs.Screen

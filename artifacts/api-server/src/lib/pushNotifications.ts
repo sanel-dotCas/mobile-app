@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { yardUsersTable, techniciansTable } from "@workspace/db";
+import { yardUsersTable, techniciansTable, jobNotificationsTable } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 
 interface PushMessage {
@@ -46,6 +46,25 @@ export async function sendExpoPushNotification(
   }
 }
 
+async function persistNotification(
+  yardUserId: string | number,
+  title: string,
+  body: string,
+  opts?: { jobId?: string; inspectionId?: number }
+): Promise<void> {
+  try {
+    await db.insert(jobNotificationsTable).values({
+      yardUserId: String(yardUserId),
+      title,
+      body,
+      jobId: opts?.jobId ?? null,
+      inspectionId: opts?.inspectionId ?? null,
+    });
+  } catch {
+    // Non-critical — don't let DB errors break notification flow
+  }
+}
+
 /**
  * Looks up a yard user by the assignedTo string which may be either:
  * - A full name ("Mike Rodriguez") when set via auto-assign/generate from yard web app
@@ -54,6 +73,7 @@ export async function sendExpoPushNotification(
 async function findUserByAssignment(assignedTo: string) {
   const [user] = await db
     .select({
+      id: yardUsersTable.id,
       expoPushToken: yardUsersTable.expoPushToken,
       notificationsEnabled: yardUsersTable.notificationsEnabled,
     })
@@ -83,17 +103,21 @@ export async function notifyTechnicianAssigned(
 
   const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
   const locationPart = locationName ? ` · ${locationName}` : "";
+  const title = "New Inspection Assigned";
+  const body = `${vehicleName}${locationPart} — ${typeLabel}`;
 
   await sendExpoPushNotification([
     {
       to: user.expoPushToken,
-      title: "New Inspection Assigned",
-      body: `${vehicleName}${locationPart} — ${typeLabel}`,
+      title,
+      body,
       data: { inspectionId, screen: "inspection" },
       sound: "default",
       priority: "high",
     },
   ]);
+
+  await persistNotification(user.id, title, body, { inspectionId });
 }
 
 export async function notifyMultipleTechnicians(
@@ -110,6 +134,7 @@ export async function notifyMultipleTechnicians(
   // Fetch all users — resolve tokens by name OR username (to handle both assignment formats)
   const allUsers = await db
     .select({
+      id: yardUsersTable.id,
       name: yardUsersTable.name,
       username: yardUsersTable.username,
       expoPushToken: yardUsersTable.expoPushToken,
@@ -118,30 +143,39 @@ export async function notifyMultipleTechnicians(
     .from(yardUsersTable);
 
   // Build a lookup map indexed by both name and username
-  const tokenMap = new Map<string, string>();
+  const userMap = new Map<string, { id: number; token: string }>();
   for (const u of allUsers) {
     if (!u.expoPushToken || !u.notificationsEnabled) continue;
-    tokenMap.set(u.name, u.expoPushToken);
-    tokenMap.set(u.username, u.expoPushToken);
+    userMap.set(u.name, { id: u.id, token: u.expoPushToken });
+    userMap.set(u.username, { id: u.id, token: u.expoPushToken });
   }
 
   const messages: PushMessage[] = [];
+  const records: Array<{ userId: number; title: string; body: string; inspectionId: number }> = [];
+
   for (const a of assignments) {
-    const token = tokenMap.get(a.technicianName);
-    if (!token) continue;
+    const entry = userMap.get(a.technicianName);
+    if (!entry) continue;
     const typeLabel = INSPECTION_TYPE_LABELS[a.inspectionType] ?? a.inspectionType;
     const locationPart = a.locationName ? ` · ${a.locationName}` : "";
+    const title = "New Inspection Assigned";
+    const body = `${a.vehicleName}${locationPart} — ${typeLabel}`;
     messages.push({
-      to: token,
-      title: "New Inspection Assigned",
-      body: `${a.vehicleName}${locationPart} — ${typeLabel}`,
+      to: entry.token,
+      title,
+      body,
       data: { inspectionId: a.inspectionId, screen: "inspection" },
       sound: "default",
       priority: "high",
     });
+    records.push({ userId: entry.id, title, body, inspectionId: a.inspectionId });
   }
 
   await sendExpoPushNotification(messages);
+
+  for (const r of records) {
+    await persistNotification(r.userId, r.title, r.body, { inspectionId: r.inspectionId });
+  }
 }
 
 export async function notifyTechnicianReassigned(
@@ -159,17 +193,21 @@ export async function notifyTechnicianReassigned(
 
   const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
   const locationPart = locationName ? ` · ${locationName}` : "";
+  const title = "Inspection Reassigned";
+  const body = `${vehicleName}${locationPart} — ${typeLabel} has been reassigned to another technician`;
 
   await sendExpoPushNotification([
     {
       to: user.expoPushToken,
-      title: "Inspection Reassigned",
-      body: `${vehicleName}${locationPart} — ${typeLabel} has been reassigned to another technician`,
+      title,
+      body,
       data: { inspectionId, screen: "inspection" },
       sound: "default",
       priority: "high",
     },
   ]);
+
+  await persistNotification(user.id, title, body, { inspectionId });
 }
 
 export async function notifyTechnicianUnassigned(
@@ -187,17 +225,21 @@ export async function notifyTechnicianUnassigned(
 
   const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
   const locationPart = locationName ? ` · ${locationName}` : "";
+  const title = "Inspection Removed";
+  const body = `${vehicleName}${locationPart} — ${typeLabel} has been removed from your queue`;
 
   await sendExpoPushNotification([
     {
       to: user.expoPushToken,
-      title: "Inspection Removed",
-      body: `${vehicleName}${locationPart} — ${typeLabel} has been removed from your queue`,
+      title,
+      body,
       data: { inspectionId, screen: "inspection" },
       sound: "default",
       priority: "high",
     },
   ]);
+
+  await persistNotification(user.id, title, body, { inspectionId });
 }
 
 export async function notifySupervisorsFailedInspection(
@@ -210,6 +252,7 @@ export async function notifySupervisorsFailedInspection(
 ): Promise<void> {
   const supervisors = await db
     .select({
+      id: yardUsersTable.id,
       expoPushToken: yardUsersTable.expoPushToken,
       notificationsEnabled: yardUsersTable.notificationsEnabled,
     })
@@ -222,21 +265,28 @@ export async function notifySupervisorsFailedInspection(
   const typeLabel = INSPECTION_TYPE_LABELS[inspectionType] ?? inspectionType;
   const locationPart = locationName ? ` · ${locationName}` : "";
   const techPart = technicianName ? ` by ${technicianName}` : "";
-  const messages: PushMessage[] = supervisors
-    .filter((u) => u.expoPushToken && u.notificationsEnabled)
-    .map((u) => ({
-      to: u.expoPushToken!,
-      title: `⚠️ Inspection Failed Items (${failedCount})`,
-      body: `${vehicleName}${locationPart} — ${typeLabel}${techPart}. ${failedCount} item${failedCount !== 1 ? "s" : ""} failed. Review required.`,
-      data: { inspectionId, screen: "inspection" },
-      sound: "default" as const,
-      priority: "high" as const,
-    }));
+  const title = `⚠️ Inspection Failed Items (${failedCount})`;
+  const body = `${vehicleName}${locationPart} — ${typeLabel}${techPart}. ${failedCount} item${failedCount !== 1 ? "s" : ""} failed. Review required.`;
+
+  const eligibleSupervisors = supervisors.filter((u) => u.expoPushToken && u.notificationsEnabled);
+
+  const messages: PushMessage[] = eligibleSupervisors.map((u) => ({
+    to: u.expoPushToken!,
+    title,
+    body,
+    data: { inspectionId, screen: "inspection" },
+    sound: "default" as const,
+    priority: "high" as const,
+  }));
 
   await sendExpoPushNotification(messages);
+
+  for (const u of eligibleSupervisors) {
+    await persistNotification(u.id, title, body, { inspectionId });
+  }
 }
 
-async function findTokenByTechnicianId(technicianId: string): Promise<string | null> {
+async function findUserByTechnicianId(technicianId: string): Promise<{ id: number; token: string } | null> {
   const [tech] = await db
     .select({ userCode: techniciansTable.userCode })
     .from(techniciansTable)
@@ -247,6 +297,7 @@ async function findTokenByTechnicianId(technicianId: string): Promise<string | n
 
   const [user] = await db
     .select({
+      id: yardUsersTable.id,
       expoPushToken: yardUsersTable.expoPushToken,
       notificationsEnabled: yardUsersTable.notificationsEnabled,
     })
@@ -255,7 +306,7 @@ async function findTokenByTechnicianId(technicianId: string): Promise<string | n
     .limit(1);
 
   if (!user || !user.expoPushToken || !user.notificationsEnabled) return null;
-  return user.expoPushToken;
+  return { id: user.id, token: user.expoPushToken };
 }
 
 /**
@@ -268,19 +319,24 @@ export async function notifyJobAssigned(
   vehicleName: string
 ): Promise<void> {
   try {
-    const token = await findTokenByTechnicianId(technicianId);
-    if (!token) return;
+    const found = await findUserByTechnicianId(technicianId);
+    if (!found) return;
+
+    const title = "New Job Assigned";
+    const body = `New job assigned: ${vehicleName}`;
 
     await sendExpoPushNotification([
       {
-        to: token,
-        title: "New Job Assigned",
-        body: `New job assigned: ${vehicleName}`,
+        to: found.token,
+        title,
+        body,
         data: { jobId, screen: "job" },
         sound: "default",
         priority: "high",
       },
     ]);
+
+    await persistNotification(found.id, title, body, { jobId });
   } catch {
     // Non-critical — don't let notification failures break job routes
   }
@@ -322,19 +378,24 @@ export async function notifyJobUnassigned(
   vehicleName: string
 ): Promise<void> {
   try {
-    const token = await findTokenByTechnicianId(previousTechnicianId);
-    if (!token) return;
+    const found = await findUserByTechnicianId(previousTechnicianId);
+    if (!found) return;
+
+    const title = "Job Removed";
+    const body = `${vehicleName} has been removed from your queue`;
 
     await sendExpoPushNotification([
       {
-        to: token,
-        title: "Job Removed",
-        body: `${vehicleName} has been removed from your queue`,
+        to: found.token,
+        title,
+        body,
         data: { jobId, screen: "job" },
         sound: "default",
         priority: "high",
       },
     ]);
+
+    await persistNotification(found.id, title, body, { jobId });
   } catch {
     // Non-critical — don't let notification failures break job routes
   }

@@ -13,6 +13,7 @@ import yardUsersRouter from "./yard-users";
 import yardTransfersRouter from "./yard-transfers";
 import partsRouter from "./parts";
 import jobsRouter from "./jobs";
+import jobNotificationsRouter from "./job-notifications";
 import techniciansRouter from "./technicians";
 import servicePackagesRouter from "./service-packages";
 import adminRouter from "./admin";
@@ -45,6 +46,7 @@ router.use("/jobs", (req: Request, res: Response, next: NextFunction) => {
   if (req.method === "PATCH") { requireJobPatch(req, res, next); return; }
   requireJobWrite(req, res, next);
 });
+router.use(jobNotificationsRouter);
 router.use(jobsRouter);
 
 router.use(techniciansRouter);
