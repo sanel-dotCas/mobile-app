@@ -14,6 +14,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useRouter } from "expo-router";
+
 import { AppHeader } from "@/components/AppHeader";
 import { useColors } from "@/hooks/useColors";
 
@@ -63,6 +65,7 @@ function notifColor(title: string, colors: ReturnType<typeof useColors>): string
 export default function NotificationsTab() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [notifications, setNotifications] = useState<ServerNotification[]>([]);
@@ -198,6 +201,11 @@ export default function NotificationsTab() {
                       markRead(notif.id);
                       Haptics.selectionAsync();
                     }
+                    if (notif.jobId != null) {
+                      router.push({ pathname: "/job/[id]", params: { id: String(notif.jobId) } });
+                    } else if (notif.inspectionId != null) {
+                      router.push({ pathname: "/yard/inspection", params: { id: String(notif.inspectionId) } });
+                    }
                   }}
                   style={[
                     styles.card,
@@ -233,6 +241,7 @@ export default function NotificationsTab() {
                           <Text style={[styles.cardTime, { color: colors.mutedForeground }]}>
                             {notif.jobId ? `Job ${notif.jobId}` : `Inspection #${notif.inspectionId}`}
                           </Text>
+                          <Feather name="chevron-right" size={11} color={colors.mutedForeground} style={{ marginLeft: 2 }} />
                         </>
                       )}
                     </View>
