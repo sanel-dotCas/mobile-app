@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -63,6 +64,7 @@ export default function PartsJobsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("pending");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -92,9 +94,25 @@ export default function PartsJobsScreen() {
 
   const filteredJobs = jobs.filter((job) => {
     const parts = getParts(job);
-    if (filter === "pending") return parts.some((p) => p.status === "pending");
-    if (filter === "ordered") return parts.some((p) => p.status === "ordered");
-    return parts.length > 0;
+    const passesFilter =
+      filter === "pending"
+        ? parts.some((p) => p.status === "pending")
+        : filter === "ordered"
+        ? parts.some((p) => p.status === "ordered")
+        : parts.length > 0;
+
+    if (!passesFilter) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      return (
+        job.estimateNumber.toLowerCase().includes(q) ||
+        job.licensePlate.toLowerCase().includes(q) ||
+        job.vehicle.toLowerCase().includes(q)
+      );
+    }
+
+    return true;
   });
 
   const statusCfg: Record<PartStatus, { label: string; color: string; bg: string }> = {
@@ -112,6 +130,24 @@ export default function PartsJobsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <AppHeader title="Job Parts" subtitle="Parts required by job" showNotifications={false} />
+
+      {/* Search bar */}
+      <View style={[styles.searchRow, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Feather name="search" size={15} color={colors.mutedForeground} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.foreground }]}
+            placeholder="Search plate, estimate or vehicle…"
+            placeholderTextColor={colors.mutedForeground}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+        </View>
+      </View>
 
       {/* Filter chips */}
       <ScrollView
@@ -151,7 +187,13 @@ export default function PartsJobsScreen() {
             <Feather name="package" size={44} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No jobs found</Text>
             <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-              {filter === "pending" ? "No jobs have parts waiting to be ordered." : filter === "ordered" ? "No jobs have parts awaiting delivery." : "No jobs with parts found."}
+              {searchQuery.trim()
+                ? `No jobs match "${searchQuery.trim()}".`
+                : filter === "pending"
+                ? "No jobs have parts waiting to be ordered."
+                : filter === "ordered"
+                ? "No jobs have parts awaiting delivery."
+                : "No jobs with parts found."}
             </Text>
           </View>
         ) : (
@@ -235,6 +277,9 @@ export default function PartsJobsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  searchRow: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
+  searchInputWrapper: { flexDirection: "row", alignItems: "center", borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, gap: 8 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", padding: 0, margin: 0 },
   filterRow: { borderBottomWidth: 1 },
   filterContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row" },
   filterChip: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 6 },
