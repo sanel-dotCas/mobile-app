@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import { Feather } from "@expo/vector-icons";
+import * as Notifications from "expo-notifications";
 import { Redirect, Tabs, useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -42,12 +43,18 @@ function useNotificationUnreadCount() {
   useEffect(() => {
     fetchCount();
     timerRef.current = setInterval(fetchCount, 60000);
-    const sub = AppState.addEventListener("change", (state) => {
+    const appStateSub = AppState.addEventListener("change", (state) => {
       if (state === "active") fetchCount();
     });
+    const notifSub = Platform.OS !== "web"
+      ? Notifications.addNotificationReceivedListener(() => {
+          fetchCount();
+        })
+      : null;
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      sub.remove();
+      appStateSub.remove();
+      notifSub?.remove();
     };
   }, [fetchCount]);
 

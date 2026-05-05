@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Notifications from "expo-notifications";
 import { SymbolView } from "expo-symbols";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -90,6 +91,14 @@ export default function NotificationsTab() {
 
   useEffect(() => {
     fetchNotifications();
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const sub = Notifications.addNotificationReceivedListener(() => {
+      fetchNotifications();
+    });
+    return () => sub.remove();
   }, [fetchNotifications]);
 
   const handleRefresh = useCallback(() => {
