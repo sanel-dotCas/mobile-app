@@ -34,10 +34,15 @@ router.use(yardAuthProtectedRouter);
 
 // ── Mobile-accessible DMS routes with per-path RBAC ───────────────────────────
 
-// Job mutations: technician / supervisor / admin mobile role (or any yard principal).
+// Job mutations:
+//   PATCH: technician / supervisor / admin / parts — parts role needs PATCH to update task part statuses.
+//   All other writes (PUT / POST / DELETE): technician / supervisor / admin only.
+//   POST /jobs and DELETE /jobs/:id additionally enforce requireYardPrincipal per-route.
+const requireJobPatch = requireMobileRoles("technician", "supervisor", "admin", "parts");
 const requireJobWrite = requireMobileRoles("technician", "supervisor", "admin");
 router.use("/jobs", (req: Request, res: Response, next: NextFunction) => {
   if (req.method === "GET" || req.method === "HEAD") { next(); return; }
+  if (req.method === "PATCH") { requireJobPatch(req, res, next); return; }
   requireJobWrite(req, res, next);
 });
 router.use(jobsRouter);

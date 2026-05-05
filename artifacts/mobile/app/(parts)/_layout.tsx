@@ -55,6 +55,13 @@ export default function PartsLayout() {
         }}
       />
       <Tabs.Screen
+        name="jobs"
+        options={{
+          title: "Jobs",
+          tabBarIcon: ({ color }) => <Feather name="briefcase" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="inventory"
         options={{
           title: "Inventory",

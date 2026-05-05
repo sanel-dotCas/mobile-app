@@ -385,6 +385,17 @@ router.patch("/jobs/:id", async (req, res) => {
     assignedTechnicianId?: string | null;
   };
 
+  // Field-level authorization: parts role may only update tasks (for part status changes).
+  const principal = res.locals.principal;
+  if (principal?.type === "mobile" && principal.role === "parts") {
+    const forbiddenFields = ["status", "notes", "workedHours", "progress", "currentStageId", "stageHistory", "inspections", "assignedTechnicianId"] as const;
+    const attempted = forbiddenFields.filter((f) => body[f] !== undefined);
+    if (attempted.length > 0) {
+      res.status(403).json({ error: `Parts role may only update tasks. Forbidden fields: ${attempted.join(", ")}` });
+      return;
+    }
+  }
+
   const updateData: Partial<typeof jobsTable.$inferInsert> & { updatedAt: Date } = {
     updatedAt: new Date(),
   };

@@ -206,6 +206,20 @@ export default function PartsDashboard() {
               </Pressable>
             </View>
 
+            <Pressable
+              onPress={() => router.push("/(parts)/jobs")}
+              style={[styles.jobPartsBtn, { backgroundColor: "#f5f3ff", borderColor: "#c4b5fd" }]}
+            >
+              <View style={[styles.jobPartsIcon, { backgroundColor: "#7c3aed" }]}>
+                <Feather name="briefcase" size={16} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.jobPartsBtnTitle, { color: "#4c1d95" }]}>Job Parts</Text>
+                <Text style={[styles.jobPartsBtnSub, { color: "#6d28d9" }]}>View parts required by active jobs</Text>
+              </View>
+              <Feather name="chevron-right" size={16} color="#7c3aed" />
+            </Pressable>
+
             {recentOrders.length > 0 && (
               <>
                 <View style={styles.sectionRow}>
@@ -348,4 +362,16 @@ const styles = StyleSheet.create({
   binText: { fontSize: 11, fontFamily: "Inter_500Medium" },
   itemName: { fontSize: 14, fontFamily: "Inter_500Medium" },
   itemQty: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  jobPartsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+  },
+  jobPartsIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  jobPartsBtnTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
+  jobPartsBtnSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
 });
