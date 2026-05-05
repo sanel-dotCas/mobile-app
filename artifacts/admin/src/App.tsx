@@ -19,6 +19,7 @@ import MonitorVehiclesPage from "@/pages/monitor-vehicles";
 import MonitorInspectionsPage from "@/pages/monitor-inspections";
 import MonitorJobsPage from "@/pages/monitor-jobs";
 import SettingsPage from "@/pages/settings";
+import SystemStatusPage from "@/pages/system-status";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -52,6 +53,7 @@ function ProtectedRoutes() {
         <Route path="/monitor/inspections" component={MonitorInspectionsPage} />
         <Route path="/monitor/jobs" component={MonitorJobsPage} />
         <Route path="/settings" component={SettingsPage} />
+        <Route path="/system-status" component={SystemStatusPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

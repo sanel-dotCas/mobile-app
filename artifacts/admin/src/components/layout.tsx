@@ -13,6 +13,7 @@ import {
   ClipboardCheck, 
   Briefcase, 
   Settings,
+  Activity,
   LogOut,
   Menu,
   X,
@@ -85,6 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       section: "SYSTEM",
       items: [
         { title: "Settings", href: "/settings", icon: Settings },
+        { title: "System Status", href: "/system-status", icon: Activity },
       ]
     }
   ];
