@@ -73,14 +73,16 @@ async function savePushToken(
   }
 }
 
-function navigateToInspection(
+function navigateFromNotification(
   router: ReturnType<typeof useRouter>,
   data: Record<string, unknown>
 ) {
+  const jobId = data.jobId as string | number | undefined;
   const inspectionId = data.inspectionId as number | undefined;
-  const screen = data.screen as string | undefined;
-  if (inspectionId && screen === "inspection") {
-    router.push(`/yard/inspection?id=${inspectionId}`);
+  if (jobId != null) {
+    router.push({ pathname: "/job/[id]", params: { id: String(jobId) } });
+  } else if (inspectionId != null) {
+    router.push({ pathname: "/yard/inspection", params: { id: String(inspectionId) } });
   }
 }
 
@@ -134,7 +136,7 @@ export function NotificationSetup() {
     // Cold-start: handle notification that launched the app from terminated state
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response?.notification.request.content.data) {
-        navigateToInspection(
+        navigateFromNotification(
           router,
           response.notification.request.content.data as Record<string, unknown>
         );
@@ -144,7 +146,7 @@ export function NotificationSetup() {
     // Foreground/background tap listener
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        navigateToInspection(
+        navigateFromNotification(
           router,
           response.notification.request.content.data as Record<string, unknown>
         );
