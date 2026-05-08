@@ -59,6 +59,14 @@ export default function EstimatorLayout() {
         }}
       />
       <Tabs.Screen
+        name="plans"
+        options={{
+          title: "Plans",
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="creditcard" tintColor={color} size={24} /> : <Feather name="credit-card" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="notifications"
         options={{
           title: t.notifications,

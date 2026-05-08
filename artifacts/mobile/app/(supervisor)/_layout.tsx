@@ -99,6 +99,14 @@ export default function SupervisorLayout() {
         }}
       />
       <Tabs.Screen
+        name="plans"
+        options={{
+          title: "Plans",
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="creditcard" tintColor={color} size={24} /> : <Feather name="credit-card" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: t.profile,

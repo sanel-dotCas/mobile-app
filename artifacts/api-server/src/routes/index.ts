@@ -17,6 +17,7 @@ import jobNotificationsRouter from "./job-notifications";
 import techniciansRouter from "./technicians";
 import servicePackagesRouter from "./service-packages";
 import servicePlansRouter from "./service-plans";
+import servicePlansPublicRouter from "./service-plans-public";
 import adminRouter from "./admin";
 import { requireAuth, requireYardPrincipal, requireAdminRole, requireMobileRoles } from "../middlewares/requireAuth";
 
@@ -25,6 +26,7 @@ const router: IRouter = Router();
 // ── Public routes (no authentication required) ────────────────────────────────
 router.use(healthRouter);
 router.use(yardAuthPublicRouter);
+router.use(servicePlansPublicRouter);
 
 // ── Authentication enforcement ────────────────────────────────────────────────
 // All routes below require a valid Bearer session token (yard or mobile).
