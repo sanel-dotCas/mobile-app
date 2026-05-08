@@ -8,6 +8,7 @@ import {
   numeric,
   pgEnum,
   jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -227,6 +228,12 @@ export const servicePackagesTable = pgTable("service_packages", {
   color: text("color").notNull().default("#2563eb"),
   description: text("description").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
+  /** Brand/model code from the dealer's service menu kit format (e.g. "RAM DT") */
+  vehicleModel: text("vehicle_model"),
+  /** Service interval label from the kit header (e.g. "1.1yr", "1.6yr") */
+  serviceInterval: text("service_interval"),
+  /** Bundle code / kit code identifying this tier (e.g. "68552462AA") */
+  bundleCode: text("bundle_code"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -242,6 +249,19 @@ export const servicePackageLinesTable = pgTable("service_package_lines", {
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull().default("0"),
   displayOrder: integer("display_order").notNull().default(0),
 });
+
+export const servicePackageDeploymentsTable = pgTable(
+  "service_package_deployments",
+  {
+    id: serial("id").primaryKey(),
+    packageId: integer("package_id").notNull().references(() => servicePackagesTable.id, { onDelete: "cascade" }),
+    locationId: integer("location_id").notNull().references(() => yardLocationsTable.id, { onDelete: "cascade" }),
+    isActive: boolean("is_active").notNull().default(true),
+    deployedAt: timestamp("deployed_at").defaultNow().notNull(),
+    deployedBy: text("deployed_by"),
+  },
+  (t) => [uniqueIndex("spd_package_location_unique").on(t.packageId, t.locationId)]
+);
 
 // ── Insert schemas ────────────────────────────────────────────────────────────
 export const insertYardUserSchema = createInsertSchema(yardUsersTable).omit({
@@ -279,3 +299,4 @@ export type YardMovement = typeof yardMovementsTable.$inferSelect;
 export type DmsAccountType = typeof dmsAccountTypesTable.$inferSelect;
 export type ServicePackage = typeof servicePackagesTable.$inferSelect;
 export type ServicePackageLine = typeof servicePackageLinesTable.$inferSelect;
+export type ServicePackageDeployment = typeof servicePackageDeploymentsTable.$inferSelect;

@@ -736,6 +736,152 @@ export const GenerateYardInspectionsResponse = zod.object({
 });
 
 /**
+ * @summary List service packages, optionally filtered by branch location
+ */
+export const ListServicePackagesQueryParams = zod.object({
+  locationId: zod.coerce
+    .number()
+    .optional()
+    .describe("If supplied, only return packages deployed to this location"),
+});
+
+export const ListServicePackagesResponse = zod.object({
+  packages: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      icon: zod.string(),
+      color: zod.string(),
+      description: zod.string(),
+      isActive: zod.boolean(),
+      vehicleModel: zod.string().nullish(),
+      serviceInterval: zod.string().nullish(),
+      bundleCode: zod.string().nullish(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          packageId: zod.number(),
+          lineType: zod.enum(["labor", "part", "material"]),
+          laborCategory: zod.string().nullish(),
+          description: zod.string(),
+          hours: zod.string().nullish(),
+          quantity: zod.string().nullish(),
+          unitPrice: zod.string(),
+          displayOrder: zod.number(),
+        }),
+      ),
+    }),
+  ),
+});
+
+/**
+ * @summary Parse and optionally import a brand/model Excel file
+ */
+export const importMenuKitsQueryCommitDefault = false;
+
+export const ImportMenuKitsQueryParams = zod.object({
+  commit: zod.coerce
+    .boolean()
+    .default(importMenuKitsQueryCommitDefault)
+    .describe(
+      "If false (default) returns a preview; if true, upserts packages to DB",
+    ),
+});
+
+export const ImportMenuKitsBody = zod.object({
+  file: zod
+    .string()
+    .describe(
+      "XLSX\/CSV file contents (multipart\/form-data upload; binary blob)",
+    ),
+});
+
+export const ImportMenuKitsResponse = zod.object({
+  preview: zod.array(
+    zod.object({
+      modelCode: zod.string(),
+      tiers: zod.array(
+        zod.object({
+          interval: zod.string(),
+          bundleCode: zod.string(),
+          partCount: zod.number(),
+        }),
+      ),
+    }),
+  ),
+  packageCount: zod.number(),
+  errors: zod.array(zod.string()),
+  created: zod.number().nullish(),
+  updated: zod.number().nullish(),
+});
+
+/**
+ * @summary List active package deployments
+ */
+export const ListServicePackageDeploymentsQueryParams = zod.object({
+  locationId: zod.coerce.number().optional(),
+});
+
+export const ListServicePackageDeploymentsResponse = zod.object({
+  deployments: zod.array(
+    zod.object({
+      id: zod.number(),
+      packageId: zod.number(),
+      locationId: zod.number(),
+      isActive: zod.boolean(),
+      deployedAt: zod.string(),
+      deployedBy: zod.string().nullish(),
+      locationName: zod.string().nullish(),
+      packageName: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Deploy a package to a branch location (idempotent)
+ */
+export const CreateServicePackageDeploymentBody = zod.object({
+  packageId: zod.number(),
+  locationId: zod.number(),
+  deployedBy: zod.string().optional(),
+});
+
+/**
+ * @summary Deactivate a package deployment from a branch
+ */
+export const DeleteServicePackageDeploymentParams = zod.object({
+  deploymentId: zod.coerce.number(),
+});
+
+/**
+ * @summary Create a new service package with line items (admin only)
+ */
+export const CreateAdminServicePackageBody = zod.object({
+  name: zod.string(),
+  vehicleModel: zod.string().optional(),
+  serviceInterval: zod.string().optional(),
+  bundleCode: zod.string().optional(),
+  icon: zod.string().optional(),
+  color: zod.string().optional(),
+  description: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        lineType: zod.enum(["labor", "part", "material"]),
+        laborCategory: zod.string().optional(),
+        description: zod.string(),
+        hours: zod.string().optional(),
+        quantity: zod.string().optional(),
+        unitPrice: zod.string().optional(),
+        displayOrder: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
  * @summary Distribute unassigned queued inspections evenly across available technicians
  */
 export const AutoAssignYardInspectionsBody = zod.object({

@@ -26,6 +26,7 @@ import type { EstimateLine, EstimateStatus, LaborCategory } from "@/context/Esti
 import { useEstimates, OPERATION_OPTIONS } from "@/context/EstimatesContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
 
 const BASE_URL =
   Platform.OS === "web"
@@ -390,6 +391,7 @@ function AddLineSheet({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { locationId } = useAuth();
 
   const [mode, setMode] = useState<AddMode>("manual");
   const [lineType, setLineType] = useState<"labor" | "part" | "material">("labor");
@@ -412,7 +414,10 @@ function AddLineSheet({
     setPackagesLoading(true);
     setPackagesError(null);
     const apiBase = BASE_URL || "http://localhost:80";
-    fetch(`${apiBase}/api/service-packages`)
+    const pkgUrl = locationId
+      ? `${apiBase}/api/service-packages?locationId=${locationId}`
+      : `${apiBase}/api/service-packages`;
+    fetch(pkgUrl)
       .then((r) => r.json())
       .then((data: { packages: Array<{
         id: number; name: string; icon: string; color: string; description: string;

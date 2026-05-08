@@ -62,11 +62,22 @@ router.use(partsRouter);
 router.use(estimatesRouter);
 
 // ── Admin-only routes (admin role — yard OR mobile admin) ─────────────────────
-// Path-scoped guards: requireAdminRole only fires for /admin/* and
-// /service-packages/* paths, so it does NOT bleed into yard routes below.
 router.use("/admin", requireAdminRole);
-router.use("/service-packages", requireAdminRole);
 router.use(adminRouter);
+
+// ── Service packages — GET readable by all authenticated roles; writes admin-only ──
+//
+//   GET  /service-packages               → all authenticated (mobile + yard)
+//   GET  /service-packages/template      → all authenticated
+//   GET  /service-packages/deployments   → all authenticated
+//   GET  /service-packages/:id           → all authenticated
+//   POST /service-packages/import-menu-kits → admin only
+//   POST /service-packages/deployments   → admin only
+//   DELETE /service-packages/deployments/:id → admin only
+router.use("/service-packages", (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "GET" || req.method === "HEAD") { next(); return; }
+  requireAdminRole(req, res, next);
+});
 router.use(servicePackagesRouter);
 
 // ── Yard inventory & inspection routes — accessible by all mobile roles ────────

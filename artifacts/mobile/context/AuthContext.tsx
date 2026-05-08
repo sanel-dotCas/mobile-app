@@ -15,6 +15,7 @@ const AUTH_KEY = "igmma_authed";
 const ROLE_KEY = "igmma_role";
 const CODE_KEY = "igmma_code";
 const NAME_KEY = "igmma_tech_name";
+const LOCATION_KEY = "igmma_location_id";
 
 export const MOBILE_SESSION_KEY = "yard_mobile_session_token";
 
@@ -32,6 +33,8 @@ interface AuthContextValue {
   technicianName: string;
   /** Authenticated session token for API calls. Non-null once a mobile-session has been obtained. */
   mobileSessionToken: string | null;
+  /** Location ID assigned to this user in the yard system (null if unassigned). */
+  locationId: number | null;
   attemptLogin: (letters: string, pin: string) => Promise<UserRole | false>;
   logout: () => void;
 }
@@ -45,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userCode, setUserCode] = useState("MR");
   const [technicianName, setTechnicianName] = useState("");
   const [mobileSessionToken, setMobileSessionToken] = useState<string | null>(null);
+  const [locationId, setLocationId] = useState<number | null>(null);
 
   // Restore auth state from AsyncStorage on mount.
   // If technicianName is missing (old sessions), fetch it from /yard/auth/me.
@@ -55,9 +59,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.getItem(CODE_KEY),
       AsyncStorage.getItem(NAME_KEY),
       AsyncStorage.getItem(MOBILE_SESSION_KEY),
-    ]).then(async ([auth, savedRole, savedCode, savedName, savedSession]) => {
+      AsyncStorage.getItem(LOCATION_KEY),
+    ]).then(async ([auth, savedRole, savedCode, savedName, savedSession, savedLocation]) => {
       const authenticated = auth === "true";
       setIsAuthenticated(authenticated);
+      if (savedLocation) setLocationId(Number(savedLocation) || null);
       setRole((savedRole as UserRole) ?? "technician");
       setUserCode(savedCode ?? "MR");
 
@@ -109,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           technicianName?: string;
           userCode?: string;
           role?: string;
+          locationId?: number | null;
         };
 
         if (!data.sessionToken || !data.role) return false;
@@ -116,16 +123,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const matchedRole = data.role as UserRole;
         const code = (data.userCode ?? letters).toUpperCase();
         const name = data.technicianName ?? "";
+        const locId = data.locationId ?? null;
 
         await AsyncStorage.setItem(AUTH_KEY, "true");
         await AsyncStorage.setItem(ROLE_KEY, matchedRole);
         await AsyncStorage.setItem(CODE_KEY, code);
         await AsyncStorage.setItem(NAME_KEY, name);
         await AsyncStorage.setItem(MOBILE_SESSION_KEY, data.sessionToken);
+        if (locId !== null) {
+          await AsyncStorage.setItem(LOCATION_KEY, String(locId));
+        } else {
+          await AsyncStorage.removeItem(LOCATION_KEY);
+        }
 
         setRole(matchedRole);
         setUserCode(code);
         setTechnicianName(name);
+        setLocationId(locId);
         setIsAuthenticated(true);
         setMobileSessionToken(data.sessionToken);
         updateMobileSessionToken(data.sessionToken);
@@ -139,18 +153,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await AsyncStorage.multiRemove([AUTH_KEY, ROLE_KEY, CODE_KEY, NAME_KEY, MOBILE_SESSION_KEY]);
+    await AsyncStorage.multiRemove([AUTH_KEY, ROLE_KEY, CODE_KEY, NAME_KEY, MOBILE_SESSION_KEY, LOCATION_KEY]);
     setIsAuthenticated(false);
     setRole("technician");
     setUserCode("MR");
     setTechnicianName("");
     setMobileSessionToken(null);
+    setLocationId(null);
     updateMobileSessionToken(null);
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, isLoading, role, userCode, technicianName, mobileSessionToken, attemptLogin, logout }}
+      value={{ isAuthenticated, isLoading, role, userCode, technicianName, mobileSessionToken, locationId, attemptLogin, logout }}
     >
       {children}
     </AuthContext.Provider>

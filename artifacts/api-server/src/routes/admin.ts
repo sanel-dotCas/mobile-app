@@ -377,6 +377,9 @@ router.get("/admin/service-packages", async (_req, res) => {
         color: servicePackagesTable.color,
         description: servicePackagesTable.description,
         isActive: servicePackagesTable.isActive,
+        vehicleModel: servicePackagesTable.vehicleModel,
+        serviceInterval: servicePackagesTable.serviceInterval,
+        bundleCode: servicePackagesTable.bundleCode,
         createdAt: servicePackagesTable.createdAt,
         lineCount: count(servicePackageLinesTable.id),
       })
@@ -387,6 +390,79 @@ router.get("/admin/service-packages", async (_req, res) => {
     res.json(pkgs);
   } catch {
     res.status(500).json({ error: "Failed to fetch service packages" });
+  }
+});
+
+router.post("/admin/service-packages", async (req, res) => {
+  const {
+    name, vehicleModel, serviceInterval, bundleCode,
+    icon, color, description, lines,
+  } = req.body as {
+    name?: string;
+    vehicleModel?: string;
+    serviceInterval?: string;
+    bundleCode?: string;
+    icon?: string;
+    color?: string;
+    description?: string;
+    lines?: Array<{
+      lineType: "labor" | "part" | "material";
+      laborCategory?: string;
+      description: string;
+      hours?: string;
+      quantity?: string;
+      unitPrice?: string;
+      displayOrder?: number;
+    }>;
+  };
+
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+
+  try {
+    const [pkg] = await db
+      .insert(servicePackagesTable)
+      .values({
+        name: name.trim(),
+        icon: icon ?? "package",
+        color: color ?? "#2563eb",
+        description: description ?? "",
+        vehicleModel: vehicleModel ?? null,
+        serviceInterval: serviceInterval ?? null,
+        bundleCode: bundleCode ?? null,
+      })
+      .returning();
+
+    if (lines && lines.length > 0) {
+      await db.insert(servicePackageLinesTable).values(
+        lines.map((l, idx) => ({
+          packageId: pkg.id,
+          lineType: l.lineType,
+          laborCategory: l.laborCategory ?? null,
+          description: l.description,
+          hours: l.hours ?? null,
+          quantity: l.quantity ?? null,
+          unitPrice: l.unitPrice ?? "0",
+          displayOrder: l.displayOrder ?? idx + 1,
+        }))
+      );
+    }
+
+    const packageLines = await db
+      .select()
+      .from(servicePackageLinesTable)
+      .where(eq(servicePackageLinesTable.packageId, pkg.id))
+      .orderBy(servicePackageLinesTable.displayOrder);
+
+    res.status(201).json({ ...pkg, lines: packageLines });
+  } catch (err: any) {
+    if (err?.message?.includes("unique")) {
+      res.status(409).json({ error: "A package with this name already exists" });
+    } else {
+      res.status(500).json({ error: "Failed to create service package" });
+    }
   }
 });
 
@@ -464,7 +540,7 @@ router.get("/admin/monitor/vehicles", async (req, res) => {
     const { limit = "20", page = "1", locationId, status } = req.query as Record<string, string>;
     const offset = (Number(page) - 1) * Number(limit);
     const locFilter = locationId && locationId !== "all" ? eq(yardVehiclesTable.locationId, Number(locationId)) : undefined;
-    const statusFilter = status && status !== "all" ? eq(yardVehiclesTable.status, status) : undefined;
+    const statusFilter = status && status !== "all" ? eq(yardVehiclesTable.status, status as "available" | "in_transit" | "pdi_pending" | "sold") : undefined;
     const whereClause = locFilter && statusFilter ? and(locFilter, statusFilter) : locFilter ?? statusFilter;
     const [vehicles, total] = await Promise.all([
       db.select().from(yardVehiclesTable)

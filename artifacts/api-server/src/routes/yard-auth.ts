@@ -67,6 +67,7 @@ publicRouter.post("/yard/auth/mobile-session", async (req, res) => {
       name: yardUsersTable.name,
       password: yardUsersTable.password,
       mobileRole: yardUsersTable.mobileRole,
+      locationId: yardUsersTable.locationId,
     })
     .from(yardUsersTable)
     .where(
@@ -94,7 +95,13 @@ publicRouter.post("/yard/auth/mobile-session", async (req, res) => {
     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
   });
 
-  res.json({ sessionToken, technicianName: user.name, userCode: normalizedCode, role: user.mobileRole });
+  res.json({
+    sessionToken,
+    technicianName: user.name,
+    userCode: normalizedCode,
+    role: user.mobileRole,
+    locationId: user.locationId ?? null,
+  });
 });
 
 // ── Yard web login ────────────────────────────────────────────────────────────

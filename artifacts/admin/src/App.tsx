@@ -6,13 +6,15 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { Loader2 } from "lucide-react";
 
-// Lazy-load pages
 import LoginPage from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import UsersPage from "@/pages/users";
 import TechniciansPage from "@/pages/technicians";
 import RolesPage from "@/pages/roles";
 import ServicePackagesPage from "@/pages/service-packages";
+import ServicePackagesImportPage from "@/pages/service-packages-import";
+import ServicePackagesNewPage from "@/pages/service-packages-new";
+import ServicePackagesDeployPage from "@/pages/service-packages-deploy";
 import AccountTypesPage from "@/pages/account-types";
 import LocationsPage from "@/pages/locations";
 import MonitorVehiclesPage from "@/pages/monitor-vehicles";
@@ -46,6 +48,9 @@ function ProtectedRoutes() {
         <Route path="/users" component={UsersPage} />
         <Route path="/technicians" component={TechniciansPage} />
         <Route path="/roles" component={RolesPage} />
+        <Route path="/master/service-packages/import" component={ServicePackagesImportPage} />
+        <Route path="/master/service-packages/new" component={ServicePackagesNewPage} />
+        <Route path="/master/service-packages/deploy" component={ServicePackagesDeployPage} />
         <Route path="/master/service-packages" component={ServicePackagesPage} />
         <Route path="/master/account-types" component={AccountTypesPage} />
         <Route path="/master/locations" component={LocationsPage} />
@@ -71,7 +76,7 @@ function Router() {
 
 function App() {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

@@ -436,6 +436,120 @@ export interface UpdateYardInspectionBody {
   assignedTo?: string;
 }
 
+export type ServicePackageLineLineType =
+  (typeof ServicePackageLineLineType)[keyof typeof ServicePackageLineLineType];
+
+export const ServicePackageLineLineType = {
+  labor: "labor",
+  part: "part",
+  material: "material",
+} as const;
+
+export interface ServicePackageLine {
+  id: number;
+  packageId: number;
+  lineType: ServicePackageLineLineType;
+  laborCategory?: string | null;
+  description: string;
+  hours?: string | null;
+  quantity?: string | null;
+  unitPrice: string;
+  displayOrder: number;
+}
+
+export interface ServicePackage {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+  isActive: boolean;
+  vehicleModel?: string | null;
+  serviceInterval?: string | null;
+  bundleCode?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: ServicePackageLine[];
+}
+
+export interface ServicePackageListResponse {
+  packages: ServicePackage[];
+}
+
+export interface ServicePackageDeployment {
+  id: number;
+  packageId: number;
+  locationId: number;
+  isActive: boolean;
+  deployedAt: string;
+  deployedBy?: string | null;
+  locationName?: string | null;
+  packageName?: string | null;
+}
+
+export interface ServicePackageDeploymentListResponse {
+  deployments: ServicePackageDeployment[];
+}
+
+export interface ServicePackageDeploymentResponse {
+  deployment: ServicePackageDeployment;
+}
+
+export interface CreateServicePackageDeploymentBody {
+  packageId: number;
+  locationId: number;
+  deployedBy?: string;
+}
+
+export interface ImportMenuKitsTierPreview {
+  interval: string;
+  bundleCode: string;
+  partCount: number;
+}
+
+export interface ImportMenuKitsModelBlock {
+  modelCode: string;
+  tiers: ImportMenuKitsTierPreview[];
+}
+
+export interface ImportMenuKitsResponse {
+  preview: ImportMenuKitsModelBlock[];
+  packageCount: number;
+  errors: string[];
+  created?: number | null;
+  updated?: number | null;
+}
+
+export type CreateServicePackageLineBodyLineType =
+  (typeof CreateServicePackageLineBodyLineType)[keyof typeof CreateServicePackageLineBodyLineType];
+
+export const CreateServicePackageLineBodyLineType = {
+  labor: "labor",
+  part: "part",
+  material: "material",
+} as const;
+
+export interface CreateServicePackageLineBody {
+  lineType: CreateServicePackageLineBodyLineType;
+  laborCategory?: string;
+  description: string;
+  hours?: string;
+  quantity?: string;
+  unitPrice?: string;
+  displayOrder?: number;
+}
+
+export interface CreateServicePackageBody {
+  name: string;
+  vehicleModel?: string;
+  serviceInterval?: string;
+  bundleCode?: string;
+  icon?: string;
+  color?: string;
+  description?: string;
+  lines?: CreateServicePackageLineBody[];
+}
+
 export interface DmsAccountType {
   id: number;
   name: string;
@@ -577,3 +691,26 @@ export const ListYardInspectionsStatus = {
   queued: "queued",
   all: "all",
 } as const;
+
+export type ListServicePackagesParams = {
+  /**
+   * If supplied, only return packages deployed to this location
+   */
+  locationId?: number;
+};
+
+export type ImportMenuKitsParams = {
+  /**
+   * If false (default) returns a preview; if true, upserts packages to DB
+   */
+  commit?: boolean;
+};
+
+export type ImportMenuKitsBody = {
+  /** XLSX/CSV file contents (multipart/form-data upload; binary blob) */
+  file: string;
+};
+
+export type ListServicePackageDeploymentsParams = {
+  locationId?: number;
+};

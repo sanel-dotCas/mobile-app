@@ -21,6 +21,8 @@ import type {
   AnalyzeEstimateResponse,
   AutoAssignYardInspectionsBody,
   AutoAssignYardInspectionsResponse,
+  CreateServicePackageBody,
+  CreateServicePackageDeploymentBody,
   CreateYardInspectionBody,
   CreateYardLocationBody,
   CreateYardVehicleBody,
@@ -30,9 +32,17 @@ import type {
   GetLocationMovementFeedParams,
   GetTechnicianStatsParams,
   HealthStatus,
+  ImportMenuKitsBody,
+  ImportMenuKitsParams,
+  ImportMenuKitsResponse,
+  ListServicePackageDeploymentsParams,
+  ListServicePackagesParams,
   ListYardInspectionsParams,
   ListYardVehiclesParams,
   MovementEntry,
+  ServicePackageDeploymentListResponse,
+  ServicePackageDeploymentResponse,
+  ServicePackageListResponse,
   SubmitEstimateRequest,
   SubmitEstimateResponse,
   TechnicianListResponse,
@@ -2037,6 +2047,580 @@ export const useGenerateYardInspections = <
   TContext
 > => {
   return useMutation(getGenerateYardInspectionsMutationOptions(options));
+};
+
+/**
+ * @summary List service packages, optionally filtered by branch location
+ */
+export const getListServicePackagesUrl = (
+  params?: ListServicePackagesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/service-packages?${stringifiedParams}`
+    : `/api/service-packages`;
+};
+
+export const listServicePackages = async (
+  params?: ListServicePackagesParams,
+  options?: RequestInit,
+): Promise<ServicePackageListResponse> => {
+  return customFetch<ServicePackageListResponse>(
+    getListServicePackagesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListServicePackagesQueryKey = (
+  params?: ListServicePackagesParams,
+) => {
+  return [`/api/service-packages`, ...(params ? [params] : [])] as const;
+};
+
+export const getListServicePackagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listServicePackages>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListServicePackagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listServicePackages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListServicePackagesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listServicePackages>>
+  > = ({ signal }) =>
+    listServicePackages(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listServicePackages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListServicePackagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listServicePackages>>
+>;
+export type ListServicePackagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List service packages, optionally filtered by branch location
+ */
+
+export function useListServicePackages<
+  TData = Awaited<ReturnType<typeof listServicePackages>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListServicePackagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listServicePackages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListServicePackagesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Parse and optionally import a brand/model Excel file
+ */
+export const getImportMenuKitsUrl = (params?: ImportMenuKitsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/service-packages/import-menu-kits?${stringifiedParams}`
+    : `/api/service-packages/import-menu-kits`;
+};
+
+export const importMenuKits = async (
+  importMenuKitsBody: ImportMenuKitsBody,
+  params?: ImportMenuKitsParams,
+  options?: RequestInit,
+): Promise<ImportMenuKitsResponse> => {
+  const formData = new FormData();
+  formData.append(`file`, importMenuKitsBody.file);
+
+  return customFetch<ImportMenuKitsResponse>(getImportMenuKitsUrl(params), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getImportMenuKitsMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importMenuKits>>,
+    TError,
+    { data: BodyType<ImportMenuKitsBody>; params?: ImportMenuKitsParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importMenuKits>>,
+  TError,
+  { data: BodyType<ImportMenuKitsBody>; params?: ImportMenuKitsParams },
+  TContext
+> => {
+  const mutationKey = ["importMenuKits"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importMenuKits>>,
+    { data: BodyType<ImportMenuKitsBody>; params?: ImportMenuKitsParams }
+  > = (props) => {
+    const { data, params } = props ?? {};
+
+    return importMenuKits(data, params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportMenuKitsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importMenuKits>>
+>;
+export type ImportMenuKitsMutationBody = BodyType<ImportMenuKitsBody>;
+export type ImportMenuKitsMutationError = ErrorType<void>;
+
+/**
+ * @summary Parse and optionally import a brand/model Excel file
+ */
+export const useImportMenuKits = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importMenuKits>>,
+    TError,
+    { data: BodyType<ImportMenuKitsBody>; params?: ImportMenuKitsParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importMenuKits>>,
+  TError,
+  { data: BodyType<ImportMenuKitsBody>; params?: ImportMenuKitsParams },
+  TContext
+> => {
+  return useMutation(getImportMenuKitsMutationOptions(options));
+};
+
+/**
+ * @summary List active package deployments
+ */
+export const getListServicePackageDeploymentsUrl = (
+  params?: ListServicePackageDeploymentsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/service-packages/deployments?${stringifiedParams}`
+    : `/api/service-packages/deployments`;
+};
+
+export const listServicePackageDeployments = async (
+  params?: ListServicePackageDeploymentsParams,
+  options?: RequestInit,
+): Promise<ServicePackageDeploymentListResponse> => {
+  return customFetch<ServicePackageDeploymentListResponse>(
+    getListServicePackageDeploymentsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListServicePackageDeploymentsQueryKey = (
+  params?: ListServicePackageDeploymentsParams,
+) => {
+  return [
+    `/api/service-packages/deployments`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListServicePackageDeploymentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listServicePackageDeployments>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListServicePackageDeploymentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listServicePackageDeployments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListServicePackageDeploymentsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listServicePackageDeployments>>
+  > = ({ signal }) =>
+    listServicePackageDeployments(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listServicePackageDeployments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListServicePackageDeploymentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listServicePackageDeployments>>
+>;
+export type ListServicePackageDeploymentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List active package deployments
+ */
+
+export function useListServicePackageDeployments<
+  TData = Awaited<ReturnType<typeof listServicePackageDeployments>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListServicePackageDeploymentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listServicePackageDeployments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListServicePackageDeploymentsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Deploy a package to a branch location (idempotent)
+ */
+export const getCreateServicePackageDeploymentUrl = () => {
+  return `/api/service-packages/deployments`;
+};
+
+export const createServicePackageDeployment = async (
+  createServicePackageDeploymentBody: CreateServicePackageDeploymentBody,
+  options?: RequestInit,
+): Promise<ServicePackageDeploymentResponse> => {
+  return customFetch<ServicePackageDeploymentResponse>(
+    getCreateServicePackageDeploymentUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createServicePackageDeploymentBody),
+    },
+  );
+};
+
+export const getCreateServicePackageDeploymentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createServicePackageDeployment>>,
+    TError,
+    { data: BodyType<CreateServicePackageDeploymentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createServicePackageDeployment>>,
+  TError,
+  { data: BodyType<CreateServicePackageDeploymentBody> },
+  TContext
+> => {
+  const mutationKey = ["createServicePackageDeployment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createServicePackageDeployment>>,
+    { data: BodyType<CreateServicePackageDeploymentBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createServicePackageDeployment(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateServicePackageDeploymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createServicePackageDeployment>>
+>;
+export type CreateServicePackageDeploymentMutationBody =
+  BodyType<CreateServicePackageDeploymentBody>;
+export type CreateServicePackageDeploymentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Deploy a package to a branch location (idempotent)
+ */
+export const useCreateServicePackageDeployment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createServicePackageDeployment>>,
+    TError,
+    { data: BodyType<CreateServicePackageDeploymentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createServicePackageDeployment>>,
+  TError,
+  { data: BodyType<CreateServicePackageDeploymentBody> },
+  TContext
+> => {
+  return useMutation(getCreateServicePackageDeploymentMutationOptions(options));
+};
+
+/**
+ * @summary Deactivate a package deployment from a branch
+ */
+export const getDeleteServicePackageDeploymentUrl = (deploymentId: number) => {
+  return `/api/service-packages/deployments/${deploymentId}`;
+};
+
+export const deleteServicePackageDeployment = async (
+  deploymentId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteServicePackageDeploymentUrl(deploymentId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteServicePackageDeploymentMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteServicePackageDeployment>>,
+    TError,
+    { deploymentId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteServicePackageDeployment>>,
+  TError,
+  { deploymentId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteServicePackageDeployment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteServicePackageDeployment>>,
+    { deploymentId: number }
+  > = (props) => {
+    const { deploymentId } = props ?? {};
+
+    return deleteServicePackageDeployment(deploymentId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteServicePackageDeploymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteServicePackageDeployment>>
+>;
+
+export type DeleteServicePackageDeploymentMutationError = ErrorType<void>;
+
+/**
+ * @summary Deactivate a package deployment from a branch
+ */
+export const useDeleteServicePackageDeployment = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteServicePackageDeployment>>,
+    TError,
+    { deploymentId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteServicePackageDeployment>>,
+  TError,
+  { deploymentId: number },
+  TContext
+> => {
+  return useMutation(getDeleteServicePackageDeploymentMutationOptions(options));
+};
+
+/**
+ * @summary Create a new service package with line items (admin only)
+ */
+export const getCreateAdminServicePackageUrl = () => {
+  return `/api/admin/service-packages`;
+};
+
+export const createAdminServicePackage = async (
+  createServicePackageBody: CreateServicePackageBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getCreateAdminServicePackageUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createServicePackageBody),
+  });
+};
+
+export const getCreateAdminServicePackageMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAdminServicePackage>>,
+    TError,
+    { data: BodyType<CreateServicePackageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAdminServicePackage>>,
+  TError,
+  { data: BodyType<CreateServicePackageBody> },
+  TContext
+> => {
+  const mutationKey = ["createAdminServicePackage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAdminServicePackage>>,
+    { data: BodyType<CreateServicePackageBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAdminServicePackage(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAdminServicePackageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAdminServicePackage>>
+>;
+export type CreateAdminServicePackageMutationBody =
+  BodyType<CreateServicePackageBody>;
+export type CreateAdminServicePackageMutationError = ErrorType<void>;
+
+/**
+ * @summary Create a new service package with line items (admin only)
+ */
+export const useCreateAdminServicePackage = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAdminServicePackage>>,
+    TError,
+    { data: BodyType<CreateServicePackageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAdminServicePackage>>,
+  TError,
+  { data: BodyType<CreateServicePackageBody> },
+  TContext
+> => {
+  return useMutation(getCreateAdminServicePackageMutationOptions(options));
 };
 
 /**

@@ -26,6 +26,8 @@ tags:
     description: Dashboard statistics
   - name: technicians
     description: Technician data and KPI stats
+  - name: service-packages
+    description: Service package management and branch deployments
 paths:
   # ── Estimates ─────────────────────────────────────────────────────────────
   /estimates/account-types:
@@ -495,6 +497,133 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenerateYardInspectionsResponse"
+
+  # ── Service Packages ──────────────────────────────────────────────────────
+  /service-packages:
+    get:
+      operationId: listServicePackages
+      tags: [service-packages]
+      summary: List service packages, optionally filtered by branch location
+      parameters:
+        - name: locationId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: If supplied, only return packages deployed to this location
+      responses:
+        "200":
+          description: List of service packages with lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePackageListResponse"
+
+  /service-packages/import-menu-kits:
+    post:
+      operationId: importMenuKits
+      tags: [service-packages]
+      summary: Parse and optionally import a brand/model Excel file
+      parameters:
+        - name: commit
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If false (default) returns a preview; if true, upserts packages to DB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: "XLSX/CSV file contents (multipart/form-data upload; binary blob)"
+              required: [file]
+      responses:
+        "200":
+          description: Parse preview or commit result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportMenuKitsResponse"
+        "400":
+          description: Bad file or parse error
+
+  /service-packages/deployments:
+    get:
+      operationId: listServicePackageDeployments
+      tags: [service-packages]
+      summary: List active package deployments
+      parameters:
+        - name: locationId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deployment list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePackageDeploymentListResponse"
+    post:
+      operationId: createServicePackageDeployment
+      tags: [service-packages]
+      summary: Deploy a package to a branch location (idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServicePackageDeploymentBody"
+      responses:
+        "201":
+          description: Deployment created or re-activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePackageDeploymentResponse"
+
+  /service-packages/deployments/{deploymentId}:
+    delete:
+      operationId: deleteServicePackageDeployment
+      tags: [service-packages]
+      summary: Deactivate a package deployment from a branch
+      parameters:
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deployment deactivated
+        "404":
+          description: Deployment not found
+
+  /admin/service-packages:
+    post:
+      operationId: createAdminServicePackage
+      tags: [service-packages]
+      summary: Create a new service package with line items (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServicePackageBody"
+      responses:
+        "201":
+          description: Created package with lines
+        "400":
+          description: Missing required fields
+        "409":
+          description: Package name already exists
 
   /yard/inspections/auto-assign:
     post:
@@ -1042,6 +1171,214 @@ components:
           type: string
         assignedTo:
           type: string
+
+    # ── Service Packages ──────────────────────────────────────────────────────
+    ServicePackageLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        packageId:
+          type: integer
+        lineType:
+          type: string
+          enum: [labor, part, material]
+        laborCategory:
+          type: string
+          nullable: true
+        description:
+          type: string
+        hours:
+          type: string
+          nullable: true
+        quantity:
+          type: string
+          nullable: true
+        unitPrice:
+          type: string
+        displayOrder:
+          type: integer
+      required: [id, packageId, lineType, description, unitPrice, displayOrder]
+
+    ServicePackage:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        vehicleModel:
+          type: string
+          nullable: true
+        serviceInterval:
+          type: string
+          nullable: true
+        bundleCode:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicePackageLine"
+      required: [id, name, icon, color, description, isActive, createdAt, updatedAt, lines]
+
+    ServicePackageListResponse:
+      type: object
+      properties:
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicePackage"
+      required: [packages]
+
+    ServicePackageDeployment:
+      type: object
+      properties:
+        id:
+          type: integer
+        packageId:
+          type: integer
+        locationId:
+          type: integer
+        isActive:
+          type: boolean
+        deployedAt:
+          type: string
+        deployedBy:
+          type: string
+          nullable: true
+        locationName:
+          type: string
+          nullable: true
+        packageName:
+          type: string
+          nullable: true
+      required: [id, packageId, locationId, isActive, deployedAt]
+
+    ServicePackageDeploymentListResponse:
+      type: object
+      properties:
+        deployments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicePackageDeployment"
+      required: [deployments]
+
+    ServicePackageDeploymentResponse:
+      type: object
+      properties:
+        deployment:
+          $ref: "#/components/schemas/ServicePackageDeployment"
+      required: [deployment]
+
+    CreateServicePackageDeploymentBody:
+      type: object
+      properties:
+        packageId:
+          type: integer
+        locationId:
+          type: integer
+        deployedBy:
+          type: string
+      required: [packageId, locationId]
+
+    ImportMenuKitsTierPreview:
+      type: object
+      properties:
+        interval:
+          type: string
+        bundleCode:
+          type: string
+        partCount:
+          type: integer
+      required: [interval, bundleCode, partCount]
+
+    ImportMenuKitsModelBlock:
+      type: object
+      properties:
+        modelCode:
+          type: string
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportMenuKitsTierPreview"
+      required: [modelCode, tiers]
+
+    ImportMenuKitsResponse:
+      type: object
+      properties:
+        preview:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportMenuKitsModelBlock"
+        packageCount:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+        created:
+          type: integer
+          nullable: true
+        updated:
+          type: integer
+          nullable: true
+      required: [preview, packageCount, errors]
+
+    CreateServicePackageLineBody:
+      type: object
+      properties:
+        lineType:
+          type: string
+          enum: [labor, part, material]
+        laborCategory:
+          type: string
+        description:
+          type: string
+        hours:
+          type: string
+        quantity:
+          type: string
+        unitPrice:
+          type: string
+        displayOrder:
+          type: integer
+      required: [lineType, description]
+
+    CreateServicePackageBody:
+      type: object
+      properties:
+        name:
+          type: string
+        vehicleModel:
+          type: string
+        serviceInterval:
+          type: string
+        bundleCode:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        description:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateServicePackageLineBody"
+      required: [name]
 
     # ── Estimates ────────────────────────────────────────────────────────────
     DmsAccountType:
