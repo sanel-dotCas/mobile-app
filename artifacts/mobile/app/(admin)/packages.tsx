@@ -5,6 +5,7 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -18,6 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import { authFetch } from "@/lib/authFetch";
 import { useColors } from "@/hooks/useColors";
 
 const BASE =
@@ -143,9 +145,10 @@ interface PackageCardProps {
   onDeploy: (packageId: number, locationId: number) => void;
   onUndeploy: (deploymentId: number) => void;
   onDelete: (pkg: ServicePackage) => void;
+  onEdit: (pkg: ServicePackage) => void;
 }
 
-function PackageCard({ pkg, deployments, locations, onDeploy, onUndeploy, onDelete }: PackageCardProps) {
+function PackageCard({ pkg, deployments, locations, onDeploy, onUndeploy, onDelete, onEdit }: PackageCardProps) {
   const colors = useColors();
   const [expanded, setExpanded] = useState(false);
 
@@ -272,14 +275,23 @@ function PackageCard({ pkg, deployments, locations, onDeploy, onUndeploy, onDele
             </View>
           )}
 
-          {/* Delete button */}
-          <Pressable
-            style={styles.deleteBtn}
-            onPress={() => onDelete(pkg)}
-          >
-            <Feather name="trash-2" size={13} color="#dc2626" />
-            <Text style={styles.deleteBtnText}>Remove Package</Text>
-          </Pressable>
+          {/* Action buttons */}
+          <View style={styles.cardActions}>
+            <Pressable
+              style={styles.editBtn}
+              onPress={() => onEdit(pkg)}
+            >
+              <Feather name="edit-2" size={13} color="#1d4ed8" />
+              <Text style={styles.editBtnText}>Edit Package</Text>
+            </Pressable>
+            <Pressable
+              style={styles.deleteBtn}
+              onPress={() => onDelete(pkg)}
+            >
+              <Feather name="trash-2" size={13} color="#dc2626" />
+              <Text style={styles.deleteBtnText}>Remove</Text>
+            </Pressable>
+          </View>
         </View>
       )}
     </View>
@@ -347,6 +359,490 @@ function ImportResultModal({ visible, result, onClose }: ImportResultModalProps)
   );
 }
 
+// ── Edit package modal ─────────────────────────────────────────────────────────
+
+interface EditLine {
+  id?: number;
+  lineType: "labor" | "part" | "material";
+  laborCategory: string;
+  description: string;
+  hours: string;
+  quantity: string;
+  unitPrice: string;
+  displayOrder: number;
+}
+
+interface EditPackageModalProps {
+  visible: boolean;
+  pkg: ServicePackage | null;
+  onClose: () => void;
+  onSaved: (updated: ServicePackage) => void;
+}
+
+function EditPackageModal({ visible, pkg, onClose, onSaved }: EditPackageModalProps) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  const [name, setName] = useState("");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [serviceInterval, setServiceInterval] = useState("");
+  const [bundleCode, setBundleCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [color, setColor] = useState("#1d4ed8");
+  const [lines, setLines] = useState<EditLine[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (pkg) {
+      setName(pkg.name);
+      setVehicleModel(pkg.vehicleModel ?? "");
+      setServiceInterval(pkg.serviceInterval ?? "");
+      setBundleCode(pkg.bundleCode ?? "");
+      setDescription(pkg.description ?? "");
+      setColor(pkg.color ?? "#1d4ed8");
+      setLines(
+        pkg.lines.map((l) => ({
+          id: l.id,
+          lineType: l.lineType,
+          laborCategory: l.laborCategory ?? "",
+          description: l.description,
+          hours: l.hours ?? "",
+          quantity: l.quantity ?? "1",
+          unitPrice: l.unitPrice ?? "0",
+          displayOrder: l.displayOrder,
+        }))
+      );
+    }
+  }, [pkg]);
+
+  const updateLine = (idx: number, field: keyof EditLine, value: string) => {
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
+  };
+
+  const removeLine = (idx: number) => {
+    setLines((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const addLine = () => {
+    setLines((prev) => [
+      ...prev,
+      { lineType: "part", laborCategory: "", description: "", hours: "", quantity: "1", unitPrice: "0", displayOrder: prev.length + 1 },
+    ]);
+  };
+
+  const lineTotal = (l: EditLine) => {
+    const price = parseFloat(l.unitPrice) || 0;
+    if (l.lineType === "labor") return (parseFloat(l.hours) || 0) * price;
+    return (parseFloat(l.quantity) || 1) * price;
+  };
+
+  const grandTotal = lines.reduce((s, l) => s + lineTotal(l), 0);
+
+  const handleSave = async () => {
+    if (!pkg) return;
+    if (!name.trim()) { Alert.alert("Validation", "Package name is required"); return; }
+    setSaving(true);
+    try {
+      const res = await authFetch(`/api/admin/service-packages/${pkg.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          vehicleModel: vehicleModel.trim() || null,
+          serviceInterval: serviceInterval.trim() || null,
+          bundleCode: bundleCode.trim() || null,
+          description: description.trim(),
+          color,
+          lines: lines.map((l, idx) => ({
+            lineType: l.lineType,
+            laborCategory: l.laborCategory || null,
+            description: l.description,
+            hours: l.lineType === "labor" ? l.hours || null : null,
+            quantity: l.lineType !== "labor" ? l.quantity || "1" : null,
+            unitPrice: l.unitPrice || "0",
+            displayOrder: idx + 1,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert("Error", (err as { error?: string }).error ?? "Could not save changes");
+        return;
+      }
+      const updated = await res.json();
+      onSaved(updated);
+      onClose();
+    } catch {
+      Alert.alert("Error", "Could not save changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const COLORS = ["#1d4ed8", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#64748b"];
+  const LINE_TYPES: EditLine["lineType"][] = ["part", "labor", "material"];
+  const LINE_TYPE_LABELS = { part: "Part", labor: "Labour", material: "Material" };
+
+  if (!pkg) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={[editStyles.container, { backgroundColor: colors.background }]}>
+          {/* Header */}
+          <View style={[editStyles.header, { borderBottomColor: colors.border, paddingTop: insets.top + 12 }]}>
+            <Pressable onPress={onClose} style={editStyles.headerBtn}>
+              <Feather name="x" size={20} color={colors.foreground} />
+            </Pressable>
+            <Text style={[editStyles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>
+              Edit Package
+            </Text>
+            <Pressable onPress={handleSave} style={[editStyles.saveBtn, saving && { opacity: 0.6 }]} disabled={saving}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={editStyles.saveBtnText}>Save</Text>
+              )}
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={[editStyles.scroll, { paddingBottom: insets.bottom + 24 }]}>
+            {/* Package Info */}
+            <Text style={[editStyles.sectionLabel, { color: colors.mutedForeground }]}>PACKAGE INFO</Text>
+            <View style={[editStyles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={editStyles.fieldRow}>
+                <Text style={[editStyles.fieldLabel, { color: colors.mutedForeground }]}>Name *</Text>
+                <TextInput
+                  style={[editStyles.fieldInput, { color: colors.foreground, borderBottomColor: colors.border }]}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. DT-5.7L 1.6yr Service"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <View style={editStyles.fieldRow}>
+                <Text style={[editStyles.fieldLabel, { color: colors.mutedForeground }]}>Vehicle Model</Text>
+                <TextInput
+                  style={[editStyles.fieldInput, { color: colors.foreground, borderBottomColor: colors.border }]}
+                  value={vehicleModel}
+                  onChangeText={setVehicleModel}
+                  placeholder="e.g. DT-5.7L-REBEL"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <View style={editStyles.fieldRow}>
+                <Text style={[editStyles.fieldLabel, { color: colors.mutedForeground }]}>Service Interval</Text>
+                <TextInput
+                  style={[editStyles.fieldInput, { color: colors.foreground, borderBottomColor: colors.border }]}
+                  value={serviceInterval}
+                  onChangeText={setServiceInterval}
+                  placeholder="e.g. 1.6yr"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <View style={editStyles.fieldRow}>
+                <Text style={[editStyles.fieldLabel, { color: colors.mutedForeground }]}>Bundle Code</Text>
+                <TextInput
+                  style={[editStyles.fieldInput, { color: colors.foreground, borderBottomColor: colors.border }]}
+                  value={bundleCode}
+                  onChangeText={setBundleCode}
+                  placeholder="e.g. RPPDTLBA4"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <View style={[editStyles.fieldRow, { borderBottomWidth: 0 }]}>
+                <Text style={[editStyles.fieldLabel, { color: colors.mutedForeground }]}>Description</Text>
+                <TextInput
+                  style={[editStyles.fieldInput, { color: colors.foreground, borderBottomColor: colors.border }]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Short description…"
+                  placeholderTextColor={colors.mutedForeground}
+                  multiline
+                />
+              </View>
+            </View>
+
+            {/* Color */}
+            <Text style={[editStyles.sectionLabel, { color: colors.mutedForeground }]}>ACCENT COLOUR</Text>
+            <View style={[editStyles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={editStyles.colorRow}>
+                {COLORS.map((c) => (
+                  <Pressable
+                    key={c}
+                    style={[editStyles.colorSwatch, { backgroundColor: c }, color === c && editStyles.colorSwatchActive]}
+                    onPress={() => setColor(c)}
+                  >
+                    {color === c && <Feather name="check" size={14} color="#fff" />}
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            {/* Line Items */}
+            <View style={editStyles.lineHeader}>
+              <Text style={[editStyles.sectionLabel, { color: colors.mutedForeground, marginBottom: 0 }]}>
+                LINE ITEMS ({lines.length})
+              </Text>
+              <Pressable style={editStyles.addLineBtn} onPress={addLine}>
+                <Feather name="plus" size={14} color="#1d4ed8" />
+                <Text style={editStyles.addLineBtnText}>Add Line</Text>
+              </Pressable>
+            </View>
+
+            {lines.map((line, idx) => {
+              const c = LINE_TYPE_COLOR[line.lineType];
+              return (
+                <View key={idx} style={[editStyles.lineCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  {/* Type selector */}
+                  <View style={editStyles.typeRow}>
+                    {LINE_TYPES.map((t) => (
+                      <Pressable
+                        key={t}
+                        style={[editStyles.typeChip, line.lineType === t && { backgroundColor: LINE_TYPE_COLOR[t].bg }]}
+                        onPress={() => updateLine(idx, "lineType", t)}
+                      >
+                        <Text style={[editStyles.typeChipText, { color: line.lineType === t ? LINE_TYPE_COLOR[t].text : colors.mutedForeground }]}>
+                          {LINE_TYPE_LABELS[t]}
+                        </Text>
+                      </Pressable>
+                    ))}
+                    <Pressable onPress={() => removeLine(idx)} style={editStyles.removeLineBtn}>
+                      <Feather name="trash-2" size={13} color="#dc2626" />
+                    </Pressable>
+                  </View>
+
+                  {/* Description */}
+                  <TextInput
+                    style={[editStyles.lineInput, { color: colors.foreground, borderColor: colors.border }]}
+                    value={line.description}
+                    onChangeText={(v) => updateLine(idx, "description", v)}
+                    placeholder="Description…"
+                    placeholderTextColor={colors.mutedForeground}
+                    multiline
+                  />
+
+                  {/* Qty / Hours + Price row */}
+                  <View style={editStyles.lineNumRow}>
+                    {line.lineType === "labor" ? (
+                      <View style={editStyles.lineNumField}>
+                        <Text style={[editStyles.lineNumLabel, { color: colors.mutedForeground }]}>Hours</Text>
+                        <TextInput
+                          style={[editStyles.lineNumInput, { color: colors.foreground, borderColor: colors.border }]}
+                          value={line.hours}
+                          onChangeText={(v) => updateLine(idx, "hours", v)}
+                          keyboardType="decimal-pad"
+                          placeholder="0.0"
+                          placeholderTextColor={colors.mutedForeground}
+                        />
+                      </View>
+                    ) : (
+                      <View style={editStyles.lineNumField}>
+                        <Text style={[editStyles.lineNumLabel, { color: colors.mutedForeground }]}>Qty</Text>
+                        <TextInput
+                          style={[editStyles.lineNumInput, { color: colors.foreground, borderColor: colors.border }]}
+                          value={line.quantity}
+                          onChangeText={(v) => updateLine(idx, "quantity", v)}
+                          keyboardType="decimal-pad"
+                          placeholder="1"
+                          placeholderTextColor={colors.mutedForeground}
+                        />
+                      </View>
+                    )}
+                    <View style={editStyles.lineNumField}>
+                      <Text style={[editStyles.lineNumLabel, { color: colors.mutedForeground }]}>Unit Price (R)</Text>
+                      <TextInput
+                        style={[editStyles.lineNumInput, { color: colors.foreground, borderColor: colors.border }]}
+                        value={line.unitPrice}
+                        onChangeText={(v) => updateLine(idx, "unitPrice", v)}
+                        keyboardType="decimal-pad"
+                        placeholder="0.00"
+                        placeholderTextColor={colors.mutedForeground}
+                      />
+                    </View>
+                    <View style={editStyles.lineTotalField}>
+                      <Text style={[editStyles.lineNumLabel, { color: colors.mutedForeground }]}>Total</Text>
+                      <Text style={[editStyles.lineTotalVal, { color: c.text }]}>
+                        R{lineTotal(line).toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+
+            {lines.length === 0 && (
+              <Pressable style={[editStyles.emptyLines, { borderColor: colors.border }]} onPress={addLine}>
+                <Feather name="plus-circle" size={22} color="#1d4ed8" />
+                <Text style={[editStyles.emptyLinesText, { color: colors.mutedForeground }]}>Tap to add line items</Text>
+              </Pressable>
+            )}
+
+            {/* Grand Total */}
+            {lines.length > 0 && (
+              <View style={[editStyles.grandTotal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[editStyles.grandTotalLabel, { color: colors.foreground }]}>Package Total</Text>
+                <Text style={[editStyles.grandTotalValue, { color: color }]}>R{grandTotal.toFixed(2)}</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const editStyles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  headerBtn: { padding: 4 },
+  headerTitle: { flex: 1, fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  saveBtn: {
+    backgroundColor: "#1d4ed8",
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minWidth: 70,
+    alignItems: "center",
+  },
+  saveBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
+  scroll: { padding: 16, gap: 12 },
+
+  sectionLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  section: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  fieldRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 2,
+  },
+  fieldLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  fieldInput: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    paddingVertical: 2,
+  },
+
+  colorRow: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 14,
+    flexWrap: "wrap",
+  },
+  colorSwatch: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorSwatchActive: {
+    transform: [{ scale: 1.15 }],
+  },
+
+  lineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  addLineBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#dbeafe",
+    borderRadius: 8,
+  },
+  addLineBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#1d4ed8" },
+
+  lineCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+    marginBottom: 8,
+  },
+  typeRow: { flexDirection: "row", gap: 6, alignItems: "center" },
+  typeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+  },
+  typeChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  removeLineBtn: { marginLeft: "auto" as const, padding: 4 },
+
+  lineInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    minHeight: 38,
+  },
+
+  lineNumRow: { flexDirection: "row", gap: 8, alignItems: "flex-end" },
+  lineNumField: { flex: 1, gap: 4 },
+  lineNumLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  lineNumInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+  },
+  lineTotalField: { flex: 1, gap: 4, alignItems: "flex-end" },
+  lineTotalVal: { fontSize: 15, fontFamily: "Inter_700Bold", paddingBottom: 6 },
+
+  emptyLines: {
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderRadius: 12,
+    padding: 28,
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  emptyLinesText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+
+  grandTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 4,
+  },
+  grandTotalLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  grandTotalValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
+});
+
 // ── Main screen ────────────────────────────────────────────────────────────────
 
 export default function AdminPackagesScreen() {
@@ -363,6 +859,8 @@ export default function AdminPackagesScreen() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; updated: number; errors: string[] } | null>(null);
   const [showImportResult, setShowImportResult] = useState(false);
+  const [editingPkg, setEditingPkg] = useState<ServicePackage | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const loadAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -432,6 +930,15 @@ export default function AdminPackagesScreen() {
     } catch {
       Alert.alert("Error", "Could not remove deployment. Please try again.");
     }
+  };
+
+  const handleEdit = (pkg: ServicePackage) => {
+    setEditingPkg(pkg);
+    setShowEditModal(true);
+  };
+
+  const handleSaved = (updated: ServicePackage) => {
+    setPackages((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   };
 
   const handleDelete = (pkg: ServicePackage) => {
@@ -632,6 +1139,7 @@ export default function AdminPackagesScreen() {
               onDeploy={handleDeploy}
               onUndeploy={handleUndeploy}
               onDelete={handleDelete}
+              onEdit={handleEdit}
             />
           ))
         )}
@@ -641,6 +1149,13 @@ export default function AdminPackagesScreen() {
         visible={showImportResult}
         result={importResult}
         onClose={() => setShowImportResult(false)}
+      />
+
+      <EditPackageModal
+        visible={showEditModal}
+        pkg={editingPkg}
+        onClose={() => setShowEditModal(false)}
+        onSaved={handleSaved}
       />
     </View>
   );
@@ -819,12 +1334,28 @@ const styles = StyleSheet.create({
   },
   deployChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
 
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 14,
+    paddingTop: 10,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  editBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    color: "#1d4ed8",
+  },
   deleteBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 14,
-    paddingTop: 10,
+    gap: 5,
+    marginLeft: "auto" as const,
   },
   deleteBtnText: {
     fontSize: 13,

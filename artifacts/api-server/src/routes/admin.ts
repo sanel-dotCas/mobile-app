@@ -467,19 +467,6 @@ router.post("/admin/service-packages", async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
-// ── Delete service package ────────────────────────────────────────────────────
-router.delete("/admin/service-packages/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) {
-    res.status(400).json({ error: "Invalid id" });
-    return;
-  }
-  try {
-    // Remove lines and deployments first, then the package
-    await db.delete(servicePackageLinesTable).where(eq(servicePackageLinesTable.packageId, id));
-    await db.delete(servicePackageDeploymentsTable).where(eq(servicePackageDeploymentsTable.packageId, id));
-=======
 // GET /admin/service-packages/:id — fetch single package with lines
 router.get("/admin/service-packages/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -583,17 +570,17 @@ router.patch("/admin/service-packages/:id", async (req, res) => {
   }
 });
 
-// DELETE /admin/service-packages/:id
+// ── Delete service package ────────────────────────────────────────────────────
 router.delete("/admin/service-packages/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
->>>>>>> cd1b570 (Add edit and delete actions to Service Packages list (Task #145))
+    await db.delete(servicePackageLinesTable).where(eq(servicePackageLinesTable.packageId, id));
+    await db.delete(servicePackageDeploymentsTable).where(eq(servicePackageDeploymentsTable.packageId, id));
     const [deleted] = await db
       .delete(servicePackagesTable)
       .where(eq(servicePackagesTable.id, id))
       .returning({ id: servicePackagesTable.id });
-<<<<<<< HEAD
     if (!deleted) {
       res.status(404).json({ error: "Package not found" });
       return;
@@ -601,11 +588,6 @@ router.delete("/admin/service-packages/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     req.log.error(err, "Failed to delete service package");
-=======
-    if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
-    res.json({ success: true });
-  } catch {
->>>>>>> cd1b570 (Add edit and delete actions to Service Packages list (Task #145))
     res.status(500).json({ error: "Failed to delete service package" });
   }
 });
