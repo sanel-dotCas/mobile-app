@@ -508,16 +508,81 @@ router.post("/service-packages/upload", upload.single("file"), async (req, res) 
 // ── POST /api/service-packages/import-menu-kits ───────────────────────────────
 // Parses the brand/model Excel format used by dealerships.
 // The format has model blocks separated by "Model" header rows.
-// Each block has 3 tier columns with bundle codes and a parts list.
+// Each block has tier columns with interval labels, bundle codes and a parts list.
 //
-// Query param ?commit=false (default) → preview only (no DB writes)
-// Query param ?commit=true → upsert packages + lines
+// Query param ?mode=raw-preview → returns first 20 rows raw (no parsing, for column mapping UI)
+// Query param ?commit=false (default) → preview only (no DB writes), accepts optional mapping
+// Query param ?commit=true → upsert packages + lines, accepts optional mapping
+//
+// Optional FormData field "mapping" (JSON string): KitColumnMapping
+//   { modelKeywordCol, modelCodeCol, descriptionCol, partNumberCol, tierStartCol }
+//   All fields default to the standard layout when omitted.
+
+interface KitColumnMapping {
+  modelKeywordCol: number;
+  modelCodeCol: number;
+  descriptionCol: number;
+  partNumberCol: number;
+  tierStartCol: number;
+}
+
+const DEFAULT_KIT_MAPPING: KitColumnMapping = {
+  modelKeywordCol: 0,
+  modelCodeCol: 1,
+  descriptionCol: 0,
+  partNumberCol: 1,
+  tierStartCol: 2,
+};
 
 router.post("/service-packages/import-menu-kits", upload.single("file"), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "No file uploaded" });
     return;
   }
+
+  // ── Raw preview mode — return rows as-is for column mapping UI ──────────────
+  if (req.query.mode === "raw-preview") {
+    try {
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellText: true, cellNF: false });
+      const sheetName = wb.SheetNames[0];
+      if (!sheetName) {
+        res.status(400).json({ error: "Empty workbook" });
+        return;
+      }
+      const sheet = wb.Sheets[sheetName];
+      const allRows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as string[][];
+      const previewRows = allRows.slice(0, 20);
+      const colCount = Math.max(...previewRows.map((r) => r.length), 1);
+      const normalised = previewRows.map((r) =>
+        Array.from({ length: colCount }, (_, i) => String(r[i] ?? ""))
+      );
+      res.json({ rows: normalised, colCount });
+    } catch (err) {
+      req.log.error(err, "Failed to read workbook for raw preview");
+      res.status(500).json({ error: "Failed to read file" });
+    }
+    return;
+  }
+
+  // ── Parse column mapping from FormData ──────────────────────────────────────
+  let kitMapping: KitColumnMapping = { ...DEFAULT_KIT_MAPPING };
+  const mappingJson = req.body?.mapping as string | undefined;
+  if (mappingJson) {
+    try {
+      const parsed = JSON.parse(mappingJson) as Partial<KitColumnMapping>;
+      kitMapping = {
+        modelKeywordCol: parsed.modelKeywordCol ?? DEFAULT_KIT_MAPPING.modelKeywordCol,
+        modelCodeCol: parsed.modelCodeCol ?? DEFAULT_KIT_MAPPING.modelCodeCol,
+        descriptionCol: parsed.descriptionCol ?? DEFAULT_KIT_MAPPING.descriptionCol,
+        partNumberCol: parsed.partNumberCol ?? DEFAULT_KIT_MAPPING.partNumberCol,
+        tierStartCol: parsed.tierStartCol ?? DEFAULT_KIT_MAPPING.tierStartCol,
+      };
+    } catch {
+      // Ignore malformed mapping, fall back to defaults
+    }
+  }
+
+  const { modelKeywordCol, modelCodeCol, descriptionCol, partNumberCol, tierStartCol } = kitMapping;
 
   const commit = req.query.commit === "true";
 
@@ -534,11 +599,12 @@ router.post("/service-packages/import-menu-kits", upload.single("file"), async (
     const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as string[][];
 
     // ── Parse model blocks ───────────────────────────────────────────────────
-    // The sheet structure:
-    // Row N:   "Model" | <model_code> | ...
-    // Row N+1: interval header row — col indices 2,3,4 have interval labels (e.g. "1.1yr")
-    // Row N+2: bundle code row — col indices 2,3,4 have bundle codes
-    // Row N+3+: data rows — col0=part_description, col1=part_number, col2/3/4=qty (or "x") if included in that tier
+    // The sheet structure (column positions driven by kitMapping):
+    // Row N:   <modelKeywordCol>="Model" | <modelCodeCol>=<model_code> | ...
+    // Row N+1: interval header row — tierStartCol onwards have interval labels
+    // Row N+2: bundle code row — tierStartCol onwards have bundle codes
+    // Row N+3+: data rows — descriptionCol=part_desc, partNumberCol=part_num,
+    //           tierStartCol+ = qty (or "x") if included in that tier
     // Block ends when next "Model" row or end of sheet.
 
     type TierPreview = {
@@ -571,17 +637,19 @@ router.post("/service-packages/import-menu-kits", upload.single("file"), async (
     const parsedPackages: ParsedPackage[] = [];
     const modelBlocks: ModelBlock[] = [];
 
-    // Find all "Model" header rows
+    // Find all "Model" header rows using mapped column
     const modelRowIndices: number[] = [];
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-      if (row && String(row[0] ?? "").trim().toLowerCase() === "model") {
+      if (row && String(row[modelKeywordCol] ?? "").trim().toLowerCase() === "model") {
         modelRowIndices.push(r);
       }
     }
 
     if (modelRowIndices.length === 0) {
-      res.status(400).json({ error: "No model blocks found. Expected rows with 'Model' in column A." });
+      res.status(400).json({
+        error: `No model blocks found. Expected rows with 'Model' in column ${colIndexToLetter(modelKeywordCol)}.`,
+      });
       return;
     }
 
@@ -590,33 +658,35 @@ router.post("/service-packages/import-menu-kits", upload.single("file"), async (
       const blockEnd = blockIdx + 1 < modelRowIndices.length ? modelRowIndices[blockIdx + 1] : rows.length;
 
       const modelRow = rows[blockStart];
-      const modelCode = String(modelRow[1] ?? "").trim();
+      const modelCode = String(modelRow[modelCodeCol] ?? "").trim();
       if (!modelCode) {
-        errors.push(`Row ${blockStart + 1}: Model row missing model code in column B`);
+        errors.push(`Row ${blockStart + 1}: Model row missing model code in column ${colIndexToLetter(modelCodeCol)}`);
         continue;
       }
 
-      // Header row (blockStart+1): interval labels in cols 2,3,4
+      // Header row (blockStart+1): interval labels in tier columns
       const headerRow = rows[blockStart + 1] ?? [];
-      // Bundle code row (blockStart+2): bundle codes in cols 2,3,4
+      // Bundle code row (blockStart+2): bundle codes in tier columns
       const bundleRow = rows[blockStart + 2] ?? [];
 
-      // Detect how many tier columns (2, 3, or 4) based on non-empty bundle codes
+      // Detect tier columns: scan from tierStartCol for up to 10 columns
       const tierCols: number[] = [];
-      for (const colIdx of [2, 3, 4, 5, 6]) {
+      for (let colIdx = tierStartCol; colIdx < tierStartCol + 10; colIdx++) {
         const bundleCode = String(bundleRow[colIdx] ?? "").trim();
         if (bundleCode) tierCols.push(colIdx);
       }
 
       if (tierCols.length === 0) {
-        errors.push(`Model "${modelCode}" (row ${blockStart + 1}): No bundle codes found in columns C-G of the bundle code row`);
+        errors.push(
+          `Model "${modelCode}" (row ${blockStart + 1}): No bundle codes found starting from column ${colIndexToLetter(tierStartCol)}`
+        );
         continue;
       }
 
       const tiers = tierCols.map((colIdx) => ({
         colIdx,
         interval: (() => {
-          const raw = String(headerRow[colIdx] ?? "").trim() || `Tier ${colIdx - 1}`;
+          const raw = String(headerRow[colIdx] ?? "").trim() || `Tier ${colIdx - tierStartCol + 1}`;
           return /yr$/i.test(raw) ? raw : `${raw}yr`;
         })(),
         bundleCode: String(bundleRow[colIdx] ?? "").trim(),
@@ -627,14 +697,13 @@ router.post("/service-packages/import-menu-kits", upload.single("file"), async (
       for (let r = blockStart + 3; r < blockEnd; r++) {
         const dataRow = rows[r];
         if (!dataRow) continue;
-        const desc = String(dataRow[0] ?? "").trim();
-        const partNumber = String(dataRow[1] ?? "").trim();
+        const desc = String(dataRow[descriptionCol] ?? "").trim();
+        const partNumber = String(dataRow[partNumberCol] ?? "").trim();
         if (!desc) continue; // skip blank rows
 
         for (const tier of tiers) {
           const cellVal = String(dataRow[tier.colIdx] ?? "").trim();
           if (cellVal && cellVal !== "0" && cellVal.toLowerCase() !== "") {
-            // Non-empty cell means this part is included in this tier
             const qty = /^\d/.test(cellVal) ? cellVal : "1";
             tier.lines.push({ description: desc, partNumber, quantity: qty });
           }
@@ -649,7 +718,7 @@ router.post("/service-packages/import-menu-kits", upload.single("file"), async (
 
       // Build parsed packages
       for (const tier of tiers) {
-        if (tier.lines.length === 0) continue; // skip empty tiers
+        if (tier.lines.length === 0) continue;
         const packageName = `${modelCode} — ${tier.interval} (${tier.bundleCode})`;
         parsedPackages.push({
           name: packageName,
@@ -753,5 +822,15 @@ router.post("/service-packages/import-menu-kits", upload.single("file"), async (
     res.status(500).json({ error: "Failed to process import" });
   }
 });
+
+function colIndexToLetter(index: number): string {
+  let result = "";
+  let n = index;
+  do {
+    result = String.fromCharCode(65 + (n % 26)) + result;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return result;
+}
 
 export default router;
