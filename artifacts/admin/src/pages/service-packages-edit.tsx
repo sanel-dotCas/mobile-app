@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,7 @@ export default function ServicePackagesEditPage() {
   const [color, setColor] = useState("#2563eb");
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<LineItem[]>([newLine()]);
+  const [isActive, setIsActive] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
   const { data: pkg, isLoading } = useQuery({
@@ -83,6 +85,7 @@ export default function ServicePackagesEditPage() {
       setIcon(pkg.icon ?? "package");
       setColor(pkg.color ?? "#2563eb");
       setDescription(pkg.description ?? "");
+      setIsActive(pkg.isActive ?? true);
       if (pkg.lines && pkg.lines.length > 0) {
         setLines(
           pkg.lines.map((l: any) => ({
@@ -112,6 +115,7 @@ export default function ServicePackagesEditPage() {
           icon,
           color,
           description: description.trim(),
+          isActive,
           lines: lines.map((l, idx) => ({
             lineType: l.lineType,
             laborCategory: l.laborCategory || undefined,
@@ -265,6 +269,25 @@ export default function ServicePackagesEditPage() {
               className="mt-1 resize-none"
               rows={2}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="mb-2 block">Status</Label>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="isActive"
+                checked={isActive}
+                onCheckedChange={setIsActive}
+              />
+              <label
+                htmlFor="isActive"
+                className={cn(
+                  "text-sm font-medium cursor-pointer select-none",
+                  isActive ? "text-green-700" : "text-slate-400"
+                )}
+              >
+                {isActive ? "Active — visible to technicians" : "Inactive — hidden from use"}
+              </label>
+            </div>
           </div>
         </div>
       </div>

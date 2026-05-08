@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -208,6 +208,286 @@ function PlanCard({
   );
 }
 
+// ── DMS job lookup result type ────────────────────────────────────────────────
+
+interface DmsJobResult {
+  id: string;
+  licensePlate: string;
+  vehicleLabel: string;
+  vehicleYear: string | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  customerName: string;
+  customerNotes: string;
+}
+
+// ── Customer search field ─────────────────────────────────────────────────────
+
+function CustomerSearchField({
+  value,
+  onSelect,
+  colors,
+}: {
+  value: string;
+  onSelect: (name: string) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const { mobileSessionToken } = useAuth();
+  const [query, setQuery] = useState(value);
+  const [results, setResults] = useState<DmsJobResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  const search = (text: string) => {
+    setQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (text.length < 1) {
+      setResults([]);
+      setShowDropdown(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const headers: Record<string, string> = {};
+        if (mobileSessionToken) headers["Authorization"] = `Bearer ${mobileSessionToken}`;
+        const res = await fetch(`${BASE}/jobs/dms-lookup?q=${encodeURIComponent(text)}`, { headers });
+        if (res.ok) {
+          const data = await res.json() as { results: DmsJobResult[] };
+          const seen = new Set<string>();
+          const unique = data.results.filter((r) => {
+            if (!r.customerName || seen.has(r.customerName)) return false;
+            seen.add(r.customerName);
+            return true;
+          });
+          setResults(unique);
+          setShowDropdown(unique.length > 0);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  };
+
+  const pick = (name: string) => {
+    setQuery(name);
+    setShowDropdown(false);
+    onSelect(name);
+  };
+
+  return (
+    <View>
+      <View style={[createStyles.field, { borderBottomWidth: 0 }]}>
+        <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Customer Name</Text>
+        <View style={createStyles.searchFieldRow}>
+          <TextInput
+            style={[createStyles.fieldInput, { color: colors.foreground, flex: 1 }]}
+            value={query}
+            onChangeText={search}
+            placeholder="Search DMS or type name…"
+            placeholderTextColor={colors.mutedForeground}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            onFocus={() => query.length >= 1 && results.length > 0 && setShowDropdown(true)}
+          />
+          {loading && <ActivityIndicator size="small" color="#16a34a" style={{ marginRight: 4 }} />}
+          {!loading && query.length > 0 && (
+            <Pressable onPress={() => { setQuery(""); setResults([]); setShowDropdown(false); onSelect(""); }}>
+              <Feather name="x" size={14} color={colors.mutedForeground} />
+            </Pressable>
+          )}
+          {!loading && query.length === 0 && (
+            <Feather name="search" size={14} color={colors.mutedForeground} />
+          )}
+        </View>
+      </View>
+      {showDropdown && (
+        <View style={[createStyles.dropdown, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {results.map((r) => (
+            <Pressable
+              key={r.id}
+              style={[createStyles.dropdownRow, { borderBottomColor: colors.border }]}
+              onPress={() => pick(r.customerName)}
+            >
+              <Feather name="user" size={13} color="#16a34a" />
+              <View style={{ flex: 1 }}>
+                <Text style={[createStyles.dropdownPrimary, { color: colors.foreground }]}>{r.customerName}</Text>
+                {r.vehicleLabel ? (
+                  <Text style={[createStyles.dropdownSub, { color: colors.mutedForeground }]}>{r.vehicleLabel} · {r.licensePlate}</Text>
+                ) : null}
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── VIN field with decode ─────────────────────────────────────────────────────
+
+function VinField({
+  value,
+  onChangeVin,
+  onVehicleDecoded,
+  colors,
+}: {
+  value: string;
+  onChangeVin: (v: string) => void;
+  onVehicleDecoded: (label: string) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const { mobileSessionToken } = useAuth();
+  const [decoding, setDecoding] = useState(false);
+  const [decodeError, setDecodeError] = useState<string | null>(null);
+  const [decoded, setDecoded] = useState<string | null>(null);
+  const [dmsSuggestions, setDmsSuggestions] = useState<DmsJobResult[]>([]);
+  const [showDms, setShowDms] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleChange = (raw: string) => {
+    const clean = raw.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+    onChangeVin(clean);
+    setDecodeError(null);
+    setDecoded(null);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (clean.length >= 3) {
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const headers: Record<string, string> = {};
+          if (mobileSessionToken) headers["Authorization"] = `Bearer ${mobileSessionToken}`;
+          const res = await fetch(`${BASE}/jobs/dms-lookup?q=${encodeURIComponent(clean)}`, { headers });
+          if (res.ok) {
+            const data = await res.json() as { results: DmsJobResult[] };
+            const withPlate = data.results.filter((r) =>
+              r.licensePlate.toUpperCase().replace(/\s/g, "").includes(clean.replace(/\s/g, ""))
+            );
+            setDmsSuggestions(withPlate.slice(0, 5));
+            setShowDms(withPlate.length > 0);
+          }
+        } catch { /* ignore */ }
+      }, 400);
+    } else {
+      setDmsSuggestions([]);
+      setShowDms(false);
+    }
+  };
+
+  const decode = async () => {
+    const clean = value.trim();
+    if (clean.length !== 17) {
+      setDecodeError("VIN must be exactly 17 characters to decode");
+      return;
+    }
+    setDecoding(true);
+    setDecodeError(null);
+    try {
+      const res = await fetch(
+        `https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${clean}?format=json`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) throw new Error("Network error");
+      const data = await res.json() as { Results?: { Variable: string; Value: string | null }[] };
+      const results = data.Results ?? [];
+      const get = (v: string) => results.find((r) => r.Variable === v)?.Value ?? "";
+      const make = get("Make");
+      const model = get("Model");
+      const year = get("Model Year");
+      const trim = get("Trim") || get("Series");
+      if (!make || make === "0") {
+        setDecodeError("VIN not found — check the number and try again");
+        return;
+      }
+      const label = [year, make, model, trim].filter(Boolean).join(" ");
+      setDecoded(label);
+      onVehicleDecoded(label);
+    } catch {
+      setDecodeError("Could not reach VIN database — check your connection");
+    } finally {
+      setDecoding(false);
+    }
+  };
+
+  const pickDms = (r: DmsJobResult) => {
+    const plate = r.licensePlate.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+    onChangeVin(plate);
+    if (r.vehicleLabel) {
+      setDecoded(r.vehicleLabel);
+      onVehicleDecoded(r.vehicleLabel);
+    }
+    setShowDms(false);
+  };
+
+  return (
+    <View>
+      <View style={createStyles.field}>
+        <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>VIN / Registration *</Text>
+        <View style={createStyles.searchFieldRow}>
+          <TextInput
+            style={[createStyles.fieldInput, { color: colors.foreground, flex: 1, letterSpacing: 1 }]}
+            value={value}
+            onChangeText={handleChange}
+            placeholder="Enter or scan VIN…"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="characters"
+            maxLength={17}
+            onBlur={() => setTimeout(() => setShowDms(false), 200)}
+          />
+          <Pressable
+            onPress={decode}
+            disabled={decoding || value.length < 5}
+            style={[
+              createStyles.decodeBtn,
+              (decoding || value.length < 5) && { opacity: 0.4 },
+            ]}
+          >
+            {decoding
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={createStyles.decodeBtnText}>Decode</Text>}
+          </Pressable>
+        </View>
+        {decodeError ? (
+          <Text style={createStyles.decodeError}>{decodeError}</Text>
+        ) : decoded ? (
+          <View style={createStyles.decodedBadge}>
+            <Feather name="check-circle" size={12} color="#16a34a" />
+            <Text style={createStyles.decodedText}>{decoded}</Text>
+          </View>
+        ) : null}
+      </View>
+      {showDms && (
+        <View style={[createStyles.dropdown, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[createStyles.dropdownHeader, { color: colors.mutedForeground }]}>DMS MATCHES</Text>
+          {dmsSuggestions.map((r) => (
+            <Pressable
+              key={r.id}
+              style={[createStyles.dropdownRow, { borderBottomColor: colors.border }]}
+              onPress={() => pickDms(r)}
+            >
+              <Feather name="truck" size={13} color="#1d4ed8" />
+              <View style={{ flex: 1 }}>
+                <Text style={[createStyles.dropdownPrimary, { color: colors.foreground }]}>{r.licensePlate}</Text>
+                {r.vehicleLabel ? (
+                  <Text style={[createStyles.dropdownSub, { color: colors.mutedForeground }]}>
+                    {r.vehicleLabel}{r.customerName ? ` · ${r.customerName}` : ""}
+                  </Text>
+                ) : null}
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── Create plan modal ─────────────────────────────────────────────────────────
 
 function CreatePlanModal({
@@ -223,7 +503,7 @@ function CreatePlanModal({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { userCode, locationId } = useAuth();
+  const { userCode, locationId, mobileSessionToken } = useAuth();
 
   const [name, setName] = useState("");
   const [vin, setVin] = useState("");
@@ -262,9 +542,11 @@ function CreatePlanModal({
 
     setSaving(true);
     try {
+      const hdrs: Record<string, string> = { "Content-Type": "application/json" };
+      if (mobileSessionToken) hdrs["Authorization"] = `Bearer ${mobileSessionToken}`;
       const res = await fetch(`${BASE}/service-plans`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: hdrs,
         body: JSON.stringify({
           name: name.trim(),
           vin: vin.trim().toUpperCase(),
@@ -295,11 +577,6 @@ function CreatePlanModal({
     }
   };
 
-  const totalCalc = selectedIds.reduce((sum, id) => {
-    const pkg = packages.find((p) => p.id === id);
-    return sum; // price calculated from totalPrice field — user enters it
-  }, 0);
-
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={() => { reset(); onClose(); }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -318,28 +595,95 @@ function CreatePlanModal({
             {/* Plan details */}
             <Text style={[createStyles.sectionLabel, { color: colors.mutedForeground }]}>PLAN DETAILS</Text>
             <View style={[createStyles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {[
-                { label: "Plan Name *", value: name, set: setName, placeholder: "e.g. RAM 3-Year Service Plan" },
-                { label: "VIN *", value: vin, set: (v: string) => setVin(v.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "")), placeholder: "17-character VIN", autoCapitalize: "characters" as const, maxLength: 17 },
-                { label: "Vehicle (make/model/year)", value: vehicleLabel, set: setVehicleLabel, placeholder: "e.g. 2024 RAM 1500 Rebel" },
-                { label: "Customer Name", value: customerName, set: setCustomerName, placeholder: "Customer full name" },
-                { label: "Total Price Paid (R)", value: totalPrice, set: setTotalPrice, placeholder: "0.00", keyboardType: "decimal-pad" as const },
-                { label: "Expiry Date (optional)", value: expiryDate, set: setExpiryDate, placeholder: "YYYY-MM-DD", keyboardType: "numbers-and-punctuation" as const },
-                { label: "Max Mileage (km, optional)", value: maxMileage, set: setMaxMileage, placeholder: "e.g. 150000", keyboardType: "number-pad" as const },
-                { label: "Notes", value: notes, set: setNotes, placeholder: "Any notes about this plan…" },
-              ].map(({ label, value, set, placeholder, ...rest }, i, arr) => (
-                <View key={label} style={[createStyles.field, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
-                  <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>{label}</Text>
-                  <TextInput
-                    style={[createStyles.fieldInput, { color: colors.foreground }]}
-                    value={value}
-                    onChangeText={set}
-                    placeholder={placeholder}
-                    placeholderTextColor={colors.mutedForeground}
-                    {...rest}
-                  />
-                </View>
-              ))}
+              {/* Plan name */}
+              <View style={createStyles.field}>
+                <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Plan Name *</Text>
+                <TextInput
+                  style={[createStyles.fieldInput, { color: colors.foreground }]}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. RAM 3-Year Service Plan"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+
+              {/* Customer search — from DMS */}
+              <CustomerSearchField
+                value={customerName}
+                onSelect={setCustomerName}
+                colors={colors}
+              />
+
+              {/* VIN with decoder */}
+              <VinField
+                value={vin}
+                onChangeVin={setVin}
+                onVehicleDecoded={setVehicleLabel}
+                colors={colors}
+              />
+
+              {/* Vehicle label — auto-filled by VIN decoder, editable */}
+              <View style={createStyles.field}>
+                <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Vehicle (make/model/year)</Text>
+                <TextInput
+                  style={[createStyles.fieldInput, { color: colors.foreground }]}
+                  value={vehicleLabel}
+                  onChangeText={setVehicleLabel}
+                  placeholder="Auto-filled from VIN decode or type manually"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+
+              {/* Price */}
+              <View style={createStyles.field}>
+                <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Total Price Paid (R)</Text>
+                <TextInput
+                  style={[createStyles.fieldInput, { color: colors.foreground }]}
+                  value={totalPrice}
+                  onChangeText={setTotalPrice}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              {/* Expiry */}
+              <View style={createStyles.field}>
+                <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Expiry Date (optional)</Text>
+                <TextInput
+                  style={[createStyles.fieldInput, { color: colors.foreground }]}
+                  value={expiryDate}
+                  onChangeText={setExpiryDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+
+              {/* Max Mileage */}
+              <View style={createStyles.field}>
+                <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Max Mileage (km, optional)</Text>
+                <TextInput
+                  style={[createStyles.fieldInput, { color: colors.foreground }]}
+                  value={maxMileage}
+                  onChangeText={setMaxMileage}
+                  placeholder="e.g. 150000"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="number-pad"
+                />
+              </View>
+
+              {/* Notes */}
+              <View style={[createStyles.field, { borderBottomWidth: 0 }]}>
+                <Text style={[createStyles.fieldLabel, { color: colors.mutedForeground }]}>Notes</Text>
+                <TextInput
+                  style={[createStyles.fieldInput, { color: colors.foreground }]}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Any notes about this plan…"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
             </View>
 
             {/* Package selection */}
@@ -359,7 +703,6 @@ function CreatePlanModal({
 
             {filteredPkgs.map((pkg) => {
               const selected = selectedIds.includes(pkg.id);
-              const count = selectedIds.filter((x) => x === pkg.id).length;
               return (
                 <Pressable
                   key={pkg.id}
@@ -430,7 +773,12 @@ function CreatePlanModal({
 export default function AdminPlansScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { mobileSessionToken } = useAuth();
   const bottomPad = Platform.OS === "web" ? 84 : insets.bottom + 80;
+
+  const authHeaders = useCallback((): Record<string, string> => {
+    return mobileSessionToken ? { Authorization: `Bearer ${mobileSessionToken}` } : {};
+  }, [mobileSessionToken]);
 
   const [plans, setPlans] = useState<ServicePlan[]>([]);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
@@ -444,9 +792,10 @@ export default function AdminPlansScreen() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
+      const hdrs = authHeaders();
       const [plansRes, pkgsRes] = await Promise.all([
-        fetch(`${BASE}/service-plans`),
-        fetch(`${BASE}/service-packages`),
+        fetch(`${BASE}/service-plans`, { headers: hdrs }),
+        fetch(`${BASE}/service-packages`, { headers: hdrs }),
       ]);
       const [plansData, pkgsData] = await Promise.all([
         plansRes.ok ? plansRes.json() : { plans: [] },
@@ -460,7 +809,7 @@ export default function AdminPlansScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [authHeaders]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -471,7 +820,7 @@ export default function AdminPlansScreen() {
         text: "Delete", style: "destructive",
         onPress: async () => {
           try {
-            await fetch(`${BASE}/service-plans/${id}`, { method: "DELETE" });
+            await fetch(`${BASE}/service-plans/${id}`, { method: "DELETE", headers: authHeaders() });
             setPlans((prev) => prev.filter((p) => p.id !== id));
           } catch {
             Alert.alert("Error", "Could not delete plan.");
@@ -488,9 +837,11 @@ export default function AdminPlansScreen() {
         text: "Cancel Plan", style: "destructive",
         onPress: async () => {
           try {
+            const cancelHdrs = authHeaders();
+            cancelHdrs["Content-Type"] = "application/json";
             const res = await fetch(`${BASE}/service-plans/${id}`, {
               method: "PATCH",
-              headers: { "Content-Type": "application/json" },
+              headers: cancelHdrs,
               body: JSON.stringify({ status: "cancelled" }),
             });
             if (res.ok) {
@@ -803,4 +1154,62 @@ const createStyles = StyleSheet.create({
   summaryTotal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 4 },
   summaryTotalLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   summaryTotalValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+
+  searchFieldRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+
+  dropdown: {
+    borderWidth: 1,
+    borderRadius: 10,
+    marginTop: 2,
+    marginHorizontal: 4,
+    overflow: "hidden",
+    zIndex: 10,
+  },
+  dropdownHeader: {
+    fontSize: 9,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  dropdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  dropdownPrimary: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  dropdownSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+
+  decodeBtn: {
+    backgroundColor: "#1d4ed8",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 7,
+    minWidth: 60,
+    alignItems: "center",
+  },
+  decodeBtnText: { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  decodeError: { fontSize: 11, fontFamily: "Inter_400Regular", color: "#dc2626", marginTop: 4 },
+  decodedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 4,
+    backgroundColor: "#dcfce7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  decodedText: { fontSize: 11, fontFamily: "Inter_500Medium", color: "#16a34a" },
 });

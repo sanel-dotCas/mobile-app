@@ -16,6 +16,8 @@ import {
   Cpu,
   Pencil,
   Trash2,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import {
   Table,
@@ -46,12 +48,31 @@ import { toast } from "sonner";
 export default function ServicePackagesPage() {
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
 
   const { data: packages, isLoading } = useQuery({
     queryKey: ["admin", "service-packages"],
     queryFn: () => api("/admin/service-packages"),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => {
+      setTogglingId(id);
+      return api(`/admin/service-packages/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "service-packages"] });
+      setTogglingId(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setTogglingId(null);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -230,6 +251,29 @@ export default function ServicePackagesPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8",
+                          pkg.isActive
+                            ? "text-green-500 hover:text-slate-400"
+                            : "text-slate-300 hover:text-green-500"
+                        )}
+                        onClick={() =>
+                          toggleMutation.mutate({ id: pkg.id, isActive: !pkg.isActive })
+                        }
+                        disabled={togglingId === pkg.id}
+                        title={pkg.isActive ? "Deactivate package" : "Activate package"}
+                      >
+                        {togglingId === pkg.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : pkg.isActive ? (
+                          <ToggleRight className="w-4 h-4" />
+                        ) : (
+                          <ToggleLeft className="w-4 h-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

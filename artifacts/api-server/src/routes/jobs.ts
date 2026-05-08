@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, jobOdometerCorrectionsTable, jobsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, ilike, or } from "drizzle-orm";
 import { requireYardPrincipal, requireMobileRoles } from "../middlewares/requireAuth";
 import { formatVehicleName } from "../lib/formatVehicleName";
 import { notifyJobAssigned, notifyJobReassigned, notifyJobReassignedToNew, notifyJobUnassigned } from "../lib/pushNotifications";
@@ -305,6 +305,74 @@ function rowToJob(row: typeof jobsTable.$inferSelect) {
     attachments: Array.isArray(row.attachments) ? (row.attachments as unknown[]) : [],
   };
 }
+
+router.get("/jobs/dms-lookup", async (req, res) => {
+  const { q } = req.query as { q?: string };
+  const query = (q ?? "").trim();
+  try {
+    await seedJobsIfEmpty();
+    let rows;
+    if (query.length >= 2) {
+      const pattern = `%${query}%`;
+      rows = await db
+        .select({
+          id: jobsTable.id,
+          licensePlate: jobsTable.licensePlate,
+          vehicleYear: jobsTable.vehicleYear,
+          vehicleMake: jobsTable.vehicleMake,
+          vehicleModel: jobsTable.vehicleModel,
+          customerNotes: jobsTable.customerNotes,
+          serviceAdvisor: jobsTable.serviceAdvisor,
+        })
+        .from(jobsTable)
+        .where(
+          or(
+            ilike(jobsTable.licensePlate, pattern),
+            ilike(jobsTable.vehicleMake, pattern),
+            ilike(jobsTable.vehicleModel, pattern),
+            ilike(jobsTable.serviceAdvisor, pattern),
+            ilike(jobsTable.customerNotes, pattern)
+          )
+        )
+        .limit(20);
+    } else {
+      rows = await db
+        .select({
+          id: jobsTable.id,
+          licensePlate: jobsTable.licensePlate,
+          vehicleYear: jobsTable.vehicleYear,
+          vehicleMake: jobsTable.vehicleMake,
+          vehicleModel: jobsTable.vehicleModel,
+          customerNotes: jobsTable.customerNotes,
+          serviceAdvisor: jobsTable.serviceAdvisor,
+        })
+        .from(jobsTable)
+        .limit(20);
+    }
+
+    const results = rows.map((row) => {
+      const customerName = row.serviceAdvisor || "";
+      const vehicleLabel = [row.vehicleYear, row.vehicleMake, row.vehicleModel]
+        .filter(Boolean)
+        .join(" ");
+      return {
+        id: row.id,
+        licensePlate: row.licensePlate,
+        vehicleLabel,
+        vehicleYear: row.vehicleYear,
+        vehicleMake: row.vehicleMake,
+        vehicleModel: row.vehicleModel,
+        customerName,
+        customerNotes: row.customerNotes,
+      };
+    });
+
+    res.json({ results });
+  } catch (err) {
+    req.log.error(err, "Failed to lookup DMS jobs");
+    res.status(500).json({ error: "Failed to lookup DMS jobs" });
+  }
+});
 
 router.get("/jobs", async (req, res) => {
   try {
