@@ -1437,6 +1437,25 @@ export default function EstimateDetailScreen() {
               </View>
             )}
 
+            {/* Check Plan shortcut */}
+            <Pressable
+              onPress={() => {
+                const vin = vinInput.trim();
+                if (vin) {
+                  router.push({ pathname: "/plans", params: { vin } });
+                } else {
+                  router.push("/plans");
+                }
+              }}
+              style={[styles.checkPlanBtn, { backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }]}
+            >
+              <Feather name="credit-card" size={13} color="#1d4ed8" />
+              <Text style={styles.checkPlanBtnText}>
+                {vinInput.trim() ? "Check Service Plan" : "Look Up Service Plan"}
+              </Text>
+              <Feather name="chevron-right" size={13} color="#93c5fd" />
+            </Pressable>
+
             {/* Prepaid plan banner */}
             {activePlans.length > 0 && (
               <View style={styles.planBanner}>
@@ -1939,6 +1958,8 @@ const styles = StyleSheet.create({
   vinSection:      { borderTopWidth: 1, paddingTop: 10, gap: 8 },
   vinTrigger:      { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
   vinTriggerText:  { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#1d4ed8" },
+  checkPlanBtn:    { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1, marginTop: 8 },
+  checkPlanBtnText:{ flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#1d4ed8" },
   vinInputRow:     { flexDirection: "row", alignItems: "center", gap: 8 },
   vinInput:        { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, fontFamily: "Inter_500Medium", letterSpacing: 1 },
   vinDecodeBtn:    { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },

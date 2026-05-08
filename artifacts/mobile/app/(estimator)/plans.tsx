@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState, useCallback } from "react";
+import { useLocalSearchParams } from "expo-router";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -194,13 +195,15 @@ export default function PlanLookupScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const { vin: vinParam } = useLocalSearchParams<{ vin?: string }>();
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(vinParam ?? "");
   const [mode, setMode] = useState<"vin" | "plan">("vin");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LookupResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const autoSearched = useRef(false);
 
   const search = useCallback(async () => {
     const q = query.trim();
@@ -232,6 +235,21 @@ export default function PlanLookupScreen() {
     setError(null);
     setSearched(false);
   };
+
+  const lastVinParam = useRef(vinParam);
+  useEffect(() => {
+    if (!vinParam) return;
+    const isNewVin = vinParam !== lastVinParam.current;
+    if (isNewVin) {
+      lastVinParam.current = vinParam;
+      autoSearched.current = false;
+      setQuery(vinParam);
+    }
+    if (!autoSearched.current) {
+      autoSearched.current = true;
+      search();
+    }
+  }, [vinParam, search]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>

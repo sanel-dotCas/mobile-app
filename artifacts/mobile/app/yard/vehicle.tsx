@@ -287,6 +287,17 @@ export default function VehicleDetailScreen() {
             <Text style={styles.actionBtnText}>Inspection History</Text>
           </Pressable>
 
+          {/* Check service plan — always available when VIN is known */}
+          {vehicle.vin ? (
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: "#1d4ed8" }]}
+              onPress={() => router.push({ pathname: "/plans", params: { vin: vehicle.vin } })}
+            >
+              <Feather name="credit-card" size={16} color="#fff" />
+              <Text style={styles.actionBtnText}>Check Service Plan</Text>
+            </Pressable>
+          ) : null}
+
           {vehicle.status !== "sold" && (vehicle.status === "available" || vehicle.status === "in_transit") && (
             <Pressable
               style={[styles.actionBtn, { backgroundColor: colors.primary }]}
