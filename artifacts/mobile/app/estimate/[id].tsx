@@ -87,6 +87,8 @@ interface ActivePlan {
   customerName: string | null;
   totalPrice: string;
   status: string;
+  expiryDate: string | null;
+  maxMileage: number | null;
   slots: ActivePlanSlot[];
   totalSlots: number;
   usedSlots: number;
@@ -1446,17 +1448,44 @@ export default function EstimateDetailScreen() {
                   </Pressable>
                 </View>
 
-                {showPlanSheet && activePlans.map((plan) => (
+                {showPlanSheet && activePlans.map((plan) => {
+                  const isExpired = plan.expiryDate ? new Date(plan.expiryDate) < new Date() : false;
+                  return (
                   <View key={plan.id} style={styles.planPlanBlock}>
                     <Text style={styles.planPlanName}>{plan.name}</Text>
                     {plan.customerName ? <Text style={styles.planPlanCustomer}>{plan.customerName}</Text> : null}
+
+                    {/* Expiry / mileage warning pills */}
+                    {(plan.expiryDate || plan.maxMileage) ? (
+                      <View style={styles.planPillRow}>
+                        {plan.expiryDate ? (
+                          <View style={[styles.planPill, { backgroundColor: isExpired ? "#fef2f2" : "#eff6ff" }]}>
+                            <Feather name="calendar" size={10} color={isExpired ? "#dc2626" : "#1d4ed8"} />
+                            <Text style={[styles.planPillText, { color: isExpired ? "#dc2626" : "#1d4ed8" }]}>
+                              {isExpired ? "⚠ Expired " : "Expires "}{new Date(plan.expiryDate).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {plan.maxMileage ? (
+                          <View style={[styles.planPill, { backgroundColor: "#fefce8" }]}>
+                            <Feather name="activity" size={10} color="#b45309" />
+                            <Text style={[styles.planPillText, { color: "#b45309" }]}>Max {plan.maxMileage.toLocaleString()} km</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    {isExpired ? (
+                      <Text style={styles.planExpiredWarning}>This plan has expired — slots cannot be redeemed</Text>
+                    ) : null}
+
                     {plan.slots.filter((s) => !s.redeemedAt).map((slot) => (
                       <View key={slot.id} style={styles.planSlotRow}>
                         <View style={styles.planSlotDot} />
                         <Text style={styles.planSlotName} numberOfLines={1}>{slot.packageName}</Text>
                         <Pressable
-                          style={[styles.redeemBtn, redeemingSlot?.slotId === slot.id && { opacity: 0.6 }]}
-                          disabled={redeemingSlot !== null}
+                          style={[styles.redeemBtn, (redeemingSlot?.slotId === slot.id || isExpired) && { opacity: 0.6 }]}
+                          disabled={redeemingSlot !== null || isExpired}
                           onPress={() => handleRedeemSlot(plan.id, slot)}
                         >
                           {redeemingSlot?.slotId === slot.id
@@ -1466,7 +1495,8 @@ export default function EstimateDetailScreen() {
                       </View>
                     ))}
                   </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>
@@ -1889,6 +1919,10 @@ const styles = StyleSheet.create({
   planSlotName:     { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", color: "#166534" },
   redeemBtn:        { backgroundColor: "#16a34a", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8 },
   redeemBtnText:    { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  planPillRow:      { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 4 },
+  planPill:         { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  planPillText:     { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  planExpiredWarning: { fontSize: 11, fontFamily: "Inter_500Medium", color: "#dc2626", fontStyle: "italic", marginTop: 2 },
 
   pkgLines:      { borderTopWidth: 1, gap: 0 },
   pkgLine:       { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1 },

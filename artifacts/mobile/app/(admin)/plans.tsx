@@ -44,6 +44,8 @@ interface ServicePlan {
   soldBy: string | null;
   status: "active" | "exhausted" | "cancelled";
   notes: string | null;
+  expiryDate: string | null;
+  maxMileage: number | null;
   slots: PlanSlot[];
   totalSlots: number;
   usedSlots: number;
@@ -117,6 +119,29 @@ function PlanCard({
           <View style={styles.infoRow}>
             <Feather name="user" size={11} color={colors.mutedForeground} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>{plan.customerName}</Text>
+          </View>
+        ) : null}
+
+        {/* Expiry + mileage pills */}
+        {(plan.expiryDate || plan.maxMileage) ? (
+          <View style={styles.pillRow}>
+            {plan.expiryDate ? (() => {
+              const expired = new Date(plan.expiryDate) < new Date();
+              return (
+                <View style={[styles.pill, { backgroundColor: expired ? "#fef2f2" : "#eff6ff" }]}>
+                  <Feather name="calendar" size={10} color={expired ? "#dc2626" : "#1d4ed8"} />
+                  <Text style={[styles.pillText, { color: expired ? "#dc2626" : "#1d4ed8" }]}>
+                    {expired ? "Expired " : "Expires "}{new Date(plan.expiryDate).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" })}
+                  </Text>
+                </View>
+              );
+            })() : null}
+            {plan.maxMileage ? (
+              <View style={[styles.pill, { backgroundColor: "#fefce8" }]}>
+                <Feather name="activity" size={10} color="#b45309" />
+                <Text style={[styles.pillText, { color: "#b45309" }]}>Max {plan.maxMileage.toLocaleString()} km</Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -201,13 +226,16 @@ function CreatePlanModal({
   const [customerName, setCustomerName] = useState("");
   const [totalPrice, setTotalPrice] = useState("");
   const [notes, setNotes] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [maxMileage, setMaxMileage] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [pkgSearch, setPkgSearch] = useState("");
 
   const reset = () => {
     setName(""); setVin(""); setVehicleLabel(""); setCustomerName("");
-    setTotalPrice(""); setNotes(""); setSelectedIds([]); setPkgSearch("");
+    setTotalPrice(""); setNotes(""); setExpiryDate(""); setMaxMileage("");
+    setSelectedIds([]); setPkgSearch("");
   };
 
   const togglePkg = (id: number) => {
@@ -242,6 +270,8 @@ function CreatePlanModal({
           locationId: locationId || null,
           notes: notes.trim() || null,
           packageIds: selectedIds,
+          expiryDate: expiryDate.trim() || null,
+          maxMileage: maxMileage.trim() ? parseInt(maxMileage.trim(), 10) : null,
         }),
       });
       if (!res.ok) {
@@ -289,6 +319,8 @@ function CreatePlanModal({
                 { label: "Vehicle (make/model/year)", value: vehicleLabel, set: setVehicleLabel, placeholder: "e.g. 2024 RAM 1500 Rebel" },
                 { label: "Customer Name", value: customerName, set: setCustomerName, placeholder: "Customer full name" },
                 { label: "Total Price Paid (R)", value: totalPrice, set: setTotalPrice, placeholder: "0.00", keyboardType: "decimal-pad" as const },
+                { label: "Expiry Date (optional)", value: expiryDate, set: setExpiryDate, placeholder: "YYYY-MM-DD", keyboardType: "numbers-and-punctuation" as const },
+                { label: "Max Mileage (km, optional)", value: maxMileage, set: setMaxMileage, placeholder: "e.g. 150000", keyboardType: "number-pad" as const },
                 { label: "Notes", value: notes, set: setNotes, placeholder: "Any notes about this plan…" },
               ].map(({ label, value, set, placeholder, ...rest }, i, arr) => (
                 <View key={label} style={[createStyles.field, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
@@ -654,6 +686,10 @@ const styles = StyleSheet.create({
 
   infoRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   infoText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+
+  pillRow:  { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 2 },
+  pill:     { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  pillText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
 
   progressRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
   progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },

@@ -101,7 +101,7 @@ router.get("/service-plans/:id", async (req, res) => {
 router.post("/service-plans", async (req, res) => {
   const {
     name, vin, vehicleLabel, customerName, totalPrice,
-    soldBy, locationId, notes, packageIds,
+    soldBy, locationId, notes, packageIds, expiryDate, maxMileage,
   } = req.body as {
     name?: string;
     vin?: string;
@@ -112,6 +112,8 @@ router.post("/service-plans", async (req, res) => {
     locationId?: number;
     notes?: string;
     packageIds?: number[];
+    expiryDate?: string | null;
+    maxMileage?: number | null;
   };
 
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
@@ -148,6 +150,8 @@ router.post("/service-plans", async (req, res) => {
         soldBy: actor,
         locationId: locationId || null,
         notes: notes?.trim() || null,
+        expiryDate: expiryDate ? new Date(expiryDate) : null,
+        maxMileage: maxMileage ? Number(maxMileage) : null,
         status: "active",
       })
       .returning();
@@ -174,13 +178,15 @@ router.post("/service-plans", async (req, res) => {
 router.patch("/service-plans/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { name, notes, status, customerName, vehicleLabel, totalPrice } = req.body as {
+  const { name, notes, status, customerName, vehicleLabel, totalPrice, expiryDate, maxMileage } = req.body as {
     name?: string;
     notes?: string;
     status?: "active" | "exhausted" | "cancelled";
     customerName?: string;
     vehicleLabel?: string;
     totalPrice?: string | number;
+    expiryDate?: string | null;
+    maxMileage?: number | null;
   };
   try {
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -190,6 +196,8 @@ router.patch("/service-plans/:id", async (req, res) => {
     if (customerName !== undefined) updates.customerName = customerName;
     if (vehicleLabel !== undefined) updates.vehicleLabel = vehicleLabel;
     if (totalPrice !== undefined) updates.totalPrice = String(totalPrice);
+    if (expiryDate !== undefined) updates.expiryDate = expiryDate ? new Date(expiryDate) : null;
+    if (maxMileage !== undefined) updates.maxMileage = maxMileage ? Number(maxMileage) : null;
 
     const [updated] = await db
       .update(servicePlansTable)
@@ -225,6 +233,23 @@ router.post("/service-plans/:id/redeem", async (req, res) => {
 
     if (!slot) { res.status(404).json({ error: "Slot not found on this plan" }); return; }
     if (slot.redeemedAt) { res.status(409).json({ error: "This service slot has already been redeemed" }); return; }
+
+    // Fetch the plan to check expiry and mileage
+    const [plan] = await db.select().from(servicePlansTable).where(eq(servicePlansTable.id, planId));
+    if (!plan) { res.status(404).json({ error: "Plan not found" }); return; }
+    if (plan.status !== "active") { res.status(409).json({ error: "This plan is no longer active" }); return; }
+    if (plan.expiryDate && plan.expiryDate < new Date()) {
+      res.status(409).json({ error: `This plan expired on ${plan.expiryDate.toLocaleDateString()}` });
+      return;
+    }
+
+    const { currentMileage } = req.body as { slotId?: number; estimateRef?: string; currentMileage?: number };
+    if (plan.maxMileage && currentMileage != null && currentMileage > plan.maxMileage) {
+      res.status(409).json({
+        error: `This plan's mileage limit is ${plan.maxMileage.toLocaleString()} km. Current odometer (${currentMileage.toLocaleString()} km) exceeds the limit.`,
+      });
+      return;
+    }
 
     const principal = res.locals.principal;
     const actor = principal ? (principal.type === "mobile" ? principal.userCode : principal.username) : "system";

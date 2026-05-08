@@ -293,6 +293,10 @@ export const servicePlansTable = pgTable("service_plans", {
   locationId: integer("location_id").references(() => yardLocationsTable.id),
   status: servicePlanStatusEnum("status").notNull().default("active"),
   notes: text("notes"),
+  /** Optional expiry date — plan cannot be redeemed after this date */
+  expiryDate: timestamp("expiry_date"),
+  /** Maximum odometer reading (km) — plan cannot be redeemed if vehicle exceeds this */
+  maxMileage: integer("max_mileage"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
