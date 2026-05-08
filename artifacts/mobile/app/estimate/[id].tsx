@@ -463,7 +463,7 @@ function AddLineSheet({
         setApiPackages([]);
       })
       .finally(() => setPackagesLoading(false));
-  }, [visible]);
+  }, [visible, locationId]);
 
   React.useEffect(() => {
     if (!visible) return;

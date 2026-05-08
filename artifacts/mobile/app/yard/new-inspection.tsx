@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 const BASE = Platform.OS === "web"
@@ -126,11 +127,20 @@ const CHECKLIST_SECTIONS = [
   },
 ];
 
+interface ServicePackage {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+}
+
 export default function NewInspectionScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { vehicleId: preselectedId } = useLocalSearchParams<{ vehicleId?: string }>();
+  const { locationId } = useAuth();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [vehicles, setVehicles] = useState<YardVehicle[]>([]);
@@ -146,12 +156,30 @@ export default function NewInspectionScreen() {
   const [availTechs, setAvailTechs] = useState<{ name: string; status: string }[]>([]);
   const [assignedTo, setAssignedTo] = useState<string>("auto");
 
+  const [servicePackages, setServicePackages] = useState<ServicePackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
+
   useEffect(() => {
     fetch(`${BASE}/yard/inspections/available-techs`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data) setAvailTechs(data.techs ?? []); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setPackagesLoading(true);
+    const pkgUrl = locationId
+      ? `${BASE}/service-packages?locationId=${locationId}`
+      : `${BASE}/service-packages`;
+    fetch(pkgUrl)
+      .then((r) => r.json())
+      .then((data: { packages: ServicePackage[] }) => {
+        setServicePackages(data.packages ?? []);
+      })
+      .catch(() => setServicePackages([]))
+      .finally(() => setPackagesLoading(false));
+  }, [locationId]);
 
   const initialChecks = (): CheckItem[] =>
     CHECKLIST_SECTIONS.flatMap((s) =>
@@ -204,8 +232,10 @@ export default function NewInspectionScreen() {
 
       const failedItems = checks.filter((c) => c.result === "fail").map((c) => c.label);
       const bodyDamage = failedItems.length > 0 ? `Failed items:\n${failedItems.join("\n")}` : null;
+      const selectedPkg = servicePackages.find((p) => p.id === selectedPackageId);
       const fullNotes = [
         `Checklist: ${passCount} passed, ${failCount} failed, ${naCount} N/A out of ${totalChecks}`,
+        selectedPkg ? `Service package: ${selectedPkg.name}` : null,
         notes.trim() ? `Notes: ${notes.trim()}` : null,
       ]
         .filter(Boolean)
@@ -494,6 +524,63 @@ export default function NewInspectionScreen() {
           </View>
         ))}
 
+        {/* Service Package */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.sectionHeader}>
+            <Feather name="layers" size={15} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>
+              Service Package <Text style={[styles.optionalLabel, { color: colors.mutedForeground }]}>(Optional)</Text>
+            </Text>
+          </View>
+          {packagesLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 8 }} />
+          ) : servicePackages.length === 0 ? (
+            <Text style={[styles.emptyPicker, { color: colors.mutedForeground, textAlign: "left", paddingHorizontal: 0 }]}>
+              {locationId ? "No packages deployed to your branch." : "No service packages available."}
+            </Text>
+          ) : (
+            <>
+              <Text style={[styles.packageHint, { color: colors.mutedForeground }]}>
+                {locationId
+                  ? "Packages available at your branch:"
+                  : "Available service packages:"}
+              </Text>
+              <View style={styles.packageGrid}>
+                {servicePackages.map((pkg) => {
+                  const selected = selectedPackageId === pkg.id;
+                  return (
+                    <Pressable
+                      key={pkg.id}
+                      onPress={() => setSelectedPackageId(selected ? null : pkg.id)}
+                      style={[
+                        styles.packageChip,
+                        {
+                          borderColor: selected ? pkg.color : colors.border,
+                          backgroundColor: selected ? `${pkg.color}18` : colors.background,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.packageDot, { backgroundColor: pkg.color }]} />
+                      <Text
+                        style={[
+                          styles.packageChipText,
+                          { color: selected ? pkg.color : colors.foreground },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {pkg.name}
+                      </Text>
+                      {selected && (
+                        <Feather name="check-circle" size={13} color={pkg.color} style={{ marginLeft: 4 }} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+
         {/* General notes */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Additional Notes</Text>
@@ -711,5 +798,39 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontFamily: "Inter_700Bold",
+  },
+  optionalLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  packageHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 10,
+  },
+  packageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  packageChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
+    maxWidth: "48%",
+  },
+  packageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  packageChipText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    flex: 1,
   },
 });
