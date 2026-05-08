@@ -20,6 +20,11 @@ import { AppHeader } from "@/components/AppHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
+const BASE =
+  Platform.OS === "web"
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api`
+    : "/api";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface PlanSlot {
@@ -257,7 +262,7 @@ function CreatePlanModal({
 
     setSaving(true);
     try {
-      const res = await fetch("/api/service-plans", {
+      const res = await fetch(`${BASE}/service-plans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -440,8 +445,8 @@ export default function AdminPlansScreen() {
     else setLoading(true);
     try {
       const [plansRes, pkgsRes] = await Promise.all([
-        fetch("/api/service-plans"),
-        fetch("/api/service-packages"),
+        fetch(`${BASE}/service-plans`),
+        fetch(`${BASE}/service-packages`),
       ]);
       const [plansData, pkgsData] = await Promise.all([
         plansRes.ok ? plansRes.json() : { plans: [] },
@@ -466,7 +471,7 @@ export default function AdminPlansScreen() {
         text: "Delete", style: "destructive",
         onPress: async () => {
           try {
-            await fetch(`/api/service-plans/${id}`, { method: "DELETE" });
+            await fetch(`${BASE}/service-plans/${id}`, { method: "DELETE" });
             setPlans((prev) => prev.filter((p) => p.id !== id));
           } catch {
             Alert.alert("Error", "Could not delete plan.");
@@ -483,7 +488,7 @@ export default function AdminPlansScreen() {
         text: "Cancel Plan", style: "destructive",
         onPress: async () => {
           try {
-            const res = await fetch(`/api/service-plans/${id}`, {
+            const res = await fetch(`${BASE}/service-plans/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ status: "cancelled" }),

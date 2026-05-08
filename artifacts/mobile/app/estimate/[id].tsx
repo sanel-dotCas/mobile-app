@@ -980,9 +980,11 @@ export default function EstimateDetailScreen() {
   const [showPlanSheet, setShowPlanSheet] = useState(false);
   const [redeemingSlot, setRedeemingSlot] = useState<{ planId: number; slotId: number; packageName: string } | null>(null);
 
-  // When VIN is decoded, look up active prepaid plans
+  // Look up active prepaid plans whenever a VIN is typed (≥5 chars).
+  // This is intentionally independent of the VIN decoder so non-US/non-NHTSA
+  // VINs still trigger the bundle lookup.
   React.useEffect(() => {
-    if (!vinInfo || !vinInput || vinInput.length < 5) {
+    if (!vinInput || vinInput.length < 5) {
       setActivePlans([]);
       return;
     }
@@ -995,7 +997,7 @@ export default function EstimateDetailScreen() {
         if (plans.length > 0) setShowPlanSheet(true);
       })
       .catch(() => {});
-  }, [vinInfo, vinInput]);
+  }, [vinInput]);
 
   if (!estimate) {
     return (
