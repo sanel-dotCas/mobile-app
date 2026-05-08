@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
+import { useEfficiencyThresholds } from "@/context/EfficiencyThresholdsContext";
 import { useJobs } from "@/context/JobsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
@@ -29,6 +30,7 @@ export default function TechniciansScreen() {
   const insets = useSafeAreaInsets();
   const { state } = useJobs();
   const { t } = useLang();
+  const { effColor: getEffColor } = useEfficiencyThresholds();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const [filter, setFilter] = useState<"all" | "active" | "idle" | "break" | "absent">("all");
 
@@ -99,7 +101,7 @@ export default function TechniciansScreen() {
           const assignedJobs = state.jobs.filter((j) => j.assignedTechnicianId === tech.id);
           const statusColor = STATUS_COLORS[tech.status];
           const currentJob = tech.currentJobId ? state.jobs.find((j) => j.id === tech.currentJobId) : null;
-          const effColor = tech.efficiency >= 80 ? colors.success : tech.efficiency >= 60 ? colors.warning : colors.destructive;
+          const effColor = getEffColor(tech.efficiency, colors);
           return (
             <View key={tech.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: "#000" }]}>
               <View style={styles.cardHeader}>

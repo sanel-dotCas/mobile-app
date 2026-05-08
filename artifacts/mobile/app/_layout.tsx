@@ -19,6 +19,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationSetup } from "@/components/NotificationSetup";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { EfficiencyThresholdsProvider } from "@/context/EfficiencyThresholdsContext";
 import { EstimatesProvider } from "@/context/EstimatesContext";
 import { useJobs, JobsProvider } from "@/context/JobsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
@@ -177,6 +178,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <LanguageProvider>
             <AuthProvider>
+              <EfficiencyThresholdsProvider>
               <JobsProvider>
                 <StagesProvider>
                   <EstimatesProvider>
@@ -208,6 +210,7 @@ export default function RootLayout() {
                   </EstimatesProvider>
                 </StagesProvider>
               </JobsProvider>
+              </EfficiencyThresholdsProvider>
             </AuthProvider>
           </LanguageProvider>
         </QueryClientProvider>

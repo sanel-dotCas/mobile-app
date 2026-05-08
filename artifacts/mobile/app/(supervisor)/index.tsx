@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { useAuth } from "@/context/AuthContext";
+import { useEfficiencyThresholds } from "@/context/EfficiencyThresholdsContext";
 import { useJobs } from "@/context/JobsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useStages } from "@/context/StagesContext";
@@ -38,6 +39,7 @@ export default function LiveSupervisionScreen() {
   const { t } = useLang();
   const router  = useRouter();
   const { getStage } = useStages();
+  const { effColor: getEffColor } = useEfficiencyThresholds();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [yardByTech, setYardByTech] = useState<Record<string, number>>({});
@@ -228,7 +230,7 @@ export default function LiveSupervisionScreen() {
           const combinedHrs  = tech.totalHoursToday + yardCount;
           const combinedPct  = (combinedHrs / 8) * 100;
           const loadColor    = combinedPct >= 90 ? "#ef4444" : combinedPct >= 75 ? "#d97706" : "#16a34a";
-          const effColor     = tech.efficiency >= 80 ? colors.success : tech.efficiency >= 60 ? colors.warning : colors.destructive;
+          const effColor     = getEffColor(tech.efficiency, colors);
           return (
             <Pressable
               key={tech.id}

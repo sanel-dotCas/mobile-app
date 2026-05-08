@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/AppHeader";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { MOBILE_SESSION_KEY, useAuth } from "@/context/AuthContext";
+import { useEfficiencyThresholds } from "@/context/EfficiencyThresholdsContext";
 import { useLang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -163,9 +164,39 @@ export function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? 24 : insets.bottom;
+  const { thresholds, setThresholds } = useEfficiencyThresholds();
 
   const profile = USER_PROFILES[userCode] ?? USER_PROFILES.MR;
   const initials = profile.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  const [greenInput, setGreenInput] = useState(String(thresholds.greenMin));
+  const [amberInput, setAmberInput] = useState(String(thresholds.amberMin));
+  const [thresholdError, setThresholdError] = useState<string | null>(null);
+  const [thresholdSaved, setThresholdSaved] = useState(false);
+
+  useEffect(() => {
+    setGreenInput(String(thresholds.greenMin));
+    setAmberInput(String(thresholds.amberMin));
+  }, [thresholds.greenMin, thresholds.amberMin]);
+
+  const handleSaveThresholds = useCallback(async () => {
+    const green = parseInt(greenInput, 10);
+    const amber = parseInt(amberInput, 10);
+    if (isNaN(green) || isNaN(amber) || green < 1 || green > 100 || amber < 1 || amber > 100) {
+      setThresholdError("Both values must be between 1 and 100.");
+      setThresholdSaved(false);
+      return;
+    }
+    if (amber >= green) {
+      setThresholdError("Green threshold must be higher than amber.");
+      setThresholdSaved(false);
+      return;
+    }
+    setThresholdError(null);
+    await setThresholds({ greenMin: green, amberMin: amber });
+    setThresholdSaved(true);
+    setTimeout(() => setThresholdSaved(false), 3000);
+  }, [greenInput, amberInput, setThresholds]);
 
   const [activeTab, setActiveTab] = useState<ProfileTab>("info");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -457,6 +488,78 @@ export function ProfileScreen() {
                 </View>
               </View>
             </View>
+
+            {/* ── EFFICIENCY THRESHOLDS (supervisors only) ── */}
+            {role === "supervisor" && (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={ss.thresholdHeader}>
+                  <Feather name="trending-up" size={15} color={colors.primary} />
+                  <Text style={[styles.cardTitle, { color: colors.foreground, marginBottom: 0, flex: 1 }]}>
+                    Efficiency Thresholds
+                  </Text>
+                </View>
+                <Text style={[ss.thresholdSubtitle, { color: colors.mutedForeground }]}>
+                  Colour-code technician efficiency on the floor view and team screen.
+                </Text>
+
+                <View style={[ss.thresholdRow, { borderTopColor: colors.border }]}>
+                  <View style={[ss.thresholdDot, { backgroundColor: "#16a34a" }]} />
+                  <Text style={[ss.thresholdLabel, { color: colors.foreground }]}>Green ≥</Text>
+                  <TextInput
+                    style={[ss.thresholdInput, { borderColor: colors.border, backgroundColor: colors.secondary, color: colors.foreground }]}
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    value={greenInput}
+                    onChangeText={(v) => { setGreenInput(v.replace(/[^0-9]/g, "")); setThresholdError(null); }}
+                    returnKeyType="done"
+                  />
+                  <Text style={[ss.thresholdUnit, { color: colors.mutedForeground }]}>%</Text>
+                </View>
+
+                <View style={[ss.thresholdRow, { borderTopColor: colors.border }]}>
+                  <View style={[ss.thresholdDot, { backgroundColor: "#d97706" }]} />
+                  <Text style={[ss.thresholdLabel, { color: colors.foreground }]}>Amber ≥</Text>
+                  <TextInput
+                    style={[ss.thresholdInput, { borderColor: colors.border, backgroundColor: colors.secondary, color: colors.foreground }]}
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    value={amberInput}
+                    onChangeText={(v) => { setAmberInput(v.replace(/[^0-9]/g, "")); setThresholdError(null); }}
+                    returnKeyType="done"
+                  />
+                  <Text style={[ss.thresholdUnit, { color: colors.mutedForeground }]}>%</Text>
+                </View>
+
+                <View style={[ss.thresholdRow, { borderTopColor: colors.border }]}>
+                  <View style={[ss.thresholdDot, { backgroundColor: "#dc2626" }]} />
+                  <Text style={[ss.thresholdLabel, { color: colors.mutedForeground }]}>
+                    Red &lt; {amberInput || "—"}%
+                  </Text>
+                </View>
+
+                {thresholdError && (
+                  <Text style={[ss.thresholdError, { color: "#dc2626" }]}>{thresholdError}</Text>
+                )}
+
+                {thresholdSaved && (
+                  <View style={[ss.thresholdSuccess, { backgroundColor: "#dcfce7", borderColor: "#86efac" }]}>
+                    <Feather name="check-circle" size={13} color="#16a34a" />
+                    <Text style={[ss.thresholdSuccessText, { color: "#16a34a" }]}>
+                      Thresholds saved — Green ≥ {greenInput}%, Amber ≥ {amberInput}%, Red &lt; {amberInput}%
+                    </Text>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={handleSaveThresholds}
+                  style={({ pressed }) => [ss.thresholdSaveBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+                >
+                  <Feather name="check" size={14} color="#fff" />
+                  <Text style={ss.thresholdSaveBtnText}>Save Thresholds</Text>
+                </Pressable>
+              </View>
+            )}
+
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>App Info</Text>
               {[
@@ -618,6 +721,19 @@ const ss = StyleSheet.create({
   pickerTitle:      { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 4 },
   pickerOption:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 14, borderBottomWidth: 1 },
   pickerOptionText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+
+  thresholdHeader:      { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  thresholdSubtitle:    { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 4 },
+  thresholdRow:         { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderTopWidth: 1 },
+  thresholdDot:         { width: 10, height: 10, borderRadius: 5 },
+  thresholdLabel:       { fontSize: 14, fontFamily: "Inter_500Medium", flex: 1 },
+  thresholdInput:       { width: 56, height: 34, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, fontSize: 14, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  thresholdUnit:        { fontSize: 13, fontFamily: "Inter_400Regular", width: 12 },
+  thresholdError:       { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4 },
+  thresholdSaveBtn:      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 10 },
+  thresholdSaveBtnText:  { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  thresholdSuccess:      { flexDirection: "row", alignItems: "flex-start", gap: 6, borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 8 },
+  thresholdSuccessText:  { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
 });
 
 const styles = StyleSheet.create({
