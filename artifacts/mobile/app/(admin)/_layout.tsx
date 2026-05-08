@@ -71,6 +71,13 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
+        name="packages"
+        options={{
+          title: "Packages",
+          tabBarIcon: ({ color }) => <Feather name="package" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="monitor"
         options={{
           title: "Monitor",

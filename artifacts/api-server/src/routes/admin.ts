@@ -8,6 +8,7 @@ import {
   yardMovementsTable,
   servicePackagesTable,
   servicePackageLinesTable,
+  servicePackageDeploymentsTable,
   dmsAccountTypesTable,
   systemSettingsTable,
 } from "@workspace/db";
@@ -463,6 +464,32 @@ router.post("/admin/service-packages", async (req, res) => {
     } else {
       res.status(500).json({ error: "Failed to create service package" });
     }
+  }
+});
+
+// ── Delete service package ────────────────────────────────────────────────────
+router.delete("/admin/service-packages/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  try {
+    // Remove lines and deployments first, then the package
+    await db.delete(servicePackageLinesTable).where(eq(servicePackageLinesTable.packageId, id));
+    await db.delete(servicePackageDeploymentsTable).where(eq(servicePackageDeploymentsTable.packageId, id));
+    const [deleted] = await db
+      .delete(servicePackagesTable)
+      .where(eq(servicePackagesTable.id, id))
+      .returning({ id: servicePackagesTable.id });
+    if (!deleted) {
+      res.status(404).json({ error: "Package not found" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err, "Failed to delete service package");
+    res.status(500).json({ error: "Failed to delete service package" });
   }
 });
 
