@@ -5,12 +5,10 @@ import {
   servicePlanSlotsTable,
 } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
+import { buildPlanCardHtml } from "../lib/planCardHtml";
 
 const router = Router();
 
-// Minimum fields returned by the public lookup — no PII, no internal tracking data.
-// Full plan data (customerName, soldBy, redeemedBy, estimate refs) is only available
-// via authenticated routes.
 async function buildPublicPlan(planId: number) {
   const [plan] = await db
     .select()
@@ -43,16 +41,17 @@ async function buildPublicPlan(planId: number) {
     totalSlots: slots.length,
     usedSlots,
     remainingSlots: slots.length - usedSlots,
+    // Kept separately so the print-card route can include it in rendered HTML
+    // without exposing it in the public JSON lookup response.
+    _customerName: plan.customerName ?? null,
   };
 }
 
 // ── Public plan lookup — GET /service-plans/lookup?vin=XXX or ?planNumber=YYY ──
 //
-// No authentication required. Returns minimal, non-PII plan info (no customerName,
-// soldBy, redeemedBy, estimate refs) so service advisors can check remaining slots
-// at the counter without a yard/mobile login. Accepts only exact VIN or plan
-// number — no wildcard or list queries. Filtering is pushed to the database layer
-// to avoid full-table reads.
+// No authentication required. Returns non-PII plan info so service advisors
+// can check remaining slots at the counter without a yard/mobile login.
+// Accepts only exact VIN or plan number — no wildcard or list queries.
 router.get("/service-plans/lookup", async (req, res) => {
   const { vin, planNumber } = req.query as Record<string, string | undefined>;
 
@@ -81,19 +80,77 @@ router.get("/service-plans/lookup", async (req, res) => {
     const withSlots = await Promise.all(plans.map((p) => buildPublicPlan(p.id)));
     const results = withSlots.filter(Boolean);
 
+    // Strip the internal _customerName field — PII stays out of the JSON response.
+    const publicResults = results.map((p) => {
+      if (!p) return p;
+      const { _customerName: _cn, ...rest } = p;
+      void _cn;
+      return rest;
+    });
+
     res.json({
-      plans: results,
+      plans: publicResults,
       summary: {
-        total: results.length,
-        active: results.filter((p) => p!.status === "active").length,
-        exhausted: results.filter((p) => p!.status === "exhausted").length,
-        cancelled: results.filter((p) => p!.status === "cancelled").length,
-        totalRemainingSlots: results.reduce((sum, p) => sum + (p!.remainingSlots ?? 0), 0),
+        total: publicResults.length,
+        active: publicResults.filter((p) => p!.status === "active").length,
+        exhausted: publicResults.filter((p) => p!.status === "exhausted").length,
+        cancelled: publicResults.filter((p) => p!.status === "cancelled").length,
+        totalRemainingSlots: publicResults.reduce((sum, p) => sum + (p!.remainingSlots ?? 0), 0),
       },
     });
   } catch (err) {
     req.log.error(err, "Failed to look up service plans");
     res.status(500).json({ error: "Failed to look up service plans" });
+  }
+});
+
+// ── Print-card route — GET /service-plans/print-card?planNumber=XXXX ──────────
+//
+// No authentication required (same access level as the lookup endpoint above).
+// Uses planNumber (a non-guessable opaque string like "SP-2026-VIXP8") rather
+// than a sequential planId, so there is no IDOR/enumeration risk. Requires
+// knowing the exact plan number to access any card.
+//
+// Returns a fully server-rendered, print-ready HTML page. All dynamic values
+// are HTML-escaped server-side. customerName is included in the rendered HTML
+// (the card is designed to be handed to the customer at the counter) but is
+// not exposed in the public JSON lookup endpoint.
+//
+// On web the mobile hook opens this URL in a new tab so the browser handles
+// printing; on native the hook fetches the HTML and passes it to expo-print.
+router.get("/service-plans/print-card", async (req, res) => {
+  const { planNumber } = req.query as Record<string, string | undefined>;
+  const pn = planNumber?.trim().toUpperCase();
+
+  if (!pn) {
+    res.status(400).send("<p>planNumber is required</p>");
+    return;
+  }
+
+  try {
+    const [planRow] = await db
+      .select()
+      .from(servicePlansTable)
+      .where(eq(servicePlansTable.planNumber, pn));
+
+    if (!planRow) {
+      res.status(404).send("<p>Plan not found</p>");
+      return;
+    }
+
+    const full = await buildPublicPlan(planRow.id);
+    if (!full) {
+      res.status(404).send("<p>Plan not found</p>");
+      return;
+    }
+
+    const html = buildPlanCardHtml({ ...full, customerName: full._customerName });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(html);
+  } catch (err) {
+    req.log.error(err, "Failed to render plan card");
+    res.status(500).send("<p>Failed to generate plan card</p>");
   }
 });
 

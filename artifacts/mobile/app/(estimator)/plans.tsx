@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
 import { useColors } from "@/hooks/useColors";
+import { usePlanCardShare } from "@/hooks/usePlanCardShare";
 
 const BASE =
   Platform.OS === "web"
@@ -64,10 +65,22 @@ const STATUS_CONFIG = {
 function PlanCard({ plan }: { plan: ServicePlan }) {
   const colors = useColors();
   const [expanded, setExpanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const { sharePlan } = usePlanCardShare();
   const cfg = STATUS_CONFIG[plan.status];
 
   const expiryDate = plan.expiryDate ? new Date(plan.expiryDate) : null;
   const isExpired = expiryDate !== null && expiryDate < new Date();
+
+  const handleShare = async () => {
+    setSharing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await sharePlan(plan.planNumber);
+    } finally {
+      setSharing(false);
+    }
+  };
 
   return (
     <View style={[styles.planCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -79,9 +92,23 @@ function PlanCard({ plan }: { plan: ServicePlan }) {
           <Feather name="credit-card" size={13} color={colors.primary} />
           <Text style={[styles.planNumber, { color: colors.primary }]}>{plan.planNumber}</Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
-          <Feather name={cfg.icon} size={11} color={cfg.color} />
-          <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+        <View style={styles.headerRight}>
+          <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
+            <Feather name={cfg.icon} size={11} color={cfg.color} />
+            <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          </View>
+          <Pressable
+            onPress={(e) => { e.stopPropagation?.(); handleShare(); }}
+            disabled={sharing}
+            style={[styles.shareBtn, { backgroundColor: colors.accent }]}
+            hitSlop={8}
+          >
+            {sharing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Feather name="share-2" size={14} color={colors.primary} />
+            )}
+          </Pressable>
         </View>
       </Pressable>
 
@@ -391,8 +418,10 @@ const styles = StyleSheet.create({
   planCardHeader:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, paddingBottom: 10 },
   planNumberBadge:  { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   planNumber:       { fontSize: 13, fontFamily: "Inter_700Bold" },
+  headerRight:      { flexDirection: "row", alignItems: "center", gap: 8 },
   statusPill:       { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10 },
   statusText:       { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  shareBtn:         { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
 
   planMeta:         { paddingHorizontal: 14, paddingBottom: 12, gap: 3 },
   planName:         { fontSize: 15, fontFamily: "Inter_600SemiBold" },
