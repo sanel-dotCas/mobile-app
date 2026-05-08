@@ -467,6 +467,7 @@ router.post("/admin/service-packages", async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // ── Delete service package ────────────────────────────────────────────────────
 router.delete("/admin/service-packages/:id", async (req, res) => {
   const id = parseInt(req.params.id);
@@ -478,10 +479,121 @@ router.delete("/admin/service-packages/:id", async (req, res) => {
     // Remove lines and deployments first, then the package
     await db.delete(servicePackageLinesTable).where(eq(servicePackageLinesTable.packageId, id));
     await db.delete(servicePackageDeploymentsTable).where(eq(servicePackageDeploymentsTable.packageId, id));
+=======
+// GET /admin/service-packages/:id — fetch single package with lines
+router.get("/admin/service-packages/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const [pkg] = await db.select().from(servicePackagesTable).where(eq(servicePackagesTable.id, id));
+    if (!pkg) { res.status(404).json({ error: "Not found" }); return; }
+    const lines = await db
+      .select()
+      .from(servicePackageLinesTable)
+      .where(eq(servicePackageLinesTable.packageId, id))
+      .orderBy(servicePackageLinesTable.displayOrder);
+    res.json({ ...pkg, lines });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch service package" });
+  }
+});
+
+// PATCH /admin/service-packages/:id — update package and replace lines
+router.patch("/admin/service-packages/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  const {
+    name, vehicleModel, serviceInterval, bundleCode,
+    icon, color, description, isActive, lines,
+  } = req.body as {
+    name?: string;
+    vehicleModel?: string | null;
+    serviceInterval?: string | null;
+    bundleCode?: string | null;
+    icon?: string;
+    color?: string;
+    description?: string;
+    isActive?: boolean;
+    lines?: Array<{
+      lineType: "labor" | "part" | "material";
+      laborCategory?: string;
+      description: string;
+      hours?: string;
+      quantity?: string;
+      unitPrice?: string;
+      displayOrder?: number;
+    }>;
+  };
+
+  if (name !== undefined && !name.trim()) {
+    res.status(400).json({ error: "name cannot be empty" });
+    return;
+  }
+
+  try {
+    const updateValues: Record<string, unknown> = { updatedAt: new Date() };
+    if (name !== undefined) updateValues.name = name.trim();
+    if (vehicleModel !== undefined) updateValues.vehicleModel = vehicleModel?.trim() || null;
+    if (serviceInterval !== undefined) updateValues.serviceInterval = serviceInterval?.trim() || null;
+    if (bundleCode !== undefined) updateValues.bundleCode = bundleCode?.trim() || null;
+    if (icon !== undefined) updateValues.icon = icon;
+    if (color !== undefined) updateValues.color = color;
+    if (description !== undefined) updateValues.description = description;
+    if (isActive !== undefined) updateValues.isActive = isActive;
+
+    const [pkg] = await db
+      .update(servicePackagesTable)
+      .set(updateValues)
+      .where(eq(servicePackagesTable.id, id))
+      .returning();
+
+    if (!pkg) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (lines !== undefined) {
+      await db.delete(servicePackageLinesTable).where(eq(servicePackageLinesTable.packageId, id));
+      if (lines.length > 0) {
+        await db.insert(servicePackageLinesTable).values(
+          lines.map((l, idx) => ({
+            packageId: id,
+            lineType: l.lineType,
+            laborCategory: l.laborCategory ?? null,
+            description: l.description,
+            hours: l.hours ?? null,
+            quantity: l.quantity ?? null,
+            unitPrice: l.unitPrice ?? "0",
+            displayOrder: l.displayOrder ?? idx + 1,
+          }))
+        );
+      }
+    }
+
+    const updatedLines = await db
+      .select()
+      .from(servicePackageLinesTable)
+      .where(eq(servicePackageLinesTable.packageId, id))
+      .orderBy(servicePackageLinesTable.displayOrder);
+
+    res.json({ ...pkg, lines: updatedLines });
+  } catch (err: any) {
+    if (err?.message?.includes("unique")) {
+      res.status(409).json({ error: "A package with this name already exists" });
+    } else {
+      res.status(500).json({ error: "Failed to update service package" });
+    }
+  }
+});
+
+// DELETE /admin/service-packages/:id
+router.delete("/admin/service-packages/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+>>>>>>> cd1b570 (Add edit and delete actions to Service Packages list (Task #145))
     const [deleted] = await db
       .delete(servicePackagesTable)
       .where(eq(servicePackagesTable.id, id))
       .returning({ id: servicePackagesTable.id });
+<<<<<<< HEAD
     if (!deleted) {
       res.status(404).json({ error: "Package not found" });
       return;
@@ -489,6 +601,11 @@ router.delete("/admin/service-packages/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     req.log.error(err, "Failed to delete service package");
+=======
+    if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
+    res.json({ success: true });
+  } catch {
+>>>>>>> cd1b570 (Add edit and delete actions to Service Packages list (Task #145))
     res.status(500).json({ error: "Failed to delete service package" });
   }
 });
