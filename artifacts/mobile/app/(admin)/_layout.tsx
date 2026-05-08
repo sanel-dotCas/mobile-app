@@ -78,6 +78,13 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
+        name="plans"
+        options={{
+          title: "Plans",
+          tabBarIcon: ({ color }) => <Feather name="credit-card" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="monitor"
         options={{
           title: "Monitor",

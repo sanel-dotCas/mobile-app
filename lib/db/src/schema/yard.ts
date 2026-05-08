@@ -263,6 +263,54 @@ export const servicePackageDeploymentsTable = pgTable(
   (t) => [uniqueIndex("spd_package_location_unique").on(t.packageId, t.locationId)]
 );
 
+// ── Prepaid Service Plans ─────────────────────────────────────────────────────
+// A prepaid plan bundles multiple service packages sold upfront, tied to a VIN.
+// Each included package becomes one "slot" that can be redeemed at service time.
+
+export const servicePlanStatusEnum = pgEnum("service_plan_status", [
+  "active",
+  "exhausted",
+  "cancelled",
+]);
+
+export const servicePlansTable = pgTable("service_plans", {
+  id: serial("id").primaryKey(),
+  /** Human-readable plan number, e.g. SP-2026-001 */
+  planNumber: text("plan_number").notNull().unique(),
+  /** Name shown to staff and customer */
+  name: text("name").notNull(),
+  /** VIN the plan is attached to */
+  vin: text("vin").notNull(),
+  /** Display label (year/make/model) for the VIN */
+  vehicleLabel: text("vehicle_label"),
+  /** Customer name for display */
+  customerName: text("customer_name"),
+  /** Total price paid by customer */
+  totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull().default("0"),
+  /** Who sold the plan */
+  soldBy: text("sold_by"),
+  /** Which branch sold it */
+  locationId: integer("location_id").references(() => yardLocationsTable.id),
+  status: servicePlanStatusEnum("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const servicePlanSlotsTable = pgTable("service_plan_slots", {
+  id: serial("id").primaryKey(),
+  planId: integer("plan_id").notNull().references(() => servicePlansTable.id, { onDelete: "cascade" }),
+  packageId: integer("package_id").notNull().references(() => servicePackagesTable.id),
+  packageName: text("package_name").notNull(),
+  /** Sequence / display order within the plan */
+  slotOrder: integer("slot_order").notNull().default(0),
+  /** null = available; set when redeemed */
+  redeemedAt: timestamp("redeemed_at"),
+  /** Estimate or RO number the redemption was applied to */
+  redeemedOnEstimate: text("redeemed_on_estimate"),
+  redeemedBy: text("redeemed_by"),
+});
+
 // ── Insert schemas ────────────────────────────────────────────────────────────
 export const insertYardUserSchema = createInsertSchema(yardUsersTable).omit({
   id: true,

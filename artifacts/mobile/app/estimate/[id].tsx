@@ -70,6 +70,29 @@ interface PackageDef {
   lines: Omit<EstimateLine, "id">[];
 }
 
+interface ActivePlanSlot {
+  id: number;
+  planId: number;
+  packageId: number;
+  packageName: string;
+  slotOrder: number;
+  redeemedAt: string | null;
+}
+
+interface ActivePlan {
+  id: number;
+  planNumber: string;
+  name: string;
+  vin: string;
+  customerName: string | null;
+  totalPrice: string;
+  status: string;
+  slots: ActivePlanSlot[];
+  totalSlots: number;
+  usedSlots: number;
+  remainingSlots: number;
+}
+
 
 const DEFAULT_ACCOUNT_TYPES = [
   { id: 1, name: "Customer Pay", code: "CP" },
@@ -950,6 +973,28 @@ export default function EstimateDetailScreen() {
   const [vinInput, setVinInput] = useState("");
   const [showVinInput, setShowVinInput] = useState(false);
 
+  // ── Prepaid plan detection ───────────────────────────────────────────────────
+  const [activePlans, setActivePlans] = useState<ActivePlan[]>([]);
+  const [showPlanSheet, setShowPlanSheet] = useState(false);
+  const [redeemingSlot, setRedeemingSlot] = useState<{ planId: number; slotId: number; packageName: string } | null>(null);
+
+  // When VIN is decoded, look up active prepaid plans
+  React.useEffect(() => {
+    if (!vinInfo || !vinInput || vinInput.length < 5) {
+      setActivePlans([]);
+      return;
+    }
+    const apiBase = BASE_URL || "http://localhost:80";
+    fetch(`${apiBase}/api/service-plans/by-vin/${encodeURIComponent(vinInput)}`)
+      .then((r) => r.ok ? r.json() : { plans: [] })
+      .then((data: { plans: ActivePlan[] }) => {
+        const plans = (data.plans ?? []).filter((p) => p.remainingSlots > 0);
+        setActivePlans(plans);
+        if (plans.length > 0) setShowPlanSheet(true);
+      })
+      .catch(() => {});
+  }, [vinInfo, vinInput]);
+
   if (!estimate) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -1186,6 +1231,63 @@ export default function EstimateDetailScreen() {
     if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
   }, [estimate.id, addLine, estimate.status, updateStatus]);
 
+  const handleRedeemSlot = useCallback(async (planId: number, slot: ActivePlanSlot) => {
+    setRedeemingSlot({ planId, slotId: slot.id, packageName: slot.packageName });
+    try {
+      const apiBase = BASE_URL || "http://localhost:80";
+      const res = await fetch(`${apiBase}/api/service-plans/${planId}/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotId: slot.id, estimateRef: estimate.estimateNo }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        Alert.alert("Redemption Failed", err.error ?? "Could not redeem this service slot");
+        return;
+      }
+      const data = await res.json() as {
+        plan: ActivePlan;
+        packageLines: Array<{
+          lineType: "labor" | "part" | "material";
+          laborCategory: string | null;
+          description: string;
+          hours: string | null;
+          quantity: string | null;
+          unitPrice: string;
+          displayOrder: number;
+        }>;
+      };
+      // Add all lines from the redeemed package to the estimate
+      data.packageLines.forEach((l) => {
+        const unitPrice = parseFloat(l.unitPrice) || 0;
+        const hours = l.hours ? parseFloat(l.hours) : undefined;
+        const quantity = l.quantity ? parseFloat(l.quantity) : undefined;
+        const total = l.lineType === "labor"
+          ? (hours ?? 0) * unitPrice
+          : (quantity ?? 1) * unitPrice;
+        addLine(estimate.id, {
+          type: l.lineType,
+          laborCategory: (l.lineType === "labor" && l.laborCategory ? l.laborCategory : undefined) as LaborCategory | undefined,
+          description: `[Plan] ${l.description}`,
+          hours: l.lineType === "labor" ? hours : undefined,
+          quantity: l.lineType !== "labor" ? (quantity ?? 1) : undefined,
+          unitPrice,
+          total,
+          isPackage: true,
+          packageName: slot.packageName,
+        });
+      });
+      if (estimate.status === "pending_inspection") updateStatus(estimate.id, "inspection_in_progress");
+      // Refresh plan state
+      setActivePlans((prev) => prev.map((p) => p.id === data.plan.id ? data.plan : p).filter((p) => p.remainingSlots > 0));
+      Alert.alert("Service Redeemed", `"${slot.packageName}" has been applied to this estimate and marked as used on the plan.`);
+    } catch {
+      Alert.alert("Error", "Could not redeem service slot. Please try again.");
+    } finally {
+      setRedeemingSlot(null);
+    }
+  }, [estimate.id, estimate.estimateNo, estimate.status, addLine, updateStatus]);
+
   const handleBulkApply = useCallback((
     section: "labor" | "part" | "material",
     operation: string | null,
@@ -1328,6 +1430,43 @@ export default function EstimateDetailScreen() {
                     </View>
                   ))}
                 </View>
+              </View>
+            )}
+
+            {/* Prepaid plan banner */}
+            {activePlans.length > 0 && (
+              <View style={styles.planBanner}>
+                <View style={styles.planBannerHeader}>
+                  <Feather name="credit-card" size={14} color="#16a34a" />
+                  <Text style={styles.planBannerTitle}>
+                    Prepaid Plan Detected · {activePlans.reduce((s, p) => s + p.remainingSlots, 0)} service{activePlans.reduce((s, p) => s + p.remainingSlots, 0) !== 1 ? "s" : ""} remaining
+                  </Text>
+                  <Pressable onPress={() => setShowPlanSheet((v) => !v)} hitSlop={8}>
+                    <Feather name={showPlanSheet ? "chevron-up" : "chevron-down"} size={13} color="#16a34a" />
+                  </Pressable>
+                </View>
+
+                {showPlanSheet && activePlans.map((plan) => (
+                  <View key={plan.id} style={styles.planPlanBlock}>
+                    <Text style={styles.planPlanName}>{plan.name}</Text>
+                    {plan.customerName ? <Text style={styles.planPlanCustomer}>{plan.customerName}</Text> : null}
+                    {plan.slots.filter((s) => !s.redeemedAt).map((slot) => (
+                      <View key={slot.id} style={styles.planSlotRow}>
+                        <View style={styles.planSlotDot} />
+                        <Text style={styles.planSlotName} numberOfLines={1}>{slot.packageName}</Text>
+                        <Pressable
+                          style={[styles.redeemBtn, redeemingSlot?.slotId === slot.id && { opacity: 0.6 }]}
+                          disabled={redeemingSlot !== null}
+                          onPress={() => handleRedeemSlot(plan.id, slot)}
+                        >
+                          {redeemingSlot?.slotId === slot.id
+                            ? <ActivityIndicator size="small" color="#fff" style={{ width: 52 }} />
+                            : <Text style={styles.redeemBtnText}>Redeem</Text>}
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ))}
               </View>
             )}
           </View>
@@ -1737,6 +1876,19 @@ const styles = StyleSheet.create({
   pkgName:       { fontSize: 14, fontFamily: "Inter_700Bold" },
   pkgDesc:       { fontSize: 11, fontFamily: "Inter_400Regular" },
   pkgTotal:      { fontSize: 11, fontFamily: "Inter_700Bold" },
+
+  // Prepaid plan detection
+  planBanner:       { backgroundColor: "#f0fdf4", borderRadius: 10, borderWidth: 1, borderColor: "#86efac", padding: 12, gap: 10, marginTop: 8 },
+  planBannerHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  planBannerTitle:  { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#16a34a" },
+  planPlanBlock:    { gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#86efac", paddingTop: 8 },
+  planPlanName:     { fontSize: 12, fontFamily: "Inter_700Bold", color: "#15803d" },
+  planPlanCustomer: { fontSize: 11, fontFamily: "Inter_400Regular", color: "#166534" },
+  planSlotRow:      { flexDirection: "row", alignItems: "center", gap: 8 },
+  planSlotDot:      { width: 7, height: 7, borderRadius: 4, backgroundColor: "#16a34a" },
+  planSlotName:     { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", color: "#166534" },
+  redeemBtn:        { backgroundColor: "#16a34a", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8 },
+  redeemBtnText:    { color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" },
 
   pkgLines:      { borderTopWidth: 1, gap: 0 },
   pkgLine:       { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1 },

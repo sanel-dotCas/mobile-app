@@ -16,6 +16,7 @@ import jobsRouter from "./jobs";
 import jobNotificationsRouter from "./job-notifications";
 import techniciansRouter from "./technicians";
 import servicePackagesRouter from "./service-packages";
+import servicePlansRouter from "./service-plans";
 import adminRouter from "./admin";
 import { requireAuth, requireYardPrincipal, requireAdminRole, requireMobileRoles } from "../middlewares/requireAuth";
 
@@ -64,6 +65,13 @@ router.use(estimatesRouter);
 // ── Admin-only routes (admin role — yard OR mobile admin) ─────────────────────
 router.use("/admin", requireAdminRole);
 router.use(adminRouter);
+
+// ── Service plans (prepaid bundles) — all authenticated roles can read, admin writes ──
+router.use("/service-plans", (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "GET" || req.method === "HEAD") { next(); return; }
+  requireAdminRole(req, res, next);
+});
+router.use(servicePlansRouter);
 
 // ── Service packages — GET readable by all authenticated roles; writes admin-only ──
 //

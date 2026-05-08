@@ -19,7 +19,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeader } from "@/components/AppHeader";
-import { authFetch } from "@/lib/authFetch";
 import { useColors } from "@/hooks/useColors";
 
 const BASE =
@@ -443,7 +442,7 @@ function EditPackageModal({ visible, pkg, onClose, onSaved }: EditPackageModalPr
     if (!name.trim()) { Alert.alert("Validation", "Package name is required"); return; }
     setSaving(true);
     try {
-      const res = await authFetch(`/api/admin/service-packages/${pkg.id}`, {
+      const res = await fetch(`/api/admin/service-packages/${pkg.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

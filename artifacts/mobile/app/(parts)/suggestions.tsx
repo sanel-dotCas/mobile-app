@@ -127,7 +127,7 @@ export default function PartsSuggestions() {
                 return (
                   <Pressable
                     key={p}
-                    style={[styles.summaryCard, { backgroundColor: meta.bg, borderColor: meta.color + "40", borderWidth: activeFilter === p ? 2 : 1, borderColor: activeFilter === p ? meta.color : meta.color + "40" }]}
+                    style={[styles.summaryCard, { backgroundColor: meta.bg, borderWidth: activeFilter === p ? 2 : 1, borderColor: activeFilter === p ? meta.color : meta.color + "40" }]}
                     onPress={() => setActiveFilter(activeFilter === p ? "all" : p)}
                   >
                     <Text style={[styles.summaryCount, { color: meta.color }]}>{count}</Text>
