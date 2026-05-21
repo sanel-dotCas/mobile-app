@@ -1,5 +1,7 @@
 let _sessionToken: string | null = null;
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ?? null;
+
 export function updateMobileSessionToken(token: string | null): void {
   _sessionToken = token;
 }
@@ -40,6 +42,11 @@ export function installAuthInterceptor(): void {
         url.startsWith("/api/") ||
         /\/api\//.test(url);
 
+      let requestInput = input;
+      if (API_BASE_URL && typeof input === "string" && (url === "/api" || url.startsWith("/api/"))) {
+        requestInput = `${API_BASE_URL}${url}`;
+      }
+
       if (_sessionToken && isApiCall) {
         const existingHeaders =
           init?.headers ??
@@ -51,10 +58,10 @@ export function installAuthInterceptor(): void {
         if (!headers.has("authorization")) {
           headers.set("authorization", `Bearer ${_sessionToken}`);
         }
-        return originalFetch(input, { ...init, headers });
+        return originalFetch(requestInput, { ...init, headers });
       }
 
-      return originalFetch(input, init);
+      return originalFetch(requestInput, init);
     },
     { __authPatched: true }
   );

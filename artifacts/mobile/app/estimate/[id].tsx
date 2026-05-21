@@ -29,9 +29,10 @@ import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 
 const BASE_URL =
-  Platform.OS === "web"
+  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ??
+  (Platform.OS === "web"
     ? ""
-    : `https://${process.env.EXPO_PUBLIC_DOMAIN ?? "localhost"}`;
+    : `https://${process.env.EXPO_PUBLIC_DOMAIN ?? "localhost"}`);
 
 const STATUS_NEXT: Partial<Record<EstimateStatus, EstimateStatus>> = {
   pending_inspection:     "inspection_in_progress",
