@@ -13,12 +13,13 @@
       "resizeMode": "contain",
       "backgroundColor": "#1d4ed8"
     },
-    "ios": {
+        "ios": {
+      "bundleIdentifier": "com.igmma.dms",
       "supportsTablet": false
     },
-    "android": {},
-    "web": {
-      "favicon": "./assets/images/icon.png"
+    },
+      "android": {
+      "package": "com.igmma.dms"
     },
     "plugins": [
       [
