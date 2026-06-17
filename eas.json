@@ -1,0 +1,18 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote",
+    "appRoot": "artifacts/mobile"
+  },
+  "build": {
+    "staging": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.staging.igmma.net"
+      }
+    }
+  }
+}
