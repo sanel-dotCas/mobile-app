@@ -48,18 +48,17 @@
         }
       ]
     ],
-       "experiments": {
+    "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
       "eas": {
-        "projectId": d7b60435-3d66-41f3-b824-bed20ef4e189
+        "projectId": "d7b60435-3d66-41f3-b824-bed20ef4e189"
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/PASTE-YOUR-PROJECT-ID-HERE"
-    }
+      "url": "https://u.expo.dev/d7b60435-3d66-41f3-b824-bed20ef4e189"
     }
   }
 }
