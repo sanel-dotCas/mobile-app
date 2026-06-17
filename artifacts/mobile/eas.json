@@ -4,13 +4,26 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "corepack": true,
+      "pnpm": "10.33.3",
+      "node": "22.14.0"
+    },
     "staging": {
+      "extends": "base",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.staging.igmma.net"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.staging.igmma.net",
+        "EAS_NO_FROZEN_LOCKFILE": "1"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.igmma.net"
       }
     }
   }
