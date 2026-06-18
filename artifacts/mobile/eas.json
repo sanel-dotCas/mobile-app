@@ -10,6 +10,9 @@
       "node": "22.14.0",
       "android": {
         "image": "sdk-54"
+      },
+      "ios": {
+        "image": "sdk-54"
       }
     },
     "staging": {
